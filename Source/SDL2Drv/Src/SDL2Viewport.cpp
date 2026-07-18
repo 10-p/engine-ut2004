@@ -1,0 +1,1218 @@
+/*=============================================================================
+    SDL2Viewport.cpp: USDL2Viewport code.
+    SDL2 viewport implementation for UT2004 web port.
+    Dual analog: SDLViewport.cpp for UE2 interface, NSDLViewport.cpp for SDL2 API.
+=============================================================================*/
+
+#include "SDL2Drv.h"
+
+#if defined(__ANDROID__)
+// Android touch overlay glue (2.10d). The Java on-screen overlay runs on the UI
+// thread and cannot touch the engine directly; it writes intent through the JNI
+// functions below and USDL2Viewport::UpdateInput (engine thread) drains it once
+// per tick. Web stays byte-identical -- every use is __ANDROID__-guarded.
+#include <jni.h>
+#include <atomic>
+#include <mutex>
+#include <vector>
+#endif
+
+/*-----------------------------------------------------------------------------
+    Class implementation.
+-----------------------------------------------------------------------------*/
+
+IMPLEMENT_CLASS(USDL2Viewport);
+
+/*-----------------------------------------------------------------------------
+    Static data.
+-----------------------------------------------------------------------------*/
+
+//
+// SDL2 scancode to EInputKey translation map.
+//
+BYTE USDL2Viewport::KeyMap[SDL2DRV_MAX_SCANCODES];
+
+//
+// SDL_BUTTON_ -> EInputKey translation map.
+// UE2 supports IK_Mouse4/IK_Mouse5 (unlike UE1 which maps to IK_None).
+//
+const BYTE USDL2Viewport::MouseButtonMap[6] =
+{
+    /* invalid           */ IK_None,
+    /* SDL_BUTTON_LEFT   */ IK_LeftMouse,
+    /* SDL_BUTTON_MIDDLE */ IK_MiddleMouse,
+    /* SDL_BUTTON_RIGHT  */ IK_RightMouse,
+    /* SDL_BUTTON_X1     */ IK_Mouse4,
+    /* SDL_BUTTON_X2     */ IK_Mouse5
+};
+
+#if defined(__ANDROID__)
+/*-----------------------------------------------------------------------------
+    Android touch input glue (2.10d).
+
+    The on-screen touch overlay (a Java View above the SDL surface, see
+    android/.../GameActivity.java) drives gameplay input in landscape: a left-half
+    virtual move stick, a right-half drag-look, and FIRE/ALTFIRE/JUMP/CROUCH/
+    NEXTWEAPON/MENU buttons. The overlay disables itself while a menu is up (keyed
+    on the engine's own bShowWindowsMouse, published below) so menu touches fall
+    through to SDL's touch->mouse synthesis (tap-to-click).
+
+    The overlay runs on the Android UI thread, so it cannot call CauseInputEvent
+    directly. Instead it writes intent into the shared state here via JNI; the
+    engine-thread consumer in UpdateInput drains it once per tick into the exact
+    same CauseInputEvent calls a mouse/gamepad would produce. All targets map to
+    keys UT2004's DefUser.ini already binds, so no ini editing is needed:
+      move stick    -> IK_JoyX / IK_JoyY   (Axis aStrafe / Axis aBaseY Invert=-1)
+      drag-look     -> IK_MouseX / IK_MouseY (aMouseX/aMouseY, like the real mouse)
+      FIRE/ALTFIRE  -> IK_LeftMouse / IK_RightMouse
+      JUMP/CROUCH   -> IK_Space / IK_C
+      NEXTWEAPON    -> IK_MouseWheelDown (momentary press+release)
+      MENU          -> IK_Escape
+-----------------------------------------------------------------------------*/
+
+// Semantic button ids -- keep in sync with GameActivity.Ut2004TouchOverlayView.
+enum EAndroidTouchButton
+{
+    ATB_Fire       = 0,
+    ATB_AltFire    = 1,
+    ATB_Jump       = 2,
+    ATB_Crouch     = 3,
+    ATB_NextWeapon = 4,
+    ATB_Menu       = 5,
+};
+
+// Published each tick from bShowWindowsMouse so the Java overlay knows menu vs
+// gameplay. Engine thread writes, UI thread reads.
+static volatile bool                   GAndroidMenuVisible = false;
+
+// Left virtual stick: held-absolute value in [-1,1]. Single writer (UI), single
+// reader (engine); last-writer-wins is exactly the held-stick semantics we want.
+static std::atomic<float>              GAndroidMoveX( 0.f );
+static std::atomic<float>              GAndroidMoveY( 0.f );
+
+// Right drag-look: raw pixel delta accumulated by the UI thread, consumed+reset
+// each tick by the engine thread (same summing the mouse does across a frame).
+static std::atomic<float>              GAndroidLookX( 0.f );
+static std::atomic<float>              GAndroidLookY( 0.f );
+static float                           GAndroidLastMoveX = 0.f;
+static float                           GAndroidLastMoveY = 0.f;
+
+// Look sensitivity: raw finger pixels are fed as mouse-axis deltas, then scaled by
+// the player's own mouse sensitivity binding. 1.0 == "a screen pixel is a mouse count".
+static const float                     GAndroidLookScale = 1.0f;
+
+// Pending button edges. A queue (not a level) so a tap that presses AND releases
+// between two engine ticks still fires. Low volume; a plain mutex is ample.
+struct FAndroidButtonEdge { INT Key; BYTE Action; };
+static std::mutex                      GAndroidBtnMutex;
+static std::vector<FAndroidButtonEdge> GAndroidBtnQueue;
+
+static void AndroidQueueButton( INT Key, EInputAction Action )
+{
+    std::lock_guard<std::mutex> Lock( GAndroidBtnMutex );
+    FAndroidButtonEdge E; E.Key = Key; E.Action = (BYTE)Action;
+    GAndroidBtnQueue.push_back( E );
+}
+
+// Atomic float add (no std::atomic<float> arithmetic before C++20) for the
+// accumulate-from-UI-thread look channel.
+static inline void AndroidAtomicAddF( std::atomic<float>& A, float V )
+{
+    float Old = A.load( std::memory_order_relaxed );
+    while( !A.compare_exchange_weak( Old, Old + V, std::memory_order_relaxed ) ) {}
+}
+
+extern "C" {
+
+JNIEXPORT jboolean JNICALL
+Java_com_ut2004_android_GameActivity_nativeIsMenuVisible( JNIEnv*, jclass )
+{
+    return GAndroidMenuVisible ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT void JNICALL
+Java_com_ut2004_android_GameActivity_nativeTouchAxis( JNIEnv*, jclass, jint Axis, jfloat Value )
+{
+    // Axis 0 = strafe (X), 1 = forward (Y); Value in [-1,1].
+    if( Axis == 0 )
+        GAndroidMoveX.store( Value, std::memory_order_relaxed );
+    else if( Axis == 1 )
+        GAndroidMoveY.store( Value, std::memory_order_relaxed );
+}
+
+JNIEXPORT void JNICALL
+Java_com_ut2004_android_GameActivity_nativeTouchLook( JNIEnv*, jclass, jfloat DX, jfloat DY )
+{
+    AndroidAtomicAddF( GAndroidLookX, DX );
+    AndroidAtomicAddF( GAndroidLookY, DY );
+}
+
+JNIEXPORT void JNICALL
+Java_com_ut2004_android_GameActivity_nativeTouchButton( JNIEnv*, jclass, jint Button, jboolean Down )
+{
+    INT Key = IK_None;
+    switch( Button )
+    {
+    case ATB_Fire:       Key = IK_LeftMouse;      break;
+    case ATB_AltFire:    Key = IK_RightMouse;     break;
+    case ATB_Jump:       Key = IK_Space;          break;
+    case ATB_Crouch:     Key = IK_C;              break;
+    case ATB_NextWeapon: Key = IK_MouseWheelDown; break;
+    case ATB_Menu:       Key = IK_Escape;         break;
+    default: return;
+    }
+
+    // Mouse wheel is momentary: emit a single press+release on the down edge.
+    if( Key == IK_MouseWheelDown )
+    {
+        if( Down )
+        {
+            AndroidQueueButton( Key, IST_Press );
+            AndroidQueueButton( Key, IST_Release );
+        }
+        return;
+    }
+
+    AndroidQueueButton( Key, Down ? IST_Press : IST_Release );
+}
+
+} // extern "C"
+#endif // __ANDROID__
+
+/*-----------------------------------------------------------------------------
+    Key map initialization.
+    Uses SDL2 scancodes (physical key positions) for layout-independent mapping.
+    Adapted from NSDLViewport.cpp InitKeyMap, using UE2 EInputKey values.
+-----------------------------------------------------------------------------*/
+
+void USDL2Viewport::InitKeyMap()
+{
+    #define INIT_KEY_RANGE( AStart, AEnd, BStart, BEnd ) \
+        for( DWORD Key = AStart; Key <= AEnd; ++Key ) KeyMap[Key] = BStart + ( Key - AStart )
+
+    appMemset( KeyMap, 0, sizeof( KeyMap ) );
+
+    // Modifiers -- UE2 has distinct IK_LShift/IK_RShift/IK_LControl/IK_RControl.
+    KeyMap[SDL_SCANCODE_LSHIFT] = IK_LShift;
+    KeyMap[SDL_SCANCODE_RSHIFT] = IK_RShift;
+    KeyMap[SDL_SCANCODE_LCTRL]  = IK_LControl;
+    KeyMap[SDL_SCANCODE_RCTRL]  = IK_RControl;
+    KeyMap[SDL_SCANCODE_LALT]   = IK_Alt;
+    KeyMap[SDL_SCANCODE_RALT]   = IK_Alt;
+
+    // TTY / Navigation keys.
+    KeyMap[SDL_SCANCODE_ESCAPE]    = IK_Escape;
+    KeyMap[SDL_SCANCODE_RETURN]    = IK_Enter;
+    KeyMap[SDL_SCANCODE_TAB]       = IK_Tab;
+    KeyMap[SDL_SCANCODE_BACKSPACE] = IK_Backspace;
+    KeyMap[SDL_SCANCODE_SPACE]     = IK_Space;
+    KeyMap[SDL_SCANCODE_GRAVE]     = IK_Tilde;  // Console toggle key (backtick/tilde).
+
+    // Arrow keys.
+    KeyMap[SDL_SCANCODE_LEFT]  = IK_Left;
+    KeyMap[SDL_SCANCODE_RIGHT] = IK_Right;
+    KeyMap[SDL_SCANCODE_UP]    = IK_Up;
+    KeyMap[SDL_SCANCODE_DOWN]  = IK_Down;
+
+    // Navigation cluster.
+    KeyMap[SDL_SCANCODE_HOME]     = IK_Home;
+    KeyMap[SDL_SCANCODE_END]      = IK_End;
+    KeyMap[SDL_SCANCODE_PAGEUP]   = IK_PageUp;
+    KeyMap[SDL_SCANCODE_PAGEDOWN] = IK_PageDown;
+    KeyMap[SDL_SCANCODE_INSERT]   = IK_Insert;
+    KeyMap[SDL_SCANCODE_DELETE]   = IK_Delete;
+
+    // Letters A-Z (range macro).
+    INIT_KEY_RANGE( SDL_SCANCODE_A, SDL_SCANCODE_Z, IK_A, IK_Z );
+
+    // Numbers 1-9 (range macro) and 0 (special case).
+    INIT_KEY_RANGE( SDL_SCANCODE_1, SDL_SCANCODE_9, IK_1, IK_9 );
+    KeyMap[SDL_SCANCODE_0] = IK_0;
+
+    // Function keys F1-F12 (range macro).
+    INIT_KEY_RANGE( SDL_SCANCODE_F1, SDL_SCANCODE_F12, IK_F1, IK_F12 );
+
+    // Punctuation.
+    KeyMap[SDL_SCANCODE_SEMICOLON]    = IK_Semicolon;
+    KeyMap[SDL_SCANCODE_EQUALS]       = IK_Equals;
+    KeyMap[SDL_SCANCODE_COMMA]        = IK_Comma;
+    KeyMap[SDL_SCANCODE_MINUS]        = IK_Minus;
+    KeyMap[SDL_SCANCODE_PERIOD]       = IK_Period;
+    KeyMap[SDL_SCANCODE_SLASH]        = IK_Slash;
+    KeyMap[SDL_SCANCODE_BACKSLASH]    = IK_Backslash;
+    KeyMap[SDL_SCANCODE_LEFTBRACKET]  = IK_LeftBracket;
+    KeyMap[SDL_SCANCODE_RIGHTBRACKET] = IK_RightBracket;
+    KeyMap[SDL_SCANCODE_APOSTROPHE]   = IK_SingleQuote;
+
+    // Numpad 1-9 (range macro), 0 and extras.
+    INIT_KEY_RANGE( SDL_SCANCODE_KP_1, SDL_SCANCODE_KP_9, IK_NumPad1, IK_NumPad9 );
+    KeyMap[SDL_SCANCODE_KP_0]        = IK_NumPad0;
+    KeyMap[SDL_SCANCODE_KP_PERIOD]   = IK_NumPadPeriod;
+    KeyMap[SDL_SCANCODE_KP_ENTER]    = IK_Enter;
+    KeyMap[SDL_SCANCODE_KP_MULTIPLY] = IK_GreyStar;
+    KeyMap[SDL_SCANCODE_KP_PLUS]     = IK_GreyPlus;
+    KeyMap[SDL_SCANCODE_KP_MINUS]    = IK_GreyMinus;
+    KeyMap[SDL_SCANCODE_KP_DIVIDE]   = IK_GreySlash;
+
+    // Lock keys and misc.
+    KeyMap[SDL_SCANCODE_CAPSLOCK]     = IK_CapsLock;
+    KeyMap[SDL_SCANCODE_NUMLOCKCLEAR] = IK_NumLock;
+    KeyMap[SDL_SCANCODE_SCROLLLOCK]   = IK_ScrollLock;
+    KeyMap[SDL_SCANCODE_PAUSE]        = IK_Pause;
+    KeyMap[SDL_SCANCODE_PRINTSCREEN]  = IK_PrintScrn;
+
+    #undef INIT_KEY_RANGE
+}
+
+/*-----------------------------------------------------------------------------
+    USDL2Viewport Init/Exit.
+-----------------------------------------------------------------------------*/
+
+//
+// Constructor.
+//
+USDL2Viewport::USDL2Viewport()
+:   UViewport()
+{
+    guard(USDL2Viewport::USDL2Viewport);
+    Window              = NULL;
+    GLContext           = NULL;
+    BlitFlags           = 0;
+    ViewportButtonFlags = 0;
+    unguard;
+}
+
+//
+// Destroy.
+//
+void USDL2Viewport::Destroy()
+{
+    guard(USDL2Viewport::Destroy);
+    CloseWindow();
+    Super::Destroy();
+    unguard;
+}
+
+//
+// Error shutdown.
+//
+void USDL2Viewport::ShutdownAfterError()
+{
+    guard(USDL2Viewport::ShutdownAfterError);
+    if( Window )
+    {
+        EndFullscreen();
+        SDL_SetRelativeMouseMode(SDL_FALSE);
+    }
+    Super::ShutdownAfterError();
+    unguard;
+}
+
+/*-----------------------------------------------------------------------------
+    Locking.
+-----------------------------------------------------------------------------*/
+
+UBOOL USDL2Viewport::Lock( BYTE* HitData, INT* HitSize )
+{
+    guard(USDL2Viewport::Lock);
+    return UViewport::Lock(HitData, HitSize);
+    unguard;
+}
+
+void USDL2Viewport::Unlock()
+{
+    guard(USDL2Viewport::Unlock);
+    UViewport::Unlock();
+    unguard;
+}
+
+/*-----------------------------------------------------------------------------
+    Command line.
+-----------------------------------------------------------------------------*/
+
+UBOOL USDL2Viewport::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
+{
+    guard(USDL2Viewport::Exec);
+    if( UViewport::Exec( Cmd, Ar ) )
+    {
+        return 1;
+    }
+    else if( ParseCommand(&Cmd,TEXT("ENDFULLSCREEN")) )
+    {
+        if( BlitFlags & BLIT_Fullscreen )
+            EndFullscreen();
+        return 1;
+    }
+    else if( ParseCommand(&Cmd,TEXT("TOGGLEFULLSCREEN")) )
+    {
+        ToggleFullscreen();
+        return 1;
+    }
+    else if( ParseCommand(&Cmd,TEXT("GETCURRENTRES")) )
+    {
+        Ar.Logf( TEXT("%ix%i"), SizeX, SizeY );
+        return 1;
+    }
+    else if( ParseCommand(&Cmd,TEXT("GETCURRENTCOLORDEPTH")) )
+    {
+        Ar.Logf( TEXT("%i"), (ColorBytes?ColorBytes:2)*8 );
+        return 1;
+    }
+    else if( ParseCommand(&Cmd,TEXT("GETCOLORDEPTHS")) )
+    {
+        Ar.Log( TEXT("32") );
+        return 1;
+    }
+    else if( ParseCommand(&Cmd,TEXT("GETCURRENTRENDERDEVICE")) )
+    {
+        Ar.Log( RenDev ? RenDev->GetClass()->GetPathName() : TEXT("") );
+        return 1;
+    }
+    else if( ParseCommand(&Cmd,TEXT("SUPPORTEDRESOLUTION")) )
+    {
+        INT     Width = 0,
+                Height = 0,
+                BitDepth = 0;
+        UBOOL   Supported = 0;
+
+        if(Parse(Cmd,TEXT("WIDTH="),Width) && Parse(Cmd,TEXT("HEIGHT="),Height) && Parse(Cmd,TEXT("BITDEPTH="),BitDepth))
+        {
+            // SDL2: window manager handles mode validation.
+            Supported = 1;
+        }
+
+        Ar.Logf(TEXT("%u"),Supported);
+
+        return 1;
+    }
+
+    else if( ParseCommand(&Cmd,TEXT("SETRES")) )
+    {
+        INT X=appAtoi(Cmd);
+        const TCHAR* CmdTemp = appStrchr(Cmd,'x') ? appStrchr(Cmd,'x')+1 : appStrchr(Cmd,'X') ? appStrchr(Cmd,'X')+1 : TEXT("");
+        INT Y=appAtoi(CmdTemp);
+        Cmd = CmdTemp;
+        CmdTemp = appStrchr(Cmd,'x') ? appStrchr(Cmd,'x')+1 : appStrchr(Cmd,'X') ? appStrchr(Cmd,'X')+1 : TEXT("");
+        INT BPP=appAtoi(CmdTemp);
+        Cmd = CmdTemp;
+        UBOOL   Fullscreen = IsFullscreen() || FullscreenOnly;
+        if(appStrchr(Cmd,'w') || appStrchr(Cmd,'W'))
+            Fullscreen = 0;
+        else if(appStrchr(Cmd,'f') || appStrchr(Cmd,'F'))
+            Fullscreen = 1;
+        if( X && Y )
+        {
+            INT ColorBytes = 0;
+            switch( BPP )
+            {
+            case 16:
+                ColorBytes = 2;
+                break;
+            case 24:
+            case 32:
+                ColorBytes = 4;
+                break;
+            }
+            UBOOL Result = RenDev->SetRes( this, X, Y, Fullscreen || FullscreenOnly, ColorBytes );
+            if( !Result )
+                EndFullscreen();
+
+            if ( GUIController )
+                GUIController->ResolutionChanged(X, Y);
+        }
+        return 1;
+    }
+
+    else if( ParseCommand(&Cmd,TEXT("SETMOUSE")) )
+    {
+        const TCHAR* CmdTemp = Cmd;
+        INT X, Y;
+
+        X = appAtoi(CmdTemp);
+
+        while( appIsDigit( *CmdTemp) )
+            CmdTemp++;
+
+        while( appIsSpace( *CmdTemp) )
+            CmdTemp++;
+
+        Y = appAtoi(CmdTemp);
+
+        WindowsMouseX = X;
+        WindowsMouseY = Y;
+        if( Window )
+            SDL_WarpMouseInWindow(Window, X, Y);
+        return 1;
+    }
+
+    else return 0;
+    unguard;
+}
+
+/*-----------------------------------------------------------------------------
+    Window management.
+-----------------------------------------------------------------------------*/
+
+//
+// Open this viewport's window.
+//
+void USDL2Viewport::OpenWindow( PTRINT InParentWindow, UBOOL IsTemporary, INT NewX, INT NewY, INT OpenX, INT OpenY )
+{
+    guard(USDL2Viewport::OpenWindow);
+
+    check(Actor);
+    UBOOL DoRepaint=0, DoSetActive=0;
+    USDL2Client* C = GetOuterUSDL2Client();
+
+    if( NewX!=INDEX_NONE )
+        NewX = Align( NewX, 2 );
+
+    // Create frame buffer.
+    if( IsTemporary )
+    {
+        BlitFlags     = BLIT_Temporary;
+        ColorBytes    = 2;
+        SizeX         = NewX;
+        SizeY         = NewY;
+        ScreenPointer = (BYTE*)appMalloc( 2 * NewX * NewY, TEXT("TemporaryViewportData") );
+    }
+
+    // Create rendering device.
+    if( !RenDev && !GIsEditor && ParseParam(appCmdLine(),TEXT("windowed")) )
+        TryRenderDevice( TEXT("ini:Engine.Engine.RenderDevice"), NewX, NewY, 0 );
+    if( !RenDev )
+        TryRenderDevice( TEXT("ini:Engine.Engine.RenderDevice"), NewX, NewY, GIsEditor ? 0 : C->StartupFullscreen );
+
+    check(RenDev);
+    RenDev->UpdateGamma( this );
+    UpdateWindowFrame();
+
+    unguard;
+}
+
+//
+// Close a viewport window.
+//
+void USDL2Viewport::CloseWindow()
+{
+    guard(USDL2Viewport::CloseWindow);
+    if( GLContext )
+    {
+        SDL_GL_DeleteContext( GLContext );
+        GLContext = NULL;
+    }
+    if( Window )
+    {
+        SDL_DestroyWindow( Window );
+        Window = NULL;
+    }
+    unguard;
+}
+
+/*-----------------------------------------------------------------------------
+    USDL2Viewport operations.
+-----------------------------------------------------------------------------*/
+
+//
+// Repaint the viewport.
+//
+void USDL2Viewport::Repaint( UBOOL Blit )
+{
+    guard(USDL2Viewport::Repaint);
+    GetOuterUSDL2Client()->Engine->Draw( this, Blit );
+    unguard;
+}
+
+//
+// Return whether fullscreen.
+//
+UBOOL USDL2Viewport::IsFullscreen()
+{
+    guard(USDL2Viewport::IsFullscreen);
+    return (BlitFlags & BLIT_Fullscreen) ? 1 : 0;
+    unguard;
+}
+
+//
+// Set the mouse cursor.
+//
+void USDL2Viewport::SetModeCursor()
+{
+    guard(USDL2Viewport::SetModeCursor);
+    /* no-op stub */
+    unguard;
+}
+
+//
+// Update window title bar.
+//
+void USDL2Viewport::UpdateWindowFrame()
+{
+    guard(USDL2Viewport::UpdateWindowFrame);
+
+    if( !Window || (BlitFlags&BLIT_Fullscreen) || (BlitFlags&BLIT_Temporary) || !Actor)
+        return;
+
+    SDL_SetWindowTitle( Window, "Unreal Tournament 2004" );
+
+    unguard;
+}
+
+//
+// Return the viewport's window.
+//
+void* USDL2Viewport::GetWindow()
+{
+    guard(USDL2Viewport::GetWindow);
+    return (void*)Window;
+    unguard;
+}
+
+/*-----------------------------------------------------------------------------
+    Viewport modes.
+-----------------------------------------------------------------------------*/
+
+//
+// Try switching to a new rendering device.
+//
+UBOOL USDL2Viewport::TryRenderDevice( const TCHAR* ClassName, INT NewX, INT NewY, UBOOL Fullscreen )
+{
+    guard(USDL2Viewport::TryRenderDevice);
+
+    // Shut down current rendering device.
+    guard(ShutdownOldRenDev);
+    if( RenDev && RenDev != GetOuterUSDL2Client()->Engine->GRenDev )
+    {
+        RenDev->Exit(this);
+        delete RenDev;
+        RenDev = NULL;
+    }
+    unguard;
+
+    // Use appropriate defaults.
+    USDL2Client* C = GetOuterUSDL2Client();
+    if( NewX==INDEX_NONE )
+        NewX = (Fullscreen || FullscreenOnly) ? C->FullscreenViewportX : C->WindowedViewportX;
+    if( NewY==INDEX_NONE )
+        NewY = (Fullscreen || FullscreenOnly) ? C->FullscreenViewportY : C->WindowedViewportY;
+
+    // Find device driver.
+    UClass* RenderClass = UObject::StaticLoadClass( URenderDevice::StaticClass(), NULL, ClassName, NULL, 0, NULL );
+    if( RenderClass )
+    {
+        if( RenderClass == GetOuterUSDL2Client()->Engine->GRenDev->GetClass() )
+        {
+            RenDev = GetOuterUSDL2Client()->Engine->GRenDev;
+        }
+        else
+        {
+            RenDev = ConstructObject<URenderDevice>( RenderClass, this );
+            RenDev->Init();
+        }
+
+        if( RenDev->SetRes( this, NewX, NewY, Fullscreen | FullscreenOnly, ColorBytes ) )
+        {
+            if( GIsRunning )
+                Actor->GetLevel()->DetailChange(
+                    RenDev->SuperHighDetailActors ? DM_SuperHigh :
+                    RenDev->HighDetailActors ? DM_High :
+                    DM_Low
+                    );
+        }
+        else
+        {
+            debugf( NAME_Log, LocalizeError(TEXT("Failed3D"),TEXT("SDL2Drv")) );
+            if( RenDev != GetOuterUSDL2Client()->Engine->GRenDev )
+                delete RenDev;
+            RenDev = NULL;
+        }
+    }
+
+    if( !GIsEditor )
+    {
+        if ( GUIController )
+        {
+            GUIController->ResetInput();
+            GUIController->ResolutionChanged(SizeX,SizeY);
+        }
+        if ( Input )
+            Input->ResetInput();
+    }
+
+    return RenDev != NULL;
+    unguard;
+}
+
+//
+// If in fullscreen mode, end it and return to windowed.
+//
+void USDL2Viewport::EndFullscreen()
+{
+    guard(USDL2Viewport::EndFullscreen);
+    USDL2Client* Client = GetOuterUSDL2Client();
+    debugf(TEXT("EndFullscreen"));
+    if( RenDev && (BlitFlags & (BLIT_Direct3D|BLIT_OpenGL)) && !FullscreenOnly )
+    {
+        RenDev->SetRes( this, Client->WindowedViewportX, Client->WindowedViewportY, 0 );
+    }
+    else if( RenDev && (BlitFlags & BLIT_OpenGL) )
+    {
+        RenDev->SetRes( this, INDEX_NONE, INDEX_NONE, FullscreenOnly );
+    }
+    UpdateWindowFrame();
+
+    if ( GUIController )
+    {
+        GUIController->ResetInput();
+        GUIController->ResolutionChanged(SizeX, SizeY);
+    }
+
+    if ( Input )
+        Input->ResetInput();
+
+    unguard;
+}
+
+//
+// Toggle fullscreen.
+//
+void USDL2Viewport::ToggleFullscreen()
+{
+    guard(USDL2Viewport::ToggleFullscreen);
+    if( BlitFlags & BLIT_Fullscreen )
+    {
+        EndFullscreen();
+        SetMouseCapture(1,1,0);
+    }
+    else if( !(Actor->ShowFlags & SHOW_ChildWindow) )
+    {
+        debugf(TEXT("AttemptFullscreen"));
+        TryRenderDevice( TEXT("ini:Engine.Engine.RenderDevice"), INDEX_NONE, INDEX_NONE, 1 );
+    }
+    unguard;
+}
+
+/*-----------------------------------------------------------------------------
+    Resize viewport -- KEY FUNCTION.
+    Called by OpenGLDrv::SetRes via TryRenderDevice.
+    Creates the SDL2 window and GL context.
+-----------------------------------------------------------------------------*/
+
+UBOOL USDL2Viewport::ResizeViewport( DWORD NewBlitFlags, INT InNewX, INT InNewY, UBOOL bSaveSize )
+{
+    guard(USDL2Viewport::ResizeViewport);
+    USDL2Client* Client = GetOuterUSDL2Client();
+
+    // Remember viewport for audio.
+    UViewport* SavedViewport = NULL;
+    if( Client->Engine->Audio && !GIsEditor && !(GetFlags() & RF_Destroyed) )
+        SavedViewport = Client->Engine->Audio->GetViewport();
+
+    // Accept default parameters.
+    INT NewX = InNewX!=INDEX_NONE ? InNewX : (NewBlitFlags&BLIT_Fullscreen) ? Client->FullscreenViewportX : Client->WindowedViewportX;
+    INT NewY = InNewX!=INDEX_NONE ? InNewY : (NewBlitFlags&BLIT_Fullscreen) ? Client->FullscreenViewportY : Client->WindowedViewportY;
+
+    // Align NewX.
+    check(NewX>=0);
+    check(NewY>=0);
+    NewX = Align(NewX,2);
+
+    if( !(NewBlitFlags & BLIT_Temporary) )
+    {
+        ScreenPointer = NULL;
+    }
+
+    // Set new info.
+    DWORD OldBlitFlags = BlitFlags;
+    BlitFlags          = NewBlitFlags & ~BLIT_ParameterFlags;
+    SizeX              = NewX;
+    SizeY              = NewY;
+
+    // Enable the engine's absolute Windows-mouse path (mirrors WinViewport.cpp:2576,
+    // bWindowsMouseAvailable = !(NewBlitFlags & BLIT_Fullscreen)). The browser canvas is
+    // always "windowed", so this is on. The GUI then drives bShowWindowsMouse on menu
+    // open/close (GUIController::SetControllerStatus), which releases pointer-lock and
+    // makes the GUI hit-test WindowsMouseX/Y as an absolute position (Scale==1.0).
+    bWindowsMouseAvailable = !(NewBlitFlags & BLIT_Fullscreen);
+
+    // SDL2 window creation.
+    if( !Window )
+    {
+#if defined(__ANDROID__)
+        // Lock the game to landscape on Android. UT2004 is a landscape game (the tallest comfortable
+        // aspect is ~4:3/1:1; portrait is unplayable). AndroidManifest pins screenOrientation=landscape,
+        // but SDL's SDLActivity overrides it at runtime via setRequestedOrientation derived from
+        // SDL_HINT_ORIENTATIONS + the window shape (empty hint + a portrait-shaped window ->
+        // SCREEN_ORIENTATION_FULL_USER=13 -> portrait surface, while the engine renders landscape ->
+        // BLASTBufferQueue rejects the landscape buffer against the portrait SurfaceView). Setting the
+        // hint to landscape-only makes SDL request landscape so the surface matches the engine. Web stays
+        // byte-identical: this is __ANDROID__-guarded (and SDL_HINT_ORIENTATIONS is an iOS/Android-only no-op).
+        SDL_SetHint( SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight" );
+#endif
+        Window = SDL_CreateWindow(
+            "Unreal Tournament 2004",
+            SDL_WINDOWPOS_CENTERED,
+            SDL_WINDOWPOS_CENTERED,
+            NewX,
+            NewY,
+            SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE
+        );
+        if( !Window )
+        {
+            appErrorf( TEXT("SDL_CreateWindow failed: %s"), appFromAnsi(SDL_GetError()) );
+            return 0;
+        }
+        // On Emscripten, if resolution was 0x0, query the actual canvas size.
+        // SDL2's Emscripten backend maps the window to the HTML canvas element.
+        if( NewX == 0 || NewY == 0 )
+        {
+            SDL_GetWindowSize( Window, &NewX, &NewY );
+            SizeX = NewX;
+            SizeY = NewY;
+        }
+    }
+    else
+    {
+        SDL_SetWindowSize( Window, NewX, NewY );
+    }
+
+    // Handle fullscreen -- use desktop fullscreen to avoid mode changes (D-08).
+#if defined(__ANDROID__)
+    // Android: always immersive fullscreen. A phone has no windowed mode, and requesting
+    // FULLSCREEN_DESKTOP makes SDL call SDLActivity.setWindowStyle(true), which applies
+    // SYSTEM_UI_FLAG_FULLSCREEN | HIDE_NAVIGATION | IMMERSIVE_STICKY -- hiding the status bar and the
+    // navigation/home slider so the game uses the whole display (the surface grows to the full display;
+    // WINDOWEVENT_RESIZED then re-runs the drawable-size SetRes below). Web/desktop keep the
+    // BLIT_Fullscreen behavior in the #else -> byte-identical.
+    SDL_SetWindowFullscreen( Window, SDL_WINDOW_FULLSCREEN_DESKTOP );
+#else
+    if( NewBlitFlags & BLIT_Fullscreen )
+    {
+        SDL_SetWindowFullscreen( Window, SDL_WINDOW_FULLSCREEN_DESKTOP );
+    }
+    else
+    {
+        SDL_SetWindowFullscreen( Window, 0 );
+    }
+#endif
+
+    // GL context creation.
+    // GL4ESDrv: GLES 2.0 context for GL4ES output (D-08).
+    // GLES3Drv: GL 3.3 Core context for Mesa llvmpipe.
+    // OpenGLDrv: Compatibility profile for fixed-function pipeline.
+    if( !GLContext )
+    {
+        // Check which render device is active.
+        const TCHAR* RenDevStr = GConfig->GetStr(TEXT("Engine.Engine"), TEXT("RenderDevice"), TEXT("System"));
+        if( appStrfind(RenDevStr, TEXT("GL4ESDrv")) )
+        {
+            // GL4ESDrv: create GLES2 context for GL4ES output (D-08).
+            SDL_GL_SetAttribute( SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES );
+            SDL_GL_SetAttribute( SDL_GL_CONTEXT_MAJOR_VERSION, 2 );
+            SDL_GL_SetAttribute( SDL_GL_CONTEXT_MINOR_VERSION, 0 );
+        }
+        else if( appStrfind(RenDevStr, TEXT("GLES3Drv")) )
+        {
+            SDL_GL_SetAttribute( SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE );
+            SDL_GL_SetAttribute( SDL_GL_CONTEXT_MAJOR_VERSION, 3 );
+            SDL_GL_SetAttribute( SDL_GL_CONTEXT_MINOR_VERSION, 3 );
+        }
+        else
+        {
+#ifdef __EMSCRIPTEN__
+            // ufront: Emscripten has no desktop/COMPATIBILITY GL — only GLES2/WebGL. A device with no GL
+            // pipeline of its own (Engine.NullRenderDevice — the GPU-free "poor-man's dedicated server" device)
+            // still needs a CREATABLE context for the viewport to size/present, so request GLES2 like GL4ESDrv;
+            // the null device draws nothing into it. A desktop COMPATIBILITY request (the native default below)
+            // returns no context on the web -> SDL_GL_CreateContext fails -> ResizeViewport returns 0 -> the
+            // null device's verify(ResizeViewport(...)) aborts when a match brings up the scene viewport. This
+            // is what kept ut2004's stock null device menu-only on web (see STATE.md "## Null + bots parity").
+            SDL_GL_SetAttribute( SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES );
+            SDL_GL_SetAttribute( SDL_GL_CONTEXT_MAJOR_VERSION, 2 );
+            SDL_GL_SetAttribute( SDL_GL_CONTEXT_MINOR_VERSION, 0 );
+#else
+            SDL_GL_SetAttribute( SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY );
+#endif
+        }
+        GLContext = SDL_GL_CreateContext( Window );
+        if( !GLContext )
+        {
+            debugf( NAME_Init, TEXT("SDL_GL_CreateContext failed: %s"), appFromAnsi(SDL_GetError()) );
+            return 0;
+        }
+        SDL_GL_MakeCurrent( Window, GLContext );
+    }
+
+#if defined(__ANDROID__)
+    // On Android SDL binds the GL window to the fullscreen SurfaceView and IGNORES the requested
+    // (ini windowed) size, so the requested NewX/NewY leave glViewport(0,0,SizeX,SizeY) (GL4ES Lock)
+    // covering only a corner of the real surface -- the rest is unrendered (black). Size the viewport
+    // to the actual drawable now that the EGL surface exists. SDL_GL_GetDrawableSize returns the EGL
+    // surface pixel size (== SDL_GetWindowSize on Android); GetWindowSize is the fallback.
+    {
+        int DrawW = 0, DrawH = 0;
+        SDL_GL_GetDrawableSize( Window, &DrawW, &DrawH );
+        if( DrawW <= 0 || DrawH <= 0 )
+            SDL_GetWindowSize( Window, &DrawW, &DrawH );
+        if( DrawW > 0 && DrawH > 0 )
+        {
+            NewX  = DrawW;
+            NewY  = DrawH;
+            SizeX = DrawW;
+            SizeY = DrawH;
+        }
+    }
+#endif
+
+    // Make this viewport current and update its title bar.
+    GetOuterUClient()->MakeCurrent( this );
+
+    // Update audio.
+    if( SavedViewport && SavedViewport!=Client->Engine->Audio->GetViewport() )
+        Client->Engine->Audio->SetViewport( SavedViewport );
+
+    UpdateWindowFrame();
+
+    // Save info.
+    if( RenDev && !GIsEditor && bSaveSize )
+    {
+        if( NewBlitFlags & BLIT_Fullscreen )
+        {
+            if( NewX && NewY )
+            {
+                Client->FullscreenViewportX  = NewX;
+                Client->FullscreenViewportY  = NewY;
+            }
+        }
+        else
+        {
+            if( NewX && NewY )
+            {
+                Client->WindowedViewportX  = NewX;
+                Client->WindowedViewportY  = NewY;
+            }
+        }
+        Client->SaveConfig();
+    }
+
+    return 1;
+    unguard;
+}
+
+/*-----------------------------------------------------------------------------
+    Input.
+-----------------------------------------------------------------------------*/
+
+//
+// Input event router.
+//
+UBOOL USDL2Viewport::CauseInputEvent( INT iKey, EInputAction Action, FLOAT Delta )
+{
+    guard(USDL2Viewport::CauseInputEvent);
+    return GetOuterUSDL2Client()->Engine->InputEvent( this, (EInputKey)iKey, Action, Delta );
+    unguard;
+}
+
+//
+// Update input -- full SDL2 event loop.
+// Handles keyboard (scancode-based), mouse (relative + absolute),
+// text input, and window events.
+//
+void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
+{
+    guard(USDL2Viewport::UpdateInput);
+
+    USDL2Client* Client = GetOuterUSDL2Client();
+
+    SDL_Event Ev;
+    while( SDL_PollEvent(&Ev) )
+    {
+        switch( Ev.type )
+        {
+        case SDL_QUIT:
+            GIsRequestingExit = 1;
+            break;
+
+        case SDL_WINDOWEVENT:
+            switch( Ev.window.event )
+            {
+            case SDL_WINDOWEVENT_RESIZED:
+                SizeX = Ev.window.data1;
+                SizeY = Ev.window.data2;
+                // Resize the GL framebuffer to match the new window size.
+                if( RenDev && SizeX > 0 && SizeY > 0 )
+                    RenDev->SetRes( this, SizeX, SizeY, BlitFlags & BLIT_Fullscreen );
+                break;
+            case SDL_WINDOWEVENT_FOCUS_LOST:
+                SetMouseCapture(0, 0, 0);
+                break;
+            }
+            break;
+
+        case SDL_TEXTINPUT:
+            // Route printable characters to Engine->Key for console/chat text entry.
+            // Iterate bytes for ASCII range only.
+            for( const char* p = Ev.text.text; *p && p < Ev.text.text + sizeof(Ev.text.text); ++p )
+            {
+                if( *p < 0 )
+                    break;  // Non-ASCII (high bit set), stop.
+                // Pass the character as BOTH the EInputKey and the Unicode arg. The
+                // UnrealScript console KeyType handler (Console.uc / ExtendedConsole.uc)
+                // gates character insertion behind `if( Key >= 0x20 )`, so passing
+                // IK_None (0) silently drops every printable character. Mirrors the SDL1
+                // path (SDLViewport.cpp), which passed keysym.unicode as the Key.
+                // Printable ASCII is always >= 0x20, so the gate passes.
+                Client->Engine->Key( this, (EInputKey)(BYTE)*p, (TCHAR)*p );
+            }
+            break;
+
+        case SDL_KEYDOWN:
+        {
+            // Bounds check scancode (T-04-01 mitigation).
+            if( Ev.key.keysym.scancode >= SDL2DRV_MAX_SCANCODES )
+                break;
+            BYTE Key = KeyMap[Ev.key.keysym.scancode];
+            if( Key == 0 )
+                break;
+
+            // Alt+Enter toggles fullscreen (D-08 / INPUT-03).
+            if( (Ev.key.keysym.mod & KMOD_ALT) && Key == IK_Enter )
+            {
+                ToggleFullscreen();
+                break;
+            }
+
+            CauseInputEvent( Key, IST_Press );
+            break;
+        }
+
+        case SDL_KEYUP:
+        {
+            // Bounds check scancode (T-04-01 mitigation).
+            if( Ev.key.keysym.scancode >= SDL2DRV_MAX_SCANCODES )
+                break;
+            BYTE Key = KeyMap[Ev.key.keysym.scancode];
+            if( Key == 0 )
+                break;
+
+            CauseInputEvent( Key, IST_Release );
+            break;
+        }
+
+        case SDL_MOUSEBUTTONDOWN:
+        {
+            // Bounds check button index (T-04-02 mitigation).
+            if( Ev.button.button >= ARRAY_COUNT(MouseButtonMap) )
+                break;
+            BYTE Key = MouseButtonMap[Ev.button.button];
+            if( Key == IK_None )
+                break;
+
+            // Track held mouse button state for MouseDelta.
+            if( Ev.button.button == SDL_BUTTON_LEFT )   ViewportButtonFlags |= MOUSE_Left;
+            if( Ev.button.button == SDL_BUTTON_RIGHT )  ViewportButtonFlags |= MOUSE_Right;
+            if( Ev.button.button == SDL_BUTTON_MIDDLE ) ViewportButtonFlags |= MOUSE_Middle;
+
+            CauseInputEvent( Key, IST_Press );
+            break;
+        }
+
+        case SDL_MOUSEBUTTONUP:
+        {
+            // Bounds check button index (T-04-02 mitigation).
+            if( Ev.button.button >= ARRAY_COUNT(MouseButtonMap) )
+                break;
+            BYTE Key = MouseButtonMap[Ev.button.button];
+            if( Key == IK_None )
+                break;
+
+            // Clear held mouse button state.
+            if( Ev.button.button == SDL_BUTTON_LEFT )   ViewportButtonFlags &= ~MOUSE_Left;
+            if( Ev.button.button == SDL_BUTTON_RIGHT )  ViewportButtonFlags &= ~MOUSE_Right;
+            if( Ev.button.button == SDL_BUTTON_MIDDLE ) ViewportButtonFlags &= ~MOUSE_Middle;
+
+            CauseInputEvent( Key, IST_Release );
+            break;
+        }
+
+        case SDL_MOUSEWHEEL:
+            if( Ev.wheel.y > 0 )
+            {
+                CauseInputEvent( IK_MouseWheelUp, IST_Press );
+                CauseInputEvent( IK_MouseWheelUp, IST_Release );
+            }
+            else if( Ev.wheel.y < 0 )
+            {
+                CauseInputEvent( IK_MouseWheelDown, IST_Press );
+                CauseInputEvent( IK_MouseWheelDown, IST_Release );
+            }
+            break;
+
+        case SDL_MOUSEMOTION:
+        {
+            // The UE2 GUI reads WindowsMouseX/Y for cursor position and depends on
+            // IK_MouseX/Y axis events for hover tracking. Two regimes, switched by the
+            // GUI-owned bShowWindowsMouse flag (set on menu open/close once
+            // bWindowsMouseAvailable is on -- see ResizeViewport):
+            //   * Menu   (bShowWindowsMouse): ABSOLUTE -- track the OS cursor so the GUI
+            //     (Scale==1.0) hit-tests under the visible browser cursor. SDL's
+            //     Emscripten backend already scales motion.x/y into canvas (SizeX/SizeY).
+            //   * In-game (!bShowWindowsMouse): RELATIVE -- accumulate deltas for
+            //     pointer-locked mouse-look, matching SDL1 behavior.
+            INT DX = Ev.motion.xrel;
+            INT DY = Ev.motion.yrel;
+
+            if( bShowWindowsMouse )
+            {
+                WindowsMouseX = Ev.motion.x;
+                WindowsMouseY = Ev.motion.y;
+            }
+            else
+            {
+                WindowsMouseX += DX;
+                WindowsMouseY += DY;
+            }
+
+            // Clamp to viewport bounds.
+            if( WindowsMouseX > (INT)SizeX ) WindowsMouseX = SizeX;
+            if( WindowsMouseX < 0 )          WindowsMouseX = 0;
+            if( WindowsMouseY > (INT)SizeY ) WindowsMouseY = SizeY;
+            if( WindowsMouseY < 0 )          WindowsMouseY = 0;
+
+            // Send axis events (drives both GUI hover re-eval and in-game look).
+            if( DX )
+                CauseInputEvent( IK_MouseX, IST_Axis, +DX );
+            if( DY )
+                CauseInputEvent( IK_MouseY, IST_Axis, -DY );
+
+            // MouseDelta drives click-to-capture only; suppress it while a menu is up so
+            // clicking a menu never re-grabs the pointer. (UnGame.cpp:4030 also guards
+            // capture on !bShowWindowsMouse.) Previously gated on the stuck InMenuLoop.
+            if( !bShowWindowsMouse && (DX || DY) )
+                Client->Engine->MouseDelta( this, ViewportButtonFlags, DX, -DY );
+
+            break;
+        }
+
+        default:
+            break;
+        }
+    }
+
+#if defined(__ANDROID__)
+    // --- Android touch overlay: fold UI-thread intent into engine input (2.10d). ---
+
+    // Publish menu vs gameplay for the Java overlay (menu -> overlay hides ->
+    // touches pass through to SDL's tap-to-click). End-of-tick value is what the
+    // overlay should see.
+    GAndroidMenuVisible = bShowWindowsMouse ? true : false;
+
+    // Button edges (fire/jump/...). Swap the queue out under the lock, then inject
+    // unlocked so CauseInputEvent never runs while the UI thread might be enqueuing.
+    {
+        std::vector<FAndroidButtonEdge> Edges;
+        {
+            std::lock_guard<std::mutex> Lock( GAndroidBtnMutex );
+            Edges.swap( GAndroidBtnQueue );
+        }
+        for( size_t i = 0; i < Edges.size(); ++i )
+            CauseInputEvent( Edges[i].Key, (EInputAction)Edges[i].Action );
+    }
+
+    // Drag-look -> mouse axes, exactly like the SDL_MOUSEMOTION handler above
+    // (X positive = right, Y negated). Consume-and-reset the accumulator.
+    {
+        FLOAT LookX = GAndroidLookX.exchange( 0.f, std::memory_order_relaxed ) * GAndroidLookScale;
+        FLOAT LookY = GAndroidLookY.exchange( 0.f, std::memory_order_relaxed ) * GAndroidLookScale;
+        if( LookX != 0.f )
+            CauseInputEvent( IK_MouseX, IST_Axis, +LookX );
+        if( LookY != 0.f )
+            CauseInputEvent( IK_MouseY, IST_Axis, -LookY );
+    }
+
+    // Move stick -> joystick axes. IK_JoyX/Y are held-absolute (SpeedBase scales
+    // the value), so feeding the current value every tick while nonzero gives
+    // continuous movement regardless of whether the engine latches the axis; one
+    // trailing 0 stops it on release.
+    {
+        FLOAT MoveX = GAndroidMoveX.load( std::memory_order_relaxed );
+        FLOAT MoveY = GAndroidMoveY.load( std::memory_order_relaxed );
+        if( MoveX != 0.f || GAndroidLastMoveX != 0.f )
+            CauseInputEvent( IK_JoyX, IST_Axis, MoveX );
+        if( MoveY != 0.f || GAndroidLastMoveY != 0.f )
+            CauseInputEvent( IK_JoyY, IST_Axis, MoveY );
+        GAndroidLastMoveX = MoveX;
+        GAndroidLastMoveY = MoveY;
+    }
+#endif // __ANDROID__
+
+    unguard;
+}
+
+//
+// Mouse capture for FPS mode (per D-07).
+// Uses SDL2 relative mouse mode (cursor hidden + pointer locked + raw input).
+//
+void USDL2Viewport::SetMouseCapture( UBOOL Capture, UBOOL Clip, UBOOL FocusOnly )
+{
+    guard(USDL2Viewport::SetMouseCapture);
+
+    SDL_SetRelativeMouseMode( Capture ? SDL_TRUE : SDL_FALSE );
+
+    // On release (entering a menu) seed the cursor to the viewport centre so the GUI
+    // has a sane absolute position until the first motion event refreshes it.
+    if( !Capture )
+    {
+        WindowsMouseX = SizeX / 2;
+        WindowsMouseY = SizeY / 2;
+    }
+
+    unguard;
+}
+
+//
+// Get localized key name via SDL2 API.
+// Reverse-looks up KeyMap to find the SDL scancode for a given EInputKey,
+// then uses SDL_GetKeyName to get the OS-localized name.
+//
+TCHAR* USDL2Viewport::GetLocalizedKeyName( EInputKey Key )
+{
+    guard(USDL2Viewport::GetLocalizedKeyName);
+
+    static TCHAR Result[64];
+    Result[0] = 0;
+
+    // Reverse lookup: find the SDL scancode that maps to this EInputKey.
+    SDL_Scancode FoundScancode = SDL_SCANCODE_UNKNOWN;
+    for( INT i = 0; i < SDL2DRV_MAX_SCANCODES; i++ )
+    {
+        if( KeyMap[i] == (BYTE)Key )
+        {
+            FoundScancode = (SDL_Scancode)i;
+            break;
+        }
+    }
+
+    if( FoundScancode != SDL_SCANCODE_UNKNOWN )
+    {
+        // Get the localized key name from SDL2.
+        const char* Name = SDL_GetKeyName( SDL_GetKeyFromScancode(FoundScancode) );
+        if( Name && Name[0] )
+        {
+            // Convert from char* to TCHAR*.
+            const TCHAR* WName = appFromAnsi(Name);
+            appStrncpy( Result, WName, ARRAY_COUNT(Result) );
+            return Result;
+        }
+    }
+
+    // Fallback: return empty string.
+    Result[0] = 0;
+    return Result;
+
+    unguard;
+}
+
+/*-----------------------------------------------------------------------------
+    The End.
+-----------------------------------------------------------------------------*/

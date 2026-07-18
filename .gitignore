@@ -1,0 +1,53 @@
+# ──────────────────────────────────────────────────────────────────────────
+# engine-ut2004 — ignore rules. This repo holds the UT2004 PORT SOURCE only;
+# game assets (~5.8 GB) live OUT of tree at $UT_ASSETS_DIR (default
+# /home/ion/ut2004-assets) and are never tracked here.
+# ──────────────────────────────────────────────────────────────────────────
+
+# CMake build trees — one locked dir per backend (build-legacy/, build-gl4es/,
+# build-wasm/, build-wasm-perf/, ...). Regenerable; includes FetchContent's
+# GL4ES checkout under build-*/_deps/. Never source.
+/build/
+/build-*/
+
+# Object files + build-produced static archives (System/*.a are link outputs).
+*.o
+/System/*.a
+**/release-linux-x86-static/
+
+# Screenshot artifacts from native validation runs.
+System/Shot*.bmp
+
+# Runtime working dir (native runs drop a Cache/ here).
+/Cache/
+
+# Node deps for the ride-along glue unit tests (web/test/). Lockfile IS tracked.
+/node_modules/
+
+# ──────────────────────────────────────────────────────────────────────────
+# Do NOT add a blanket *.a / *.lib / *.dll / *.obj rule. Prebuilt VENDORED
+# libraries with no source live in-tree and are intentionally TRACKED:
+#   metoolkit/**                          Karma / MeToolkit physics (*.a, *.obj)
+#   Pixomatic/**                           Pixomatic software rasterizer (pixomatic_linux.a + *.lib; -SOFTWARERENDERER)
+#   unxutils/**/libfl.a                   flex runtime
+#   DirectX*/**                           DirectX SDK (*.lib, *.dll)
+#   Microsoft Platform SDK*/**            Platform SDK (*.lib)
+# A global binary-extension ignore would mask these and break the build.
+# (Removing this bloat is deferred re-architecture work, not Phase 0.)
+# ──────────────────────────────────────────────────────────────────────────
+
+# Game content must never enter this repo (it belongs in $UT_ASSETS_DIR). These
+# guard against an accidental in-tree drop; normally none of these exist here.
+/System/*.u
+/System/*.ucl
+/System/*.utx
+/System/*.usx
+/System/*.uax
+/System/*.ukx
+/System/*.umx
+/System/*.ut2
+/StaticMeshes/
+/StreamlineFX/
+
+# Claude Code per-machine local override — never commit.
+.claude/settings.local.json

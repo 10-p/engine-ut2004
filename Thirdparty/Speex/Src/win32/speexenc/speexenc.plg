@@ -1,0 +1,279 @@
+<html>
+<body>
+<pre>
+<h1>Build Log</h1>
+<h3>
+--------------------Configuration: libspeex - Win32 Debug--------------------
+</h3>
+<h3>Command Lines</h3>
+Creating temporary file "C:\DOCUME~1\vogel\LOCALS~1\Temp\RSP965.tmp" with contents
+[
+/nologo /MLd /W3 /Gm /GX /ZI /Od /D "WIN32" /D "_DEBUG" /D "_WINDOWS" /Fp"Debug/libspeex.pch" /YX /Fo"Debug/" /Fd"Debug/" /FD /GZ /c 
+"D:\Development\Other\Speex\libspeex\bits.c"
+"D:\Development\Other\Speex\libspeex\cb_search.c"
+"D:\Development\Other\Speex\libspeex\denoise.c"
+"D:\Development\Other\Speex\libspeex\exc_10_16_table.c"
+"D:\Development\Other\Speex\libspeex\exc_10_32_table.c"
+"D:\Development\Other\Speex\libspeex\exc_20_32_table.c"
+"D:\Development\Other\Speex\libspeex\exc_5_256_table.c"
+"D:\Development\Other\Speex\libspeex\exc_5_64_table.c"
+"D:\Development\Other\Speex\libspeex\exc_8_128_table.c"
+"D:\Development\Other\Speex\libspeex\filters.c"
+"D:\Development\Other\Speex\libspeex\gain_table.c"
+"D:\Development\Other\Speex\libspeex\gain_table_lbr.c"
+"D:\Development\Other\Speex\libspeex\hexc_10_32_table.c"
+"D:\Development\Other\Speex\libspeex\hexc_table.c"
+"D:\Development\Other\Speex\libspeex\high_lsp_tables.c"
+"D:\Development\Other\Speex\libspeex\lbr_48k_tables.c"
+"D:\Development\Other\Speex\libspeex\lpc.c"
+"D:\Development\Other\Speex\libspeex\lsp.c"
+"D:\Development\Other\Speex\libspeex\lsp_tables_nb.c"
+"D:\Development\Other\Speex\libspeex\ltp.c"
+"D:\Development\Other\Speex\libspeex\math_approx.c"
+"D:\Development\Other\Speex\libspeex\misc.c"
+"D:\Development\Other\Speex\libspeex\modes.c"
+"D:\Development\Other\Speex\libspeex\nb_celp.c"
+"D:\Development\Other\Speex\libspeex\quant_lsp.c"
+"D:\Development\Other\Speex\libspeex\sb_celp.c"
+"D:\Development\Other\Speex\libspeex\smallft.c"
+"D:\Development\Other\Speex\libspeex\speex_callbacks.c"
+"D:\Development\Other\Speex\libspeex\speex_header.c"
+"D:\Development\Other\Speex\libspeex\stereo.c"
+"D:\Development\Other\Speex\libspeex\vbr.c"
+"D:\Development\Other\Speex\libspeex\vq.c"
+]
+Creating command line "cl.exe @C:\DOCUME~1\vogel\LOCALS~1\Temp\RSP965.tmp" 
+Creating temporary file "C:\DOCUME~1\vogel\LOCALS~1\Temp\RSP966.tmp" with contents
+[
+/nologo /out:"Debug\libspeex.lib" 
+.\Debug\bits.obj
+.\Debug\cb_search.obj
+.\Debug\denoise.obj
+.\Debug\exc_10_16_table.obj
+.\Debug\exc_10_32_table.obj
+.\Debug\exc_20_32_table.obj
+.\Debug\exc_5_256_table.obj
+.\Debug\exc_5_64_table.obj
+.\Debug\exc_8_128_table.obj
+.\Debug\filters.obj
+.\Debug\gain_table.obj
+.\Debug\gain_table_lbr.obj
+.\Debug\hexc_10_32_table.obj
+.\Debug\hexc_table.obj
+.\Debug\high_lsp_tables.obj
+.\Debug\lbr_48k_tables.obj
+.\Debug\lpc.obj
+.\Debug\lsp.obj
+.\Debug\lsp_tables_nb.obj
+.\Debug\ltp.obj
+.\Debug\math_approx.obj
+.\Debug\misc.obj
+.\Debug\modes.obj
+.\Debug\nb_celp.obj
+.\Debug\quant_lsp.obj
+.\Debug\sb_celp.obj
+.\Debug\smallft.obj
+.\Debug\speex_callbacks.obj
+.\Debug\speex_header.obj
+.\Debug\stereo.obj
+.\Debug\vbr.obj
+.\Debug\vq.obj
+]
+Creating command line "link.exe -lib @C:\DOCUME~1\vogel\LOCALS~1\Temp\RSP966.tmp"
+<h3>Output Window</h3>
+Compiling...
+bits.c
+cb_search.c
+denoise.c
+exc_10_16_table.c
+exc_10_32_table.c
+exc_20_32_table.c
+exc_5_256_table.c
+exc_5_64_table.c
+exc_8_128_table.c
+filters.c
+D:\Development\Other\Speex\libspeex\filters.c(246) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\filters.c(248) : warning C4244: '*=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\filters.c(252) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\filters.c(281) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\filters.c(289) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+gain_table.c
+gain_table_lbr.c
+hexc_10_32_table.c
+hexc_table.c
+high_lsp_tables.c
+lbr_48k_tables.c
+lpc.c
+D:\Development\Other\Speex\libspeex\lpc.c(101) : warning C4244: '*=' : conversion from 'double ' to 'float ', possible loss of data
+lsp.c
+D:\Development\Other\Speex\libspeex\lsp.c(188) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\lsp.c(301) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\lsp.c(319) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\lsp.c(326) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+lsp_tables_nb.c
+ltp.c
+D:\Development\Other\Speex\libspeex\ltp.c(113) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\ltp.c(238) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\ltp.c(239) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\ltp.c(240) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\ltp.c(248) : warning C4244: '-=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\ltp.c(249) : warning C4244: '-=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\ltp.c(250) : warning C4244: '-=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\ltp.c(254) : warning C4244: 'initializing' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\ltp.c(269) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\ltp.c(270) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\ltp.c(271) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\ltp.c(404) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\ltp.c(405) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\ltp.c(406) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\ltp.c(413) : warning C4244: 'initializing' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\ltp.c(415) : warning C4305: '=' : truncation from 'const double ' to 'float '
+D:\Development\Other\Speex\libspeex\ltp.c(416) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\ltp.c(420) : warning C4244: '-=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\ltp.c(424) : warning C4244: '-=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\ltp.c(435) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\ltp.c(437) : warning C4244: 'initializing' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\ltp.c(520) : warning C4305: '=' : truncation from 'const double ' to 'float '
+D:\Development\Other\Speex\libspeex\ltp.c(549) : warning C4305: '=' : truncation from 'const double ' to 'float '
+math_approx.c
+misc.c
+modes.c
+nb_celp.c
+quant_lsp.c
+D:\Development\Other\Speex\libspeex\quant_lsp.c(111) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\quant_lsp.c(112) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\quant_lsp.c(120) : warning C4244: '-=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\quant_lsp.c(149) : warning C4305: '*=' : truncation from 'const double ' to 'float '
+D:\Development\Other\Speex\libspeex\quant_lsp.c(159) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\quant_lsp.c(164) : warning C4244: '+=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\quant_lsp.c(168) : warning C4244: '+=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\quant_lsp.c(172) : warning C4244: '+=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\quant_lsp.c(176) : warning C4244: '+=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\quant_lsp.c(180) : warning C4244: '+=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\quant_lsp.c(198) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\quant_lsp.c(199) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\quant_lsp.c(208) : warning C4244: '-=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\quant_lsp.c(225) : warning C4305: '*=' : truncation from 'const double ' to 'float '
+D:\Development\Other\Speex\libspeex\quant_lsp.c(235) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\quant_lsp.c(240) : warning C4244: '+=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\quant_lsp.c(244) : warning C4244: '+=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\quant_lsp.c(248) : warning C4244: '+=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\quant_lsp.c(275) : warning C4244: '-=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\quant_lsp.c(289) : warning C4305: '*=' : truncation from 'const double ' to 'float '
+D:\Development\Other\Speex\libspeex\quant_lsp.c(300) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\quant_lsp.c(305) : warning C4244: '+=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\quant_lsp.c(310) : warning C4244: '+=' : conversion from 'double ' to 'float ', possible loss of data
+sb_celp.c
+smallft.c
+D:\Development\Other\Speex\libspeex\smallft.c(98) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\smallft.c(99) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\smallft.c(282) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\smallft.c(283) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\smallft.c(852) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\smallft.c(853) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+speex_callbacks.c
+speex_header.c
+stereo.c
+D:\Development\Other\Speex\libspeex\stereo.c(38) : warning C4305: 'initializing' : truncation from 'const double ' to 'float '
+D:\Development\Other\Speex\libspeex\stereo.c(38) : warning C4305: 'initializing' : truncation from 'const double ' to 'float '
+D:\Development\Other\Speex\libspeex\stereo.c(49) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\stereo.c(59) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\stereo.c(66) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\stereo.c(93) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\stereo.c(94) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\stereo.c(99) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\stereo.c(100) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\stereo.c(116) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+vbr.c
+D:\Development\Other\Speex\libspeex\vbr.c(47) : warning C4305: 'initializing' : truncation from 'const double ' to 'float '
+D:\Development\Other\Speex\libspeex\vbr.c(47) : warning C4305: 'initializing' : truncation from 'const double ' to 'float '
+D:\Development\Other\Speex\libspeex\vbr.c(47) : warning C4305: 'initializing' : truncation from 'const double ' to 'float '
+D:\Development\Other\Speex\libspeex\vbr.c(47) : warning C4305: 'initializing' : truncation from 'const double ' to 'float '
+D:\Development\Other\Speex\libspeex\vbr.c(48) : warning C4305: 'initializing' : truncation from 'const double ' to 'float '
+D:\Development\Other\Speex\libspeex\vbr.c(48) : warning C4305: 'initializing' : truncation from 'const double ' to 'float '
+D:\Development\Other\Speex\libspeex\vbr.c(48) : warning C4305: 'initializing' : truncation from 'const double ' to 'float '
+D:\Development\Other\Speex\libspeex\vbr.c(48) : warning C4305: 'initializing' : truncation from 'const double ' to 'float '
+D:\Development\Other\Speex\libspeex\vbr.c(49) : warning C4305: 'initializing' : truncation from 'const double ' to 'float '
+D:\Development\Other\Speex\libspeex\vbr.c(49) : warning C4305: 'initializing' : truncation from 'const double ' to 'float '
+D:\Development\Other\Speex\libspeex\vbr.c(49) : warning C4305: 'initializing' : truncation from 'const double ' to 'float '
+D:\Development\Other\Speex\libspeex\vbr.c(49) : warning C4305: 'initializing' : truncation from 'const double ' to 'float '
+D:\Development\Other\Speex\libspeex\vbr.c(50) : warning C4305: 'initializing' : truncation from 'const double ' to 'float '
+D:\Development\Other\Speex\libspeex\vbr.c(53) : warning C4305: 'initializing' : truncation from 'const double ' to 'float '
+D:\Development\Other\Speex\libspeex\vbr.c(54) : warning C4305: 'initializing' : truncation from 'const double ' to 'float '
+D:\Development\Other\Speex\libspeex\vbr.c(54) : warning C4305: 'initializing' : truncation from 'const double ' to 'float '
+D:\Development\Other\Speex\libspeex\vbr.c(61) : warning C4305: 'initializing' : truncation from 'const double ' to 'float '
+D:\Development\Other\Speex\libspeex\vbr.c(62) : warning C4305: 'initializing' : truncation from 'const double ' to 'float '
+D:\Development\Other\Speex\libspeex\vbr.c(62) : warning C4305: 'initializing' : truncation from 'const double ' to 'float '
+D:\Development\Other\Speex\libspeex\vbr.c(63) : warning C4305: 'initializing' : truncation from 'const double ' to 'float '
+D:\Development\Other\Speex\libspeex\vbr.c(68) : warning C4305: 'initializing' : truncation from 'const double ' to 'float '
+D:\Development\Other\Speex\libspeex\vbr.c(78) : warning C4305: '=' : truncation from 'const double ' to 'float '
+D:\Development\Other\Speex\libspeex\vbr.c(83) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\vbr.c(84) : warning C4305: '=' : truncation from 'const double ' to 'float '
+D:\Development\Other\Speex\libspeex\vbr.c(90) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\vbr.c(137) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\vbr.c(144) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\vbr.c(147) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\vbr.c(149) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\vbr.c(165) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\vbr.c(166) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\vbr.c(175) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\vbr.c(176) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\vbr.c(182) : warning C4305: '-=' : truncation from 'const double ' to 'float '
+D:\Development\Other\Speex\libspeex\vbr.c(184) : warning C4305: '-=' : truncation from 'const double ' to 'float '
+D:\Development\Other\Speex\libspeex\vbr.c(186) : warning C4305: '-=' : truncation from 'const double ' to 'float '
+D:\Development\Other\Speex\libspeex\vbr.c(189) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\vbr.c(190) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\vbr.c(199) : warning C4244: '+=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\vbr.c(201) : warning C4244: '+=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\vbr.c(206) : warning C4244: '+=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\vbr.c(213) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\vbr.c(214) : warning C4244: '+=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\vbr.c(217) : warning C4244: '=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\vbr.c(235) : warning C4244: '-=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\vbr.c(242) : warning C4244: '-=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\vbr.c(244) : warning C4244: '-=' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\vbr.c(247) : warning C4244: '+=' : conversion from 'double ' to 'float ', possible loss of data
+vq.c
+D:\Development\Other\Speex\libspeex\vq.c(66) : warning C4244: 'initializing' : conversion from 'double ' to 'float ', possible loss of data
+D:\Development\Other\Speex\libspeex\vq.c(101) : warning C4244: '+=' : conversion from 'double ' to 'float ', possible loss of data
+Creating library...
+<h3>
+--------------------Configuration: speexenc - Win32 Debug--------------------
+</h3>
+<h3>Command Lines</h3>
+Creating temporary file "C:\DOCUME~1\vogel\LOCALS~1\Temp\RSP967.tmp" with contents
+[
+/nologo /MLd /W3 /Gm /GX /ZI /Od /D "WIN32" /D "_DEBUG" /D "_CONSOLE" /D "_MBCS" /Fp"Debug/speexenc.pch" /YX /Fo"Debug/" /Fd"Debug/" /FD /GZ /c 
+"D:\Development\Other\Speex\src\getopt.c"
+"D:\Development\Other\Speex\src\getopt1.c"
+"D:\Development\Other\Speex\src\speexenc.c"
+"D:\Development\Other\Speex\src\wav_io.c"
+]
+Creating command line "cl.exe @C:\DOCUME~1\vogel\LOCALS~1\Temp\RSP967.tmp" 
+Creating temporary file "C:\DOCUME~1\vogel\LOCALS~1\Temp\RSP968.tmp" with contents
+[
+kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /nologo /subsystem:console /incremental:yes /pdb:"Debug/speexenc.pdb" /debug /machine:I386 /out:"Debug/speexenc.exe" /pdbtype:sept 
+.\Debug\getopt.obj
+.\Debug\getopt1.obj
+.\Debug\speexenc.obj
+.\Debug\wav_io.obj
+\Development\Other\Speex\win32\libspeex\Debug\libspeex.lib
+]
+Creating command line "link.exe @C:\DOCUME~1\vogel\LOCALS~1\Temp\RSP968.tmp"
+<h3>Output Window</h3>
+Compiling...
+getopt.c
+getopt1.c
+speexenc.c
+d:\development\other\speex\src\speexenc.c(41) : fatal error C1083: Cannot open include file: 'speex.h': No such file or directory
+wav_io.c
+d:\development\other\speex\src\wav_io.c(35) : fatal error C1083: Cannot open include file: 'misc.h': No such file or directory
+Error executing cl.exe.
+
+
+
+<h3>Results</h3>
+speexenc.exe - 2 error(s), 122 warning(s)
+</pre>
+</body>
+</html>

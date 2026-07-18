@@ -1,0 +1,46 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'com.ut2004.android'
+    compileSdk 34
+    ndkVersion '30.0.14904198'
+
+    defaultConfig {
+        applicationId 'com.ut2004.android'
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName '0.1'
+        ndk { abiFilters 'x86_64', 'arm64-v8a', 'armeabi-v7a' }
+        externalNativeBuild {
+            cmake {
+                abiFilters 'x86_64', 'arm64-v8a', 'armeabi-v7a'
+                // Reuse the local SDL clone (version-matched to the vendored Java layer);
+                // avoids a re-download and guarantees C/Java parity.
+                arguments '-DANDROID_STL=c++_shared',
+                          '-DUT_GFX_BACKEND=gl4es',
+                          '-DFETCHCONTENT_SOURCE_DIR_SDL2=/home/ion/engines/.cache-sdl2-2.32'
+                // OpenAL (openal-soft) is built + packaged but NOT linked into libUT2004 (see
+                // SDLLaunch/CMakeLists.txt): ALAudio dlopens libopenal.so at audio-init, after the
+                // engine allocator is up. Listed here so AGP builds/packages the standalone target.
+                targets 'SDLLaunch', 'ut2004_android_bridge', 'OpenAL'
+            }
+        }
+    }
+
+    // Checkpoint B+: point at the engine's own root CMakeLists (Option B). Its if(ANDROID)
+    // branches build the SDLLaunch target as libUT2004.so (whole-archive) alongside libSDL2.so.
+    externalNativeBuild {
+        cmake {
+            path file('../../CMakeLists.txt')
+            version '4.1.2'
+        }
+    }
+
+    packagingOptions { jniLibs { useLegacyPackaging true } }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    lint { disable 'ExpiredTargetSdkVersion' }
+}

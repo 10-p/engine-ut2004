@@ -1,0 +1,15 @@
+..\..\metoolkit\lib.chk\win_amd64_single\McdCommon.lib
+..\..\metoolkit\lib.chk\win_amd64_single\McdConvex.lib
+..\..\metoolkit\lib.chk\win_amd64_single\McdConvexCreateHull.lib
+..\..\metoolkit\lib.chk\win_amd64_single\McdFrame.lib
+..\..\metoolkit\lib.chk\win_amd64_single\McdPrimitives.lib
+..\..\metoolkit\lib.chk\win_amd64_single\Mdt.lib
+..\..\metoolkit\lib.chk\win_amd64_single\MdtBcl.lib
+..\..\metoolkit\lib.chk\win_amd64_single\MdtKea.lib
+..\..\metoolkit\lib.chk\win_amd64_single\MeApp.lib
+..\..\metoolkit\lib.chk\win_amd64_single\MeAssetDB.lib
+..\..\metoolkit\lib.chk\win_amd64_single\MeAssetDBXMLIO.lib
+..\..\metoolkit\lib.chk\win_amd64_single\MeAssetFactory.lib
+..\..\metoolkit\lib.chk\win_amd64_single\MeGlobals.lib
+..\..\metoolkit\lib.chk\win_amd64_single\MeXML.lib
+..\..\metoolkit\lib.chk\win_amd64_single\Mst.lib

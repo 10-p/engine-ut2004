@@ -1,0 +1,125 @@
+<html>
+<body>
+<pre>
+<h1>Build Log</h1>
+<h3>
+--------------------Configuration: libspeex - Win32 Release--------------------
+</h3>
+<h3>Command Lines</h3>
+Creating temporary file "C:\DOCUME~1\vogel\LOCALS~1\Temp\RSP1786.tmp" with contents
+[
+/nologo /ML /GX /Ox /Ot /Og /Oi /Ob2 /D "WIN32" /D "NDEBUG" /D "_WINDOWS" /D "EPIC_48K" /Fp"Release/libspeex.pch" /YX /Fo"Release/" /Fd"Release/" /FD /c 
+"D:\Development\Other\Speex\libspeex\bits.c"
+"D:\Development\Other\Speex\libspeex\cb_search.c"
+"D:\Development\Other\Speex\libspeex\exc_10_16_table.c"
+"D:\Development\Other\Speex\libspeex\exc_10_32_table.c"
+"D:\Development\Other\Speex\libspeex\exc_20_32_table.c"
+"D:\Development\Other\Speex\libspeex\exc_5_256_table.c"
+"D:\Development\Other\Speex\libspeex\exc_5_64_table.c"
+"D:\Development\Other\Speex\libspeex\exc_8_128_table.c"
+"D:\Development\Other\Speex\libspeex\filters.c"
+"D:\Development\Other\Speex\libspeex\gain_table.c"
+"D:\Development\Other\Speex\libspeex\gain_table_lbr.c"
+"D:\Development\Other\Speex\libspeex\hexc_10_32_table.c"
+"D:\Development\Other\Speex\libspeex\hexc_table.c"
+"D:\Development\Other\Speex\libspeex\high_lsp_tables.c"
+"D:\Development\Other\Speex\libspeex\lbr_48k_tables.c"
+"D:\Development\Other\Speex\libspeex\lpc.c"
+"D:\Development\Other\Speex\libspeex\lsp.c"
+"D:\Development\Other\Speex\libspeex\lsp_tables_nb.c"
+"D:\Development\Other\Speex\libspeex\ltp.c"
+"D:\Development\Other\Speex\libspeex\math_approx.c"
+"D:\Development\Other\Speex\libspeex\misc.c"
+"D:\Development\Other\Speex\libspeex\modes.c"
+"D:\Development\Other\Speex\libspeex\nb_celp.c"
+"D:\Development\Other\Speex\libspeex\quant_lsp.c"
+"D:\Development\Other\Speex\libspeex\sb_celp.c"
+"D:\Development\Other\Speex\libspeex\smallft.c"
+"D:\Development\Other\Speex\libspeex\speex_callbacks.c"
+"D:\Development\Other\Speex\libspeex\speex_header.c"
+"D:\Development\Other\Speex\libspeex\stereo.c"
+"D:\Development\Other\Speex\libspeex\vbr.c"
+"D:\Development\Other\Speex\libspeex\vq.c"
+"D:\Development\Other\Speex\libspeex\preprocess.c"
+]
+Creating command line "cl.exe @C:\DOCUME~1\vogel\LOCALS~1\Temp\RSP1786.tmp" 
+Creating temporary file "C:\DOCUME~1\vogel\LOCALS~1\Temp\RSP1787.tmp" with contents
+[
+/nologo /out:"Release\libspeex.lib" 
+.\Release\bits.obj
+.\Release\cb_search.obj
+.\Release\exc_10_16_table.obj
+.\Release\exc_10_32_table.obj
+.\Release\exc_20_32_table.obj
+.\Release\exc_5_256_table.obj
+.\Release\exc_5_64_table.obj
+.\Release\exc_8_128_table.obj
+.\Release\filters.obj
+.\Release\gain_table.obj
+.\Release\gain_table_lbr.obj
+.\Release\hexc_10_32_table.obj
+.\Release\hexc_table.obj
+.\Release\high_lsp_tables.obj
+.\Release\lbr_48k_tables.obj
+.\Release\lpc.obj
+.\Release\lsp.obj
+.\Release\lsp_tables_nb.obj
+.\Release\ltp.obj
+.\Release\math_approx.obj
+.\Release\misc.obj
+.\Release\modes.obj
+.\Release\nb_celp.obj
+.\Release\quant_lsp.obj
+.\Release\sb_celp.obj
+.\Release\smallft.obj
+.\Release\speex_callbacks.obj
+.\Release\speex_header.obj
+.\Release\stereo.obj
+.\Release\vbr.obj
+.\Release\vq.obj
+.\Release\preprocess.obj
+]
+Creating command line "link.exe -lib @C:\DOCUME~1\vogel\LOCALS~1\Temp\RSP1787.tmp"
+<h3>Output Window</h3>
+Compiling...
+bits.c
+cb_search.c
+exc_10_16_table.c
+exc_10_32_table.c
+exc_20_32_table.c
+exc_5_256_table.c
+exc_5_64_table.c
+exc_8_128_table.c
+filters.c
+gain_table.c
+gain_table_lbr.c
+hexc_10_32_table.c
+hexc_table.c
+high_lsp_tables.c
+lbr_48k_tables.c
+lpc.c
+lsp.c
+lsp_tables_nb.c
+ltp.c
+math_approx.c
+misc.c
+modes.c
+nb_celp.c
+quant_lsp.c
+sb_celp.c
+smallft.c
+speex_callbacks.c
+speex_header.c
+stereo.c
+vbr.c
+vq.c
+preprocess.c
+Creating library...
+
+
+
+<h3>Results</h3>
+libspeex.lib - 0 error(s), 0 warning(s)
+</pre>
+</body>
+</html>

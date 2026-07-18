@@ -1,0 +1,95 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "native-base",
+      "hidden": true,
+      "generator": "Unix Makefiles",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "gcc-13",
+        "CMAKE_CXX_COMPILER": "g++-13",
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      }
+    },
+    {
+      "name": "legacy",
+      "displayName": "Legacy (SDL 1.2 + desktop OpenGL)",
+      "description": "SDLDrv + OpenGLDrv. Native regression/reference renderer. Builds in build-legacy/.",
+      "inherits": "native-base",
+      "binaryDir": "${sourceDir}/build-legacy",
+      "cacheVariables": {
+        "UT_GFX_BACKEND": "legacy"
+      }
+    },
+    {
+      "name": "gl4es",
+      "displayName": "GL4ES (SDL2 + GL4ES translation layer)",
+      "description": "SDL2Drv + GL4ESDrv. Web-aligned native stack. Builds in build-gl4es/.",
+      "inherits": "native-base",
+      "binaryDir": "${sourceDir}/build-gl4es",
+      "cacheVariables": {
+        "UT_GFX_BACKEND": "gl4es"
+      }
+    },
+    {
+      "name": "physics",
+      "displayName": "GL4ES + Jolt physics",
+      "description": "gl4es stack with WITH_PHYSICS=ON. Builds in build-physics/.",
+      "inherits": "gl4es",
+      "binaryDir": "${sourceDir}/build-physics",
+      "cacheVariables": { "WITH_PHYSICS": "ON" }
+    },
+    {
+      "name": "karma-ref",
+      "displayName": "GL4ES + Karma reference",
+      "description": "gl4es stack with BUILD_KARMA_REF=ON (32-bit Karma reference). Builds in build-karma-ref/.",
+      "inherits": "gl4es",
+      "binaryDir": "${sourceDir}/build-karma-ref",
+      "cacheVariables": { "BUILD_KARMA_REF": "ON" }
+    },
+    {
+      "name": "gl4es-full",
+      "displayName": "GL4ES + Karma + Pixomatic software renderer",
+      "description": "gl4es stack with BUILD_KARMA_REF + USE_PIXOMATIC. One binary: GL4ES + Karma physics + the -SOFTWARERENDERER (Pixomatic) device. Builds in build-gl4es-full/.",
+      "inherits": "gl4es",
+      "binaryDir": "${sourceDir}/build-gl4es-full",
+      "cacheVariables": { "BUILD_KARMA_REF": "ON", "USE_PIXOMATIC": "ON" }
+    },
+    {
+      "name": "legacy-full",
+      "displayName": "Legacy (SDL1.2) + Karma + Pixomatic software renderer",
+      "description": "legacy stack with BUILD_KARMA_REF + USE_PIXOMATIC — proves the single PixoDrv source also builds on SDL 1.2. Builds in build-legacy-full/.",
+      "inherits": "legacy",
+      "binaryDir": "${sourceDir}/build-legacy-full",
+      "cacheVariables": { "BUILD_KARMA_REF": "ON", "USE_PIXOMATIC": "ON" }
+    },
+    {
+      "name": "wasm",
+      "displayName": "Web (Emscripten/WASM) -- dev/debug",
+      "description": "Emscripten gl4es web build: -O0 + assertions + DWARF/source maps. Builds in build-wasm/. Run `source ~/emsdk/emsdk_env.sh` first (sets EMSDK).",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build-wasm",
+      "toolchainFile": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
+      "cacheVariables": { "UT_WEB_PERF": "OFF" }
+    },
+    {
+      "name": "wasm-perf",
+      "displayName": "Web (Emscripten/WASM) -- max performance",
+      "description": "Emscripten gl4es web build: -O3, assertions off, no debug info -> smaller/faster. Builds in build-wasm-perf/. Run `source ~/emsdk/emsdk_env.sh` first.",
+      "inherits": "wasm",
+      "binaryDir": "${sourceDir}/build-wasm-perf",
+      "cacheVariables": { "UT_WEB_PERF": "ON", "CMAKE_BUILD_TYPE": "Release" }
+    }
+  ],
+  "buildPresets": [
+    { "name": "legacy",    "configurePreset": "legacy" },
+    { "name": "gl4es",     "configurePreset": "gl4es" },
+    { "name": "physics",   "configurePreset": "physics" },
+    { "name": "karma-ref", "configurePreset": "karma-ref" },
+    { "name": "gl4es-full", "configurePreset": "gl4es-full" },
+    { "name": "legacy-full", "configurePreset": "legacy-full" },
+    { "name": "wasm",      "configurePreset": "wasm" },
+    { "name": "wasm-perf", "configurePreset": "wasm-perf" }
+  ]
+}
