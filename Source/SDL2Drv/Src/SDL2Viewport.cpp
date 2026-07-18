@@ -177,6 +177,68 @@ Java_com_ut2004_android_GameActivity_nativeTouchButton( JNIEnv*, jclass, jint Bu
 }
 
 } // extern "C"
+
+/*-----------------------------------------------------------------------------
+    Android gamepad glue (2.10d).
+
+    SDL_CONTROLLER* events are polled on the engine thread inside UpdateInput, so
+    (unlike touch) they inject directly -- no cross-thread queue needed. UT2004's
+    DefUser.ini already ships a full gamepad binding set, so this is pure native
+    wiring (NO ini editing):
+      left stick  -> IK_JoyX / IK_JoyY        (aStrafe / aBaseY Invert=-1)  [move]
+      right stick -> IK_JoyV / IK_JoySlider1  (aBaseX turn / aLookUp pitch) [look]
+      buttons     -> IK_Joy* per GAndroidPadButtonMap (all remappable in Controls)
+      triggers    -> IK_Joy1 (Fire) / IK_Joy3 (AltFire), thresholded to buttons
+    Left-stick move reuses the touch move channel (GAndroidMoveX/Y) so one consumer
+    emits IK_JoyX/Y for both. NOTE: mappings/feel are the owner's to tune live.
+-----------------------------------------------------------------------------*/
+
+static SDL_GameController* GAndroidPads[8] = {};
+
+// Right-stick look latches (engine-thread only). Held-absolute like the move axes:
+// re-sent every tick while nonzero (+ one trailing 0) so look stays continuous
+// whether or not the engine latches the axis between SDL change-events.
+static FLOAT  GAndroidPadYaw       = 0.f;
+static FLOAT  GAndroidPadPitch     = 0.f;
+static FLOAT  GAndroidPadLastYaw   = 0.f;
+static FLOAT  GAndroidPadLastPitch = 0.f;
+
+// Analog-trigger -> button edge state.
+static UBOOL  GAndroidPadRT = 0;   // right trigger -> IK_Joy1 (Fire)
+static UBOOL  GAndroidPadLT = 0;   // left trigger  -> IK_Joy3 (AltFire)
+
+static const FLOAT GAndroidPadDeadzone     = 0.12f;  // stick deadzone (engine ini also deadzones)
+static const FLOAT GAndroidPadTriggerPress = 0.35f;  // trigger press threshold
+
+// SDL_CONTROLLER_BUTTON_* -> EInputKey. All targets are DefUser.ini defaults; remappable.
+static const BYTE GAndroidPadButtonMap[SDL_CONTROLLER_BUTTON_MAX] =
+{
+    /* A             */ IK_Joy2,    // Jump
+    /* B             */ IK_Joy4,    // Duck / crouch
+    /* X             */ IK_Joy5,    // NextWeapon
+    /* Y             */ IK_Joy6,    // SwitchWeapon 2 (spare face button)
+    /* BACK          */ IK_None,
+    /* GUIDE         */ IK_None,
+    /* START         */ IK_Escape,  // menu
+    /* LEFTSTICK     */ IK_None,
+    /* RIGHTSTICK    */ IK_None,
+    /* LEFTSHOULDER  */ IK_Joy11,   // InventoryPrevious
+    /* RIGHTSHOULDER */ IK_Joy12,   // InventoryActivate
+    /* DPAD_UP       */ IK_Joy13,   // MoveForward
+    /* DPAD_DOWN     */ IK_Joy15,   // MoveBackward
+    /* DPAD_LEFT     */ IK_Joy16,   // StrafeLeft
+    /* DPAD_RIGHT    */ IK_Joy14,   // StrafeRight
+};
+
+// Rescale a normalized stick axis so motion starts at 0 past the deadzone.
+static inline FLOAT AndroidPadAxis( FLOAT V )
+{
+    if( Abs(V) < GAndroidPadDeadzone )
+        return 0.f;
+    FLOAT S = ( V > 0.f ? (V - GAndroidPadDeadzone) : (V + GAndroidPadDeadzone) ) / (1.f - GAndroidPadDeadzone);
+    return Clamp( S, -1.f, 1.f );
+}
+
 #endif // __ANDROID__
 
 /*-----------------------------------------------------------------------------
@@ -1094,6 +1156,82 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
             break;
         }
 
+#if defined(__ANDROID__)
+        // --- Gamepad (2.10d). SDL_CONTROLLER events arrive on this (engine) thread,
+        // so they inject directly; DefUser.ini already binds all IK_Joy* targets. ---
+        case SDL_CONTROLLERDEVICEADDED:
+        {
+            SDL_GameController* Pad = SDL_GameControllerOpen( Ev.cdevice.which );
+            if( Pad )
+            {
+                for( INT i = 0; i < ARRAY_COUNT(GAndroidPads); ++i )
+                    if( !GAndroidPads[i] ) { GAndroidPads[i] = Pad; break; }
+                // Logs to logcat via GLog -> owner can confirm detection when plugging in.
+                debugf( NAME_Init, TEXT("SDL2: game controller opened: %s"), appFromAnsi(SDL_GameControllerName(Pad)) );
+            }
+            break;
+        }
+
+        case SDL_CONTROLLERDEVICEREMOVED:
+        {
+            SDL_GameController* Pad = SDL_GameControllerFromInstanceID( Ev.cdevice.which );
+            for( INT i = 0; i < ARRAY_COUNT(GAndroidPads); ++i )
+                if( GAndroidPads[i] == Pad ) GAndroidPads[i] = NULL;
+            if( Pad )
+                SDL_GameControllerClose( Pad );
+            // Stop any held look/move so a yanked pad doesn't leave the view drifting.
+            GAndroidMoveX.store( 0.f, std::memory_order_relaxed );
+            GAndroidMoveY.store( 0.f, std::memory_order_relaxed );
+            GAndroidPadYaw = GAndroidPadPitch = 0.f;
+            break;
+        }
+
+        case SDL_CONTROLLERBUTTONDOWN:
+        case SDL_CONTROLLERBUTTONUP:
+        {
+            if( Ev.cbutton.button >= SDL_CONTROLLER_BUTTON_MAX )
+                break;
+            BYTE Key = GAndroidPadButtonMap[Ev.cbutton.button];
+            if( Key == IK_None )
+                break;
+            CauseInputEvent( Key, Ev.type == SDL_CONTROLLERBUTTONDOWN ? IST_Press : IST_Release );
+            break;
+        }
+
+        case SDL_CONTROLLERAXISMOTION:
+        {
+            const FLOAT Norm = Ev.caxis.value / 32767.f;
+            switch( Ev.caxis.axis )
+            {
+            case SDL_CONTROLLER_AXIS_LEFTX:
+                GAndroidMoveX.store( AndroidPadAxis(Norm), std::memory_order_relaxed );   // -> IK_JoyX (shared move consumer)
+                break;
+            case SDL_CONTROLLER_AXIS_LEFTY:
+                GAndroidMoveY.store( AndroidPadAxis(Norm), std::memory_order_relaxed );   // -> IK_JoyY
+                break;
+            case SDL_CONTROLLER_AXIS_RIGHTX:
+                GAndroidPadYaw = AndroidPadAxis( Norm );      // -> IK_JoyV (turn)
+                break;
+            case SDL_CONTROLLER_AXIS_RIGHTY:
+                GAndroidPadPitch = AndroidPadAxis( Norm );    // -> IK_JoySlider1 (pitch)
+                break;
+            case SDL_CONTROLLER_AXIS_TRIGGERRIGHT:
+            {
+                UBOOL Down = Norm > GAndroidPadTriggerPress;
+                if( Down != GAndroidPadRT ) { GAndroidPadRT = Down; CauseInputEvent( IK_Joy1, Down ? IST_Press : IST_Release ); }
+                break;
+            }
+            case SDL_CONTROLLER_AXIS_TRIGGERLEFT:
+            {
+                UBOOL Down = Norm > GAndroidPadTriggerPress;
+                if( Down != GAndroidPadLT ) { GAndroidPadLT = Down; CauseInputEvent( IK_Joy3, Down ? IST_Press : IST_Release ); }
+                break;
+            }
+            }
+            break;
+        }
+#endif // __ANDROID__
+
         default:
             break;
         }
@@ -1143,6 +1281,17 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
             CauseInputEvent( IK_JoyY, IST_Axis, MoveY );
         GAndroidLastMoveX = MoveX;
         GAndroidLastMoveY = MoveY;
+    }
+
+    // Gamepad right stick -> native look axes (JoyV=aBaseX turn, JoySlider1=aLookUp
+    // pitch; both bound in DefUser.ini). Held-absolute like the move axes.
+    {
+        if( GAndroidPadYaw != 0.f || GAndroidPadLastYaw != 0.f )
+            CauseInputEvent( IK_JoyV, IST_Axis, GAndroidPadYaw );
+        if( GAndroidPadPitch != 0.f || GAndroidPadLastPitch != 0.f )
+            CauseInputEvent( IK_JoySlider1, IST_Axis, -GAndroidPadPitch );  // stick up = look up
+        GAndroidPadLastYaw   = GAndroidPadYaw;
+        GAndroidPadLastPitch = GAndroidPadPitch;
     }
 #endif // __ANDROID__
 

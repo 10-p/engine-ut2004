@@ -46,7 +46,16 @@ void USDL2Client::Init( UEngine* InEngine )
     // Init base.
     UClient::Init( InEngine );
 
-    if (SDL_Init(SDL_INIT_VIDEO) == -1)
+#if defined(__ANDROID__)
+    // Android also brings up the game-controller subsystem (2.10d gamepad).
+    // SDL_INIT_GAMECONTROLLER implies SDL_INIT_JOYSTICK and makes SDL emit
+    // SDL_CONTROLLER* events, which USDL2Viewport::UpdateInput turns into IK_Joy*
+    // input. Web/desktop keep SDL_INIT_VIDEO only -> byte-identical.
+    const Uint32 SDL2DrvInitFlags = SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER;
+#else
+    const Uint32 SDL2DrvInitFlags = SDL_INIT_VIDEO;
+#endif
+    if (SDL_Init(SDL2DrvInitFlags) == -1)
     {
         const TCHAR *err = appFromAnsi(SDL_GetError());
         appErrorf(TEXT("Couldn't initialize SDL2: %s\n"), err);
@@ -87,7 +96,11 @@ void USDL2Client::Destroy()
     // Shut down GRenDev.
     Engine->GRenDev->Exit(NULL);
 
+#if defined(__ANDROID__)
+    SDL_QuitSubSystem(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER);
+#else
     SDL_QuitSubSystem(SDL_INIT_VIDEO);
+#endif
 
     debugf( NAME_Exit, TEXT("SDL2 client shut down") );
     Super::Destroy();
