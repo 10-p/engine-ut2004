@@ -19,7 +19,7 @@ tree** at `$UT_ASSETS_DIR` (default `/home/ion/ut2004-assets`) and are never tra
 |-----|------|
 | `Source/` | all engine C++ — Core, Engine, Fire, IpDrv, XGame, XInterface, UWeb, Onslaught, ALAudio, the render/viewport drivers, the `SDLLaunch`/`UCC` launchers, plus the kept Windows/editor/tool code. The code the build compiles. |
 | `Thirdparty/` | bundled deps: `zlib`, `Vorbis`, `Speex`, `OpenAL`, `SDL12` (headers + the legacy `libSDL-1.2.so.0`), `metoolkit` (Karma), `Pixomatic`. SDL2 + GL4ES are FetchContent'd, not vendored. |
-| `Engine/Config/` | reference snapshot of the web boot inis (`Default.ini`, `DefUser.ini`); **not** build-consumed. |
+| `Engine/Config/` | tracked config: `Default.ini`/`DefUser.ini` = platform-agnostic / native reference; **`web/`** = the web platform set, **build-consumed** (the wasm link `--preload-file`s it). See `Engine/Config/README.md`. |
 | `Android/` | the NDK/Gradle project; AGP wraps the root `CMakeLists.txt`. |
 | `vendor/glue/` | the monorepo ABI contract baked into the web build (`ue_abi.h`, `webrtc-shim.js`). |
 | `cmake/`, `docs/` | CMake modules; this repo's docs. |

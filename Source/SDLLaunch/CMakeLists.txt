@@ -202,12 +202,29 @@ if(EMSCRIPTEN)
   set(UT_ASSETS_DIR "/home/ion/ut2004-assets" CACHE PATH
       "Directory holding UT2004 game assets (System/*.ini are preloaded into the WASM build)")
   # Preload essential INI files into MEMFS (~30KB, needed during appInit).
+  # The two BOOT CONFIG templates come from the TRACKED, WEB-SPECIFIC set in this repo
+  # (Engine/Config/web), not from the out-of-tree asset dir. Rationale:
+  #   * a game install's own System/*.ini is a NATIVE config (D3DDrv/WinDrv, desktop resolutions) and
+  #     carries none of the web-only settings — notably the [WebRTCDrv.WebRTCNetDriver] section;
+  #   * AllowDownloads is a per-CLASS config property, so with no section it is never set (=> false)
+  #     and every WebRTC transfer is refused with "Downloading 'x' not allowed";
+  #   * sourcing config from an untracked asset tree meant rebuilding the asset image silently
+  #     reverted the web config. Engine/Config/web is version-controlled, so that cannot happen.
+  # Engine/Config/*.ini (no subdir) remains the platform-agnostic / native reference set.
+  # appInit derives UT2004.ini/User.ini from these two; those derived names are excluded from the
+  # ufront asset manifest so a stale install copy can never shadow them.
+  # Build.ini/Packages.md5 stay asset-side (install metadata, not config).
   set(PRELOAD_FLAGS
-    "--preload-file ${UT_ASSETS_DIR}/System/Default.ini@/System/Default.ini"
-    "--preload-file ${UT_ASSETS_DIR}/System/DefUser.ini@/System/DefUser.ini"
+    "--preload-file ${CMAKE_SOURCE_DIR}/Engine/Config/web/Default.ini@/System/Default.ini"
+    "--preload-file ${CMAKE_SOURCE_DIR}/Engine/Config/web/DefUser.ini@/System/DefUser.ini"
     "--preload-file ${UT_ASSETS_DIR}/System/Build.ini@/System/Build.ini"
     "--preload-file ${UT_ASSETS_DIR}/System/Packages.md5@/System/Packages.md5"
   )
+  # The preloaded inis are INPUTS to the link step: without LINK_DEPENDS, editing Engine/Config/web/*
+  # leaves a stale .data baked (cmake sees no source change and skips the relink) — a silent trap.
+  set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY LINK_DEPENDS
+    "${CMAKE_SOURCE_DIR}/Engine/Config/web/Default.ini"
+    "${CMAKE_SOURCE_DIR}/Engine/Config/web/DefUser.ini")
   string(REPLACE ";" " " PRELOAD_FLAGS_STR "${PRELOAD_FLAGS}")
   set_property(TARGET ${PROJECT_NAME} APPEND_STRING PROPERTY LINK_FLAGS " ${PRELOAD_FLAGS_STR}")
   set_target_properties(${PROJECT_NAME} PROPERTIES SUFFIX ".js")  # 1.6a: bare loader (was ".html" via --shell-file)
