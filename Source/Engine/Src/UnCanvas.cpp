@@ -899,6 +899,13 @@ void UCanvas::DrawActor( AActor* Actor, UBOOL WireFrame, UBOOL ClearZ, FLOAT Dis
 	// frame and inherits the correction for free) UE2 must correct it explicitly: without this the world
 	// would widen to 106 deg at 16:9 while the weapon stayed at a stock 90, making it look bigger and
 	// vertically cropped — the exact complaint AutoFOV exists to fix. AutoFOVWeapon=0 opts back out.
+	//
+	// ★ Take the UNCORRECTED base when the caller did not pass a FOV. execDrawActor defaults DisplayFOV to
+	// Viewport->Actor->FovAngle (UnCanvas.cpp:940), and during the draw that field already holds the
+	// corrected value — so correcting it again DOUBLE-applies (90 -> 111.6 -> 130.4 at 1.96:1, observed).
+	// GAutoFovFrameBase is published by the scoped override in UGameEngine::Draw for exactly this.
+	if( Abs( DisplayFOV - Viewport->Actor->FovAngle ) < 0.01f )
+		DisplayFOV = GAutoFovFrameBase;
 	DisplayFOV = ufrontWeaponFov( DisplayFOV, ufrontEffectiveFov( DisplayFOV, Viewport->SizeX, Viewport->SizeY ) );
 
     guard(UCanvas::DrawActor)

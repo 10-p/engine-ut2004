@@ -3104,7 +3104,7 @@ struct FScopedAutoFov
 	,	Saved ( Viewport->Actor->FovAngle )
 	{
 		GAutoFovFrameBase = Saved;
-		Actor->FovAngle = ufrontEffectiveFov( Saved, Viewport->SizeX, Viewport->SizeY );
+		Actor->FovAngle = ufrontEffectiveFov( Saved, Viewport->SizeX, Viewport->SizeY, 1 );
 	}
 	~FScopedAutoFov()
 	{

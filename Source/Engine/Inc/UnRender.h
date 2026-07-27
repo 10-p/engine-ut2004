@@ -661,7 +661,11 @@ enum EAutoFovMode
 
 // Effective horizontal FOV for a viewport of SizeX x SizeY. Returns BaseFov unchanged when disabled or
 // when the size is degenerate. Cheap: config is parsed once, then it is pure arithmetic.
-ENGINE_API FLOAT ufrontEffectiveFov( FLOAT BaseFov, INT SizeX, INT SizeY );
+// bLog: emit the one-line report. Only the PRIMARY view passes 1 (the scoped override in
+// UGameEngine::Draw). A frame draws several scene nodes with DIFFERENT FOVs — world, viewmodel,
+// portals — so logging from every call produced a repeating burst every frame (~180 lines/s at
+// 60fps), which is real CPU churn for a diagnostic.
+ENGINE_API FLOAT ufrontEffectiveFov( FLOAT BaseFov, INT SizeX, INT SizeY, UBOOL bLog = 0 );
 
 // FOV for a canvas-drawn actor overlay. AutoFOVWeapon blends in TAN space between the stock FOV (0.0)
 // and the corrected one (1.0, the default). UNLIKE UE1 — where the viewmodel shares the world scene node

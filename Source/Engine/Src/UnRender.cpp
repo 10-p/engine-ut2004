@@ -1487,7 +1487,7 @@ static void ufrontParseAutoFov()
 	unguard;
 }
 
-ENGINE_API FLOAT ufrontEffectiveFov( FLOAT BaseFov, INT SizeX, INT SizeY )
+ENGINE_API FLOAT ufrontEffectiveFov( FLOAT BaseFov, INT SizeX, INT SizeY, UBOOL bLog )
 {
 	guard(ufrontEffectiveFov);
 	if( !GAutoFovParsed )
@@ -1510,7 +1510,7 @@ ENGINE_API FLOAT ufrontEffectiveFov( FLOAT BaseFov, INT SizeX, INT SizeY )
 	// size alone latched whatever transient FOV the very first drawn frame happened to carry (an intro
 	// camera at the 170 clamp), so the first line did not describe gameplay. Zoom still cannot spam it:
 	// UE interpolates FovAngle over ~a dozen frames, so a zoom costs a dozen lines, once.
-	if( SizeX != GAutoFovLastX || SizeY != GAutoFovLastY || Abs(Base - GAutoFovLastBase) > 0.5f )
+	if( bLog && ( SizeX != GAutoFovLastX || SizeY != GAutoFovLastY || Abs(Base - GAutoFovLastBase) > 0.5f ) )
 	{
 		GAutoFovLastX    = SizeX;
 		GAutoFovLastY    = SizeY;
