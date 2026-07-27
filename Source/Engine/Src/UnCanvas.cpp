@@ -893,6 +893,14 @@ IMPLEMENT_FUNCTION( UCanvas, 466, execDrawTile );
 
 void UCanvas::DrawActor( AActor* Actor, UBOOL WireFrame, UBOOL ClearZ, FLOAT DisplayFOV )
 {
+	// AutoFOV, viewmodel pass (step 2.16). This is the first-person weapon path — Weapon.uc:936 calls
+	// Canvas.DrawActor(self,false,false,DisplayFOV) with its OWN var(FirstPerson) DisplayFOV (default 90),
+	// which becomes a SEPARATE FActorSceneNode below. So unlike UE1 (where the viewmodel shares the world
+	// frame and inherits the correction for free) UE2 must correct it explicitly: without this the world
+	// would widen to 106 deg at 16:9 while the weapon stayed at a stock 90, making it look bigger and
+	// vertically cropped — the exact complaint AutoFOV exists to fix. AutoFOVWeapon=0 opts back out.
+	DisplayFOV = ufrontWeaponFov( DisplayFOV, ufrontEffectiveFov( DisplayFOV, Viewport->SizeX, Viewport->SizeY ) );
+
     guard(UCanvas::DrawActor)
 
     if ( pCanvasUtil ) // sjs

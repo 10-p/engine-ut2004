@@ -625,3 +625,53 @@ extern ENGINE_API DWORD CalcBlendFlags( BYTE Style, AActor* pActor ); // In AxEm
 	The End.
 ------------------------------------------------------------------------------------*/
 
+#ifndef UFRONT_AUTOFOV_H
+#define UFRONT_AUTOFOV_H
+
+/*-----------------------------------------------------------------------------
+	ufront AutoFOV (step 2.16) — aspect-correct field of view.
+-----------------------------------------------------------------------------*/
+
+//
+// UE2 defines FovAngle as the HORIZONTAL field of view: FCameraSceneNode::UpdateMatrices feeds it to
+// FPerspectiveMatrix(FOV,FOV,1,Aspect,..), whose Y term divides by the aspect — so widening the window
+// buys width out of height. 90 deg at 4:3 shows 73.7 deg vertically; at 24:9 only 41.1, i.e. the world
+// is zoomed ~1.8x, the viewmodel looks huge and the HUD oversized. AutoFOV re-derives the horizontal
+// FOV from the live aspect so the VERTICAL one stays put.
+//
+//   Off      (0) — stock: FovAngle used verbatim.
+//   HorPlus  (1) — 2*atan( tan(Fov/2) * Aspect/Ref ). Vertical FOV pinned to its value at Ref.
+//   Adaptive (2) — max(Fov, HorPlus). DEFAULT. Identical to HorPlus at/above Ref, and stock below it:
+//                  at 8:9 pure Hor+ would cut vertical 96.7->73.7 AND horizontal 90->67.4, i.e. worse
+//                  than doing nothing, so a half-screen window must never use it.
+//
+// Applied as a SCOPED override around the frame draw (UGameEngine::Draw), never written back, so the
+// scene node, the culling bias and every render device agree on one value while script keeps seeing the
+// player's real FOV — which matters because PlayerInput.uc computes FOVScale = DesiredFOV * 0.01111 and
+// scales aTurn/aLookUp by it, so any fix that writes the actor's FOV silently rescales the player's aim
+// (x1.18 at 16:9). Config: [ufront.AutoFOV]; per-launch -AUTOFOV=<n> / -AUTOFOVREF=<f> /
+// -AUTOFOVWEAPON=<f> / -NOAUTOFOV.
+//
+enum EAutoFovMode
+{
+	AUTOFOV_Off      = 0,
+	AUTOFOV_HorPlus  = 1,
+	AUTOFOV_Adaptive = 2,
+};
+
+// Effective horizontal FOV for a viewport of SizeX x SizeY. Returns BaseFov unchanged when disabled or
+// when the size is degenerate. Cheap: config is parsed once, then it is pure arithmetic.
+ENGINE_API FLOAT ufrontEffectiveFov( FLOAT BaseFov, INT SizeX, INT SizeY );
+
+// FOV for a canvas-drawn actor overlay. AutoFOVWeapon blends in TAN space between the stock FOV (0.0)
+// and the corrected one (1.0, the default). UNLIKE UE1 — where the viewmodel shares the world scene node
+// and inherits the correction for free — UE2 draws it through Canvas.DrawActor with its OWN DisplayFOV
+// (Weapon.uc:111, default 90), so without this the weapon would stay at a stock 90 while the world
+// widened, and look bigger and vertically cropped. Here the correction is required, not optional.
+ENGINE_API FLOAT ufrontWeaponFov( FLOAT BaseFov, FLOAT EffectiveFov );
+
+// The UNCORRECTED FovAngle for the frame being drawn, published by the scoped override in
+// UGameEngine::Draw. Not DesiredFOV: during a zoom transition FovAngle is still interpolating toward it.
+ENGINE_API extern FLOAT GAutoFovFrameBase;
+
+#endif // UFRONT_AUTOFOV_H

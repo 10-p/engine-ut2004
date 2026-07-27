@@ -3085,6 +3085,33 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 //
 // Draw a global view.
 //
+//
+// Scoped AutoFOV override (step 2.16). Everything that consumes the FOV during a frame ultimately reads
+// Viewport->Actor->FovAngle: the scene node built at the three FPlayerSceneNode sites below, the
+// distance-cull bias (UnRenderVisibility.cpp) and the shadow projector bias. Overriding it for the
+// duration of the draw keeps all of them in agreement with one value and needs no render-device change
+// at all (UE2 devices consume the resulting matrix, never the FOV). It is restored on every exit path,
+// so the value script sees is untouched — which matters: PlayerInput.uc computes
+// FOVScale = DesiredFOV * 0.01111 and scales aTurn/aLookUp by it, so writing the actor's FOV
+// permanently would silently rescale the player's aim.
+//
+struct FScopedAutoFov
+{
+	APlayerController* Actor;   // UViewport::Actor (UnPlayer.h:27)
+	FLOAT              Saved;
+	FScopedAutoFov( UViewport* Viewport )
+	:	Actor ( Viewport->Actor )
+	,	Saved ( Viewport->Actor->FovAngle )
+	{
+		GAutoFovFrameBase = Saved;
+		Actor->FovAngle = ufrontEffectiveFov( Saved, Viewport->SizeX, Viewport->SizeY );
+	}
+	~FScopedAutoFov()
+	{
+		Actor->FovAngle = Saved;
+	}
+};
+
 void UGameEngine::Draw( UViewport* Viewport, UBOOL Blit, BYTE* HitData, INT* HitSize )
 {
 	guard(UGameEngine::Draw);
@@ -3107,6 +3134,10 @@ void UGameEngine::Draw( UViewport* Viewport, UBOOL Blit, BYTE* HitData, INT* Hit
 		debugf(TEXT("Warning: NULL CameraActor returned from PlayerCalcView for %s"),Viewport->Actor->GetPathName());
 		CameraActor = Viewport->Actor;
 	}
+
+	// AutoFOV: armed after script has calculated the view (so PlayerCalcView still sees the real FOV) and
+	// after CameraActor is known good. Restored by the destructor on every exit path below.
+	FScopedAutoFov AutoFovScope( Viewport );
 
 	if(Viewport->Actor->XLevel != GLevel)
 		return;

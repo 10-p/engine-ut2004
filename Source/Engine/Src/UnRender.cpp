@@ -1434,6 +1434,115 @@ void FLevelSceneNode::Render(FRenderInterface* RI)
 	unguard;
 }
 
+/*-----------------------------------------------------------------------------
+	ufront AutoFOV (step 2.16).
+-----------------------------------------------------------------------------*/
+
+ENGINE_API FLOAT GAutoFovFrameBase = 90.0f;
+
+// Parsed once on first use: config is authoritative, the command line overrides it. Re-reading per
+// frame would be wasted work — the values only change across a launch.
+static UBOOL  GAutoFovParsed  = 0;
+static INT    GAutoFovMode    = AUTOFOV_Adaptive;
+static FLOAT  GAutoFovRef     = 4.0f / 3.0f;
+static FLOAT  GAutoFovWeapon  = 1.0f;
+static INT    GAutoFovLastX    = -1;
+static INT    GAutoFovLastY    = -1;
+static FLOAT  GAutoFovLastBase = -1.0f;
+
+static void ufrontParseAutoFov()
+{
+	guard(ufrontParseAutoFov);
+	GAutoFovParsed = 1;
+
+	// [ufront.AutoFOV] is a plain config section, not a class — deliberately. The override has to be read
+	// from UGameEngine::Draw (Engine), while the natural "display settings" home is the client class,
+	// which lives in a driver package Engine cannot reach; and adding properties to a retail-Engine.u
+	// class is not an option. A free section is readable anywhere, is spelled identically in all four
+	// engines (so it stays DATA rather than per-engine code), and is one obvious block for a human to edit.
+	INT   Mode = GAutoFovMode;
+	FLOAT Ref  = GAutoFovRef;
+	FLOAT Weap = GAutoFovWeapon;
+	GConfig->GetInt  ( TEXT("ufront.AutoFOV"), TEXT("AutoFOV"),         Mode );
+	GConfig->GetFloat( TEXT("ufront.AutoFOV"), TEXT("ReferenceAspect"), Ref  );
+	GConfig->GetFloat( TEXT("ufront.AutoFOV"), TEXT("WeaponScale"),     Weap );
+
+	// Command line wins (lets the E2E drive both modes off ONE build, and makes a bad config recoverable).
+	if( appStrfind( appCmdLine(), TEXT("NOAUTOFOV") ) )
+		Mode = AUTOFOV_Off;
+	const TCHAR* Str;
+	if( (Str = appStrfind( appCmdLine(), TEXT("AUTOFOV=") )) != NULL )
+		Mode = appAtoi( Str + 8 );
+	if( (Str = appStrfind( appCmdLine(), TEXT("AUTOFOVREF=") )) != NULL )
+		Ref = appAtof( Str + 11 );
+	if( (Str = appStrfind( appCmdLine(), TEXT("AUTOFOVWEAPON=") )) != NULL )
+		Weap = appAtof( Str + 14 );
+
+	GAutoFovMode   = Clamp( Mode, (INT)AUTOFOV_Off, (INT)AUTOFOV_Adaptive );
+	GAutoFovRef    = (Ref  > 0.01f) ? Ref : (4.0f / 3.0f);
+	GAutoFovWeapon = Clamp( Weap, 0.0f, 4.0f );
+
+	debugf( NAME_Log, TEXT("[AutoFOV] mode=%i referenceAspect=%f weaponScale=%f"),
+		GAutoFovMode, GAutoFovRef, GAutoFovWeapon );
+	unguard;
+}
+
+ENGINE_API FLOAT ufrontEffectiveFov( FLOAT BaseFov, INT SizeX, INT SizeY )
+{
+	guard(ufrontEffectiveFov);
+	if( !GAutoFovParsed )
+		ufrontParseAutoFov();
+
+	if( GAutoFovMode == AUTOFOV_Off || SizeX <= 0 || SizeY <= 0 )
+		return BaseFov;
+
+	// Guard the trig: a degenerate or hostile FOV must not produce a broken projection.
+	FLOAT Base = Clamp( BaseFov, 1.0f, 170.0f );
+	FLOAT Aspect = (FLOAT)SizeX / (FLOAT)SizeY;
+	FLOAT HorPlus = (FLOAT)( appAtan( appTan( Base * PI / 360.0 ) * ( Aspect / GAutoFovRef ) ) * 360.0 / PI );
+	FLOAT Eff = ( GAutoFovMode == AUTOFOV_Adaptive ) ? Max( Base, HorPlus ) : HorPlus;
+	Eff = Clamp( Eff, 1.0f, 170.0f );
+
+	// Log whenever the INPUTS change — the viewport size or the base FOV. Both matter and neither can
+	// be inferred from the other: the size is the resize event the E2E asserts on, and the base moves
+	// when the game changes the player's FOV (an intro camera, a zoom). Two earlier cuts were wrong:
+	// gating on "base == 90" emitted NOTHING on an engine whose stored FOV was not 90, and gating on
+	// size alone latched whatever transient FOV the very first drawn frame happened to carry (an intro
+	// camera at the 170 clamp), so the first line did not describe gameplay. Zoom still cannot spam it:
+	// UE interpolates FovAngle over ~a dozen frames, so a zoom costs a dozen lines, once.
+	if( SizeX != GAutoFovLastX || SizeY != GAutoFovLastY || Abs(Base - GAutoFovLastBase) > 0.5f )
+	{
+		GAutoFovLastX    = SizeX;
+		GAutoFovLastY    = SizeY;
+		GAutoFovLastBase = Base;
+		debugf( NAME_Log, TEXT("[AutoFOV] viewport=%ix%i aspect=%f base=%f effective=%f"),
+			SizeX, SizeY, Aspect, Base, Eff );
+	}
+	return Eff;
+	unguard;
+}
+
+ENGINE_API FLOAT ufrontWeaponFov( FLOAT BaseFov, FLOAT EffectiveFov )
+{
+	guard(ufrontWeaponFov);
+	if( !GAutoFovParsed )
+		ufrontParseAutoFov();
+
+	// 1.0 (default) = the overlay rides the corrected FOV, which is what preserves its reference-aspect
+	// proportions; callers compare against EffectiveFov and can skip any extra work.
+	if( GAutoFovMode == AUTOFOV_Off || Abs(GAutoFovWeapon - 1.0f) < 0.001f )
+		return EffectiveFov;
+
+	// Blend in TAN space, not degrees: tangent is the linear one on screen, so 0.5 lands visually halfway.
+	FLOAT TanBase = (FLOAT)appTan( Clamp( BaseFov, 1.0f, 170.0f ) * PI / 360.0 );
+	FLOAT TanEff  = (FLOAT)appTan( Clamp( EffectiveFov, 1.0f, 170.0f ) * PI / 360.0 );
+	FLOAT TanOut  = TanBase + ( TanEff - TanBase ) * GAutoFovWeapon;
+	if( TanOut < 0.001f )
+		TanOut = 0.001f;
+	return Clamp( (FLOAT)( appAtan( TanOut ) * 360.0 / PI ), 1.0f, 170.0f );
+	unguard;
+}
+
 //
 //	FCameraSceneNode::FCameraSceneNode
 //
