@@ -584,8 +584,33 @@ inline CMainLoop::~CMainLoop(void)
 }
 
 #ifdef __EMSCRIPTEN__
-// Engine pointer for deferred WebRTC connect (webrtc_deferred_open in WebRTCNetDriver.cpp).
+// Engine pointer for deferred WebRTC connect (webrtc_deferred_open in WebRTCNetDriver.cpp) and for
+// ue_exec_command below.
 UEngine* GWebRTCEngine = NULL;
+
+// ADR-10: run a console command and RETURN its captured output (not fire-and-forget). Declared in the
+// frozen ABI (vendor/glue/ue_abi.h) for EVERY engine; unreal1 (SDLLaunch.cpp) and ut99 (Launch.cpp) have
+// implemented it since 2.6c/2.7d, but this engine's "impl lands at first rebuild" never happened — so the
+// ut2004 wasm shipped without the export and the E2E had to reach for `?map=` autostart instead. This is
+// the same implementation as the two UE1 launchers, verbatim: it needs no encoding adapter because the
+// Emscripten build compiles with NO_UNICODE_OS_SUPPORT=1 (CMakeLists.txt), i.e. TCHAR is ANSICHAR here,
+// exactly as on UE1.
+//
+// FStringOutputDevice is a string-capturing FOutputDevice (UnTemplate.h); the text is held in a static
+// FString so the returned pointer stays valid until the next call (the JS side reads it synchronously
+// during the ccall). Returns an empty string before the engine exists, never NULL.
+extern "C" char* EMSCRIPTEN_KEEPALIVE ue_exec_command( const char* Cmd )
+{
+	static FString Captured;
+	Captured = TEXT("");
+	if( GWebRTCEngine && Cmd )
+	{
+		FStringOutputDevice Out;
+		GWebRTCEngine->Exec( Cmd, Out );
+		Captured = Out;
+	}
+	return (char*)(*Captured);
+}
 #endif
 
 static void MainLoop( UEngine* Engine )
