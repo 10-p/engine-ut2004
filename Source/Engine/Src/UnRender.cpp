@@ -1449,6 +1449,9 @@ static FLOAT  GAutoFovWeapon  = 1.0f;
 static INT    GAutoFovLastX    = -1;
 static INT    GAutoFovLastY    = -1;
 static FLOAT  GAutoFovLastBase = -1.0f;
+static INT    GAutoFovUi       = 1;
+static FLOAT  GAutoFovUiScale  = 1.0f;
+static FLOAT  GAutoFovUiLastLog = -1.0f;
 
 static void ufrontParseAutoFov()
 {
@@ -1463,9 +1466,13 @@ static void ufrontParseAutoFov()
 	INT   Mode = GAutoFovMode;
 	FLOAT Ref  = GAutoFovRef;
 	FLOAT Weap = GAutoFovWeapon;
+	INT   Ui   = GAutoFovUi;
+	FLOAT UiSc = GAutoFovUiScale;
 	GConfig->GetInt  ( TEXT("ufront.AutoFOV"), TEXT("AutoFOV"),         Mode );
 	GConfig->GetFloat( TEXT("ufront.AutoFOV"), TEXT("ReferenceAspect"), Ref  );
 	GConfig->GetFloat( TEXT("ufront.AutoFOV"), TEXT("WeaponScale"),     Weap );
+	GConfig->GetInt  ( TEXT("ufront.AutoFOV"), TEXT("AutoFOVUI"),       Ui   );
+	GConfig->GetFloat( TEXT("ufront.AutoFOV"), TEXT("UIScale"),         UiSc );
 
 	// Command line wins (lets the E2E drive both modes off ONE build, and makes a bad config recoverable).
 	if( appStrfind( appCmdLine(), TEXT("NOAUTOFOV") ) )
@@ -1477,13 +1484,19 @@ static void ufrontParseAutoFov()
 		Ref = appAtof( Str + 11 );
 	if( (Str = appStrfind( appCmdLine(), TEXT("AUTOFOVWEAPON=") )) != NULL )
 		Weap = appAtof( Str + 14 );
+	if( appStrfind( appCmdLine(), TEXT("NOAUTOFOVUI") ) )
+		Ui = 0;
+	if( (Str = appStrfind( appCmdLine(), TEXT("AUTOFOVUISCALE=") )) != NULL )
+		UiSc = appAtof( Str + 15 );
 
 	GAutoFovMode   = Clamp( Mode, (INT)AUTOFOV_Off, (INT)AUTOFOV_Adaptive );
 	GAutoFovRef    = (Ref  > 0.01f) ? Ref : (4.0f / 3.0f);
 	GAutoFovWeapon = Clamp( Weap, 0.0f, 4.0f );
+	GAutoFovUi      = Clamp( Ui, 0, 1 );
+	GAutoFovUiScale = Clamp( UiSc, 0.1f, 4.0f );
 
-	debugf( NAME_Log, TEXT("[AutoFOV] mode=%i referenceAspect=%f weaponScale=%f"),
-		GAutoFovMode, GAutoFovRef, GAutoFovWeapon );
+	debugf( NAME_Log, TEXT("[AutoFOV] mode=%i referenceAspect=%f weaponScale=%f ui=%i uiScale=%f"),
+		GAutoFovMode, GAutoFovRef, GAutoFovWeapon, GAutoFovUi, GAutoFovUiScale );
 	unguard;
 }
 
@@ -1540,6 +1553,34 @@ ENGINE_API FLOAT ufrontWeaponFov( FLOAT BaseFov, FLOAT EffectiveFov )
 	if( TanOut < 0.001f )
 		TanOut = 0.001f;
 	return Clamp( (FLOAT)( appAtan( TanOut ) * 360.0 / PI ), 1.0f, 170.0f );
+	unguard;
+}
+
+
+ENGINE_API FLOAT ufrontHudScaleFactor( INT SizeX, INT SizeY )
+{
+	guard(ufrontHudScaleFactor);
+	if( !GAutoFovParsed )
+		ufrontParseAutoFov();
+
+	if( !GAutoFovUi || SizeX <= 0 || SizeY <= 0 )
+		return 1.0f;
+
+	FLOAT Aspect = (FLOAT)SizeX / (FLOAT)SizeY;
+
+	// CLAMPED AT 1: only ever shrink. At or below the reference aspect this returns exactly 1.0, so a
+	// narrow/tall window renders bit-for-bit as stock -- the stock sizing already shrinks with a taller
+	// aspect (it follows ClipX), and preserving that is the point.
+	FLOAT Factor = ( Aspect > GAutoFovRef ) ? ( GAutoFovRef / Aspect ) : 1.0f;
+	Factor *= GAutoFovUiScale;
+	Factor = Clamp( Factor, 0.05f, 4.0f );
+
+	if( Abs(Factor - GAutoFovUiLastLog) > 0.001f )
+	{
+		GAutoFovUiLastLog = Factor;
+		debugf( NAME_Log, TEXT("[AutoFOVUI] viewport=%ix%i aspect=%f hudScale x%f"), SizeX, SizeY, Aspect, Factor );
+	}
+	return Factor;
 	unguard;
 }
 
@@ -1942,8 +1983,33 @@ void FPlayerSceneNode::Render(FRenderInterface* RI)
 		GUglyHackFlags |= 1;
 		clock(GStats.DWORDStats(GEngineStats.STATS_Game_HUDPostRender));
 
+		// AutoFOVUI (step 2.16b): scale the game's OWN global HudScale for the duration of the HUD's
+		// PostRender, so widget SIZES follow height instead of width while positions stay put. Found by
+		// NAME through reflection rather than a compile-time member, because the property lives on the
+		// retail script class (Engine.HUD) -- which also means any total conversion's HUD inherits it and
+		// is scaled without us knowing anything about it.
+		//
+		// Restored immediately: the HUD script mutates HudScale mid-render itself (HudBDeathMatch.uc:745
+		// saves/forces 1/restores, :937 multiplies), and a SaveConfig must never capture our factor.
 		if ( Viewport->Actor->myHUD )
+		{
+			AActor* Hud = Viewport->Actor->myHUD;
+			UFloatProperty* HudScaleProp = FindField<UFloatProperty>( Hud->GetClass(), TEXT("HudScale") );
+			FLOAT  SavedHudScale = 0.f;
+			FLOAT* HudScalePtr   = NULL;
+
+			if ( HudScaleProp )
+			{
+				HudScalePtr   = (FLOAT*)( (BYTE*)Hud + HudScaleProp->Offset );
+				SavedHudScale = *HudScalePtr;
+				*HudScalePtr  = SavedHudScale * ufrontHudScaleFactor( Viewport->SizeX, Viewport->SizeY );
+			}
+
 			Viewport->Actor->myHUD->eventPostRender(Viewport->Canvas);
+
+			if ( HudScalePtr )
+				*HudScalePtr = SavedHudScale;
+		}
 
         if ( Viewport->Canvas->pCanvasUtil ) 
             Viewport->Canvas->pCanvasUtil->Flush();
