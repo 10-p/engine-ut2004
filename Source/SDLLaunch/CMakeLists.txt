@@ -179,9 +179,30 @@ if(EMSCRIPTEN)
     -sFULL_ES2=1
     -sUSE_SDL=2
     -sALLOW_MEMORY_GROWTH=1
-    "-sEXPORTED_RUNTIME_METHODS=['callMain','stringToUTF8','UTF8ToString','HEAPU8','stackSave','stackAlloc','stackRestore']"
+    "-sEXPORTED_RUNTIME_METHODS=['callMain','stringToUTF8','UTF8ToString','HEAPU8','stackSave','stackAlloc','stackRestore','lengthBytesUTF8']"
     -sINITIAL_MEMORY=268435456
     -sFORCE_FILESYSTEM
+    # ufront 2.13.1 — WasmFS + the JS-implemented FS backend.
+    #
+    # -sWASMFS moves the VFS into wasm, which BREAKS FetchFS's old seam: it intercepted file access by
+    # monkey-patching the JS FS.open (legal only because the legacy filesystem implements
+    # __syscall_openat in JS), and under WasmFS a C open() never routes through it — probed 2026-07-14,
+    # the patch installs and never fires. The replacement is a WasmFS JSImpl backend whose file ops are
+    # implemented in JS (vendor/glue/wasmfs-shim.js forwards them to the host-injected
+    # Module.UE.fs.backend), which is both the on-demand hook and the way to keep asset bytes in JS
+    # typed arrays instead of a std::vector inside linear memory. That distinction is load-bearing:
+    # measured, the engine itself sits flat at 256 MB of linear memory while assets reach 1.74 GB, so
+    # putting residency inside a 2 GB wasm32 address space would cap and fragment it for no gain.
+    #
+    # -sFORCE_FILESYSTEM (above) stays REQUIRED — WasmFS omits the JS FS.* API otherwise, and the host
+    # glue still uses it for user data, mods and the file browser.
+    #
+    # The EXPORTED_FUNCTIONS entries let the HOST stand the backend up entirely from JS
+    # (wasmfs_create_jsimpl_backend + wasmfs_create_file + the shim's two registrars), so this block plus
+    # the vendored shim is the whole per-engine cost — no C++ in any engine repo.
+    -sWASMFS
+    "-sEXPORTED_FUNCTIONS=['_main','_malloc','_free','_close','_ue_exec_command','_webrtc_deferred_open','_wasmfs_create_jsimpl_backend','_wasmfs_create_file','_ufront_wasmfs_register','_ufront_wasmfs_set_pending']"
+    "SHELL:--js-library ${CMAKE_SOURCE_DIR}/vendor/glue/wasmfs-shim.js"
     -lopenal
     # 1.6a (ufront): the host PAGE is NO LONGER baked here. The engine emits a BARE LOADER —
     # SDLLaunch.{js,wasm,data}, loaderStyle=global-module — and the host page lives in the public
