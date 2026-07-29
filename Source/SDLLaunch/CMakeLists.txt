@@ -179,7 +179,10 @@ if(EMSCRIPTEN)
     -sFULL_ES2=1
     -sUSE_SDL=2
     -sALLOW_MEMORY_GROWTH=1
-    "-sEXPORTED_RUNTIME_METHODS=['callMain','stringToUTF8','UTF8ToString','HEAPU8','stackSave','stackAlloc','stackRestore','lengthBytesUTF8']"
+    # PThread (2.13.2): the host needs the worker list to hand the FS sync channel to the thread that
+    # runs main(). Runtime methods are NOT on Module unless exported, so omitting it makes the host
+    # silently no-op and the engine dies on its first asset read with no clue as to why.
+    "-sEXPORTED_RUNTIME_METHODS=['callMain','stringToUTF8','UTF8ToString','HEAPU8','stackSave','stackAlloc','stackRestore','lengthBytesUTF8','PThread']"
     -sINITIAL_MEMORY=268435456
     -sFORCE_FILESYSTEM
     # ufront 2.13.1 — WasmFS + the JS-implemented FS backend.
@@ -202,6 +205,34 @@ if(EMSCRIPTEN)
     # the vendored shim is the whole per-engine cost — no C++ in any engine repo.
     -sWASMFS
     "-sEXPORTED_FUNCTIONS=['_main','_malloc','_free','_close','_ue_exec_command','_webrtc_deferred_open','_wasmfs_create_jsimpl_backend','_wasmfs_create_file','_ufront_wasmfs_register','_ufront_wasmfs_set_pending']"
+    # The worker-side bootstrap in wasmfs-shim.js hangs off a __postset, and a postset is only EMITTED
+    # if its $symbol is referenced. Nothing references it (it is pure side effect), so without this it
+    # is dead-stripped SILENTLY — no error, no warning, and the engine dies on its first asset read.
+    "-sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=['$ueWorkerBoot']"
+    # ufront 2.13.2 — run the engine on a WORKER (threaded-only, decision D2).
+    #
+    # WHY: synchronous per-file restore-on-read from OPFS (2.13.4, the actual point of stage 2.13) needs
+    # FileSystemSyncAccessHandle, which browsers expose ONLY on a worker; and a thread blocking on
+    # Atomics.wait cannot do so on the browser main thread. So main() has to leave the main thread.
+    #
+    # -sOFFSCREENCANVASES_TO_PTHREAD transfers #canvas to that worker, which is what makes the direct
+    # emscripten_webgl_create_context in SDL2Viewport.cpp legal there. SDL2 keeps window + input; only
+    # GL-context creation and the frame present are taken off SDL (its GL path is EGL, and Emscripten
+    # proxies EGL to a main thread that can no longer see the transferred canvas — Emscripten #24792).
+    #
+    # -sASYNCIFY deliberately STAYS this step: dropping it is 2.13.3, after the worker move is proven.
+    # Audio needs nothing here — Emscripten's OpenAL library is already __proxy:'sync' throughout, so
+    # its Web Audio calls run on the main thread by themselves.
+    -pthread
+    -sPROXY_TO_PTHREAD
+    -sOFFSCREENCANVAS_SUPPORT
+    # QUOTED: CMake treats an unquoted '#' as a comment, which silently truncates this to
+    # "OFFSCREENCANVASES_TO_PTHREAD=" and fails the link with "string index out of range".
+    "-sOFFSCREENCANVASES_TO_PTHREAD=#canvas"
+    # main() itself is one of these. The engine spawns no other threads on the web (IpDrv's host-resolve
+    # pthread_create is __EMSCRIPTEN__-guarded off, see UnIpDrv.h), so a small pool avoids paying for
+    # workers nothing will use.
+    -sPTHREAD_POOL_SIZE=2
     "SHELL:--js-library ${CMAKE_SOURCE_DIR}/vendor/glue/wasmfs-shim.js"
     -lopenal
     # 1.6a (ufront): the host PAGE is NO LONGER baked here. The engine emits a BARE LOADER —
@@ -246,6 +277,13 @@ if(EMSCRIPTEN)
   set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY LINK_DEPENDS
     "${CMAKE_SOURCE_DIR}/Engine/Config/web/Default.ini"
     "${CMAKE_SOURCE_DIR}/Engine/Config/web/DefUser.ini")
+  # The --js-library shims are link INPUTS too, and CMake does not infer that from a link option:
+  # editing a shim left a STALE .js baked while the build reported success, so the change appeared to
+  # have no effect (2.13.2: the worker never received the target descriptor and silently cached
+  # nothing). Same class of trap as the preloaded inis above, same fix.
+  set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY LINK_DEPENDS
+    "${CMAKE_SOURCE_DIR}/vendor/glue/wasmfs-shim.js"
+    "${CMAKE_SOURCE_DIR}/vendor/glue/webrtc-shim.js")
   string(REPLACE ";" " " PRELOAD_FLAGS_STR "${PRELOAD_FLAGS}")
   set_property(TARGET ${PROJECT_NAME} APPEND_STRING PROPERTY LINK_FLAGS " ${PRELOAD_FLAGS_STR}")
   set_target_properties(${PROJECT_NAME} PROPERTIES SUFFIX ".js")  # 1.6a: bare loader (was ".html" via --shell-file)

@@ -393,7 +393,7 @@ inline void	CMainLoop::RunLoop(void)
 	// Enforce optional maximum tick rate.
 	guard(EnforceTickRate);
 	if( !GUseFixedTimeStep && IncludeMessaging )
-	{		
+	{
 		FLOAT MaxTickRate = Engine->GetMaxTickRate();
 		if( MaxTickRate>0.0 )
 		{
@@ -402,6 +402,29 @@ inline void	CMainLoop::RunLoop(void)
 		}
 	}
 	unguard;
+
+#if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
+	// ufront 2.13.2 — PUMP THIS THREAD'S EVENT LOOP once per frame.
+	//
+	// UGameEngine::GetMaxTickRate() returns 0 for a standalone client (no NetDriver) — i.e. the whole
+	// menu and every offline match — so the limiter above calls appSleep for a NETWORK client only, and
+	// this loop is otherwise a tight loop that never returns to JS. That was survivable while the engine
+	// owned the browser's main thread and the host called _ue_exec_command directly. On a worker it is
+	// not: `postMessage` (the ONLY route left for a console command, since the export must run on the
+	// thread that owns the engine) is delivered on an event-loop turn, and so are the browser events SDL
+	// forwards here. Measured: with no yield the engine ran and rendered perfectly, while `ueExec` and a
+	// live canvas resize were both silently swallowed — the messages were queued and never dispatched.
+	//
+	// appSleep(0) is the yield (emscripten_sleep -> a 0 ms setTimeout that Asyncify unwinds to), and it
+	// is skipped whenever the limiter already slept, so a net client keeps exactly one yield per frame
+	// and its frame budget is untouched. Non-threaded builds are byte-identical: this whole block is
+	// compiled out. (2.13.3 drops ASYNCIFY, at which point this yield needs a different mechanism —
+	// noted there.)
+	guard(WorkerYield);
+	if( GUseFixedTimeStep || !IncludeMessaging || Engine->GetMaxTickRate() <= 0.f )
+		appSleep( 0.f );
+	unguard;
+#endif
 
 	if( IncludeMessaging ) 
 	{
