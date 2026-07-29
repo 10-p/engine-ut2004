@@ -217,6 +217,19 @@ option(USE_PIXOMATIC "Build the Pixomatic software render device (PixoDrv, -SOFT
 # Emscripten: disable x86 SSE intrinsics (WASM has no x86 instruction sets)
 if(EMSCRIPTEN)
   add_definitions(-DNO_SSE_SUPPORT=1)
+  # ufront 2.13.2 — -pthread must be a COMPILE option, not just a link option.
+  #
+  # Two reasons, and missing either one is silent:
+  #   * it defines __EMSCRIPTEN_PTHREADS__, which is what every threaded code path in this tree is
+  #     guarded on (SDL2Viewport's direct WebGL context creation, GL4ESDrv's proc-address resolver,
+  #     appRequestExit's MAIN_THREAD_EM_ASM). With it only at link time those guards compile their
+  #     SINGLE-THREADED branch, SDL creates the GL context after all, and Emscripten proxies
+  #     eglCreateContext to a main thread whose canvas has been transferred away -> InvalidStateError
+  #     (Emscripten #24792). The error points at the canvas; the cause is this flag.
+  #   * every object in a shared-memory link must carry the atomics/bulk-memory features, and that
+  #     includes the FetchContent'd gl4es and the Thirdparty C libraries. Hence it is set HERE, ahead
+  #     of FetchContent_MakeAvailable(GL4ES) and every add_subdirectory below, not in SDLLaunch.
+  add_compile_options(-pthread)
 endif()
 
 # zlib prefix (avoid symbol clashes with system zlib)

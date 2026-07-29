@@ -1284,7 +1284,17 @@ CORE_API void appRequestExit( UBOOL Force )
 #ifdef __EMSCRIPTEN__
 		// Notify the browser shell to return to the splash menu after cleanup.
 		// EM_ASM is a direct C++ → JS call — no console parsing needed.
+		//
+		// ufront 2.13.2: MAIN_THREAD_EM_ASM, not EM_ASM. Under -sPROXY_TO_PTHREAD this runs on the
+		// worker, where `window` does not exist and WorkerLocation is read-only — the guard below would
+		// simply skip and the page would sit on a dead canvas forever (the E2E caught exactly that on
+		// unreal1: waitForURL timed out). Only the browser main thread can navigate. It is a plain
+		// EM_ASM on a non-threaded build, so both configurations keep working.
+#ifdef __EMSCRIPTEN_PTHREADS__
+		MAIN_THREAD_EM_ASM({
+#else
 		EM_ASM({
+#endif
 			if (typeof window !== 'undefined') {
 				console.log('[SHELL] Engine exit requested, returning to menu');
 				setTimeout(function() {

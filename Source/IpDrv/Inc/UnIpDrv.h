@@ -128,6 +128,16 @@ public:
 		HANDLE hThread = CreateThread( NULL, 0, ResolveThreadEntry, this, 0, &ThreadId );
 		check(hThread);
 		CloseHandle( hThread );
+#elif defined(__EMSCRIPTEN__)
+		// ufront 2.13.2: the web build is now linked -pthread, which makes this pthread_create REAL.
+		// Without -pthread Emscripten's pthread_create is a stub that fails, so ThreadId stayed 1 and
+		// the resolve never completed — that IS the shipping web behavior, and it is harmless because
+		// the web target has no name to resolve: its transport is WebRTCDrv (peer ids over a signaling
+		// room), never TcpNetDriver/HTTPDownload. Letting the thread actually run would be a behavior
+		// CHANGE, not a fix: Emscripten's gethostbyname synthesizes a fake address, so a resolve would
+		// "succeed" and the caller would go on to open a socket that cannot exist. Keep the shipping
+		// semantics explicitly rather than by accident of the link flags.
+		(void)ResolveThread;
 #else
 		pthread_attr_t ThreadAttributes;
 		pthread_attr_init( &ThreadAttributes );

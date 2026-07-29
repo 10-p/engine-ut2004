@@ -5,6 +5,14 @@
 
 =============================================================================*/
 
+#if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
+// ufront 2.13.2 — the WebGL context is created and presented by us on the worker (hatch (c)), so both
+// the entry-point resolver and the frame present come from Emscripten rather than from SDL. Included
+// BEFORE the engine headers: this pulls in <time.h>, and UnFile.h #defines clock(Timer), which then
+// mangles time.h's `clock_t clock(void)` into a syntax error pointing at a system header.
+#include <emscripten/html5_webgl.h>
+#endif
+
 #include "GL4ESDrv.h"
 
 #if defined(__ANDROID__)
@@ -527,7 +535,16 @@ UBOOL UGL4ESRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Ful
 #endif
 
 			// Tell GL4ES how to find GLES2 functions via SDL2.
+#if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
+			// ufront 2.13.2 hatch (c): the context was created with emscripten_webgl_create_context, NOT
+			// through SDL, so SDL_GL_GetProcAddress has no context to resolve against and hands back
+			// nulls — gl4es would then translate into a table of null entry points and the device would
+			// render nothing (or die on the first call). Emscripten's own resolver is context-aware and
+			// works on the worker.
+			set_getprocaddress(emscripten_webgl_get_proc_address);
+#else
 			set_getprocaddress(SDL_GL_GetProcAddress);
+#endif
 
 			// Initialize GL4ES translation layer.
 			debugf( TEXT("GL4ES: Calling initialize_gl4es()...") );
@@ -1306,7 +1323,13 @@ void UGL4ESRenderDevice::Present(UViewport* Viewport)
 	guard(UGL4ESRenderDevice::Present);
 
 	// GL4ESDrv: SDL2-only swap.
+#if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
+	// ufront 2.13.2: the context was created with explicitSwapControl, so THIS is the present.
+	// SDL_GL_SwapWindow would go through the EGL emulation, which cannot see our worker context.
+	emscripten_webgl_commit_frame();
+#else
 	SDL_GL_SwapWindow((SDL_Window*)Viewport->GetWindow());
+#endif
 
 	unguard;
 }

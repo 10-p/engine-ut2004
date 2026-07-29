@@ -58,4 +58,92 @@ mergeInto(LibraryManager.library, {
   ufront_wasmfs_set_pending: function(pathPtr) {
     ueFs().pendingPath = pathPtr ? UTF8ToString(pathPtr) : null;
   },
+
+  // --------------------------------------------------------------------------------------------
+  // step 2.13.2 — THE WORKER SIDE.
+  //
+  // Under -sPROXY_TO_PTHREAD the engine runs on a pthread, and WasmFS calls the JSImpl hooks THERE:
+  // Emscripten's libwasmfs_jsimpl.js carries no __proxy, so a hook executes on whichever thread performs
+  // the FS op and looks up wasmFS$backends[backend] — a PER-THREAD object. The host registers the
+  // backend on MAIN (it must: allocFile binds file->path on the creating thread, and the wasm runtime is
+  // not even up in a pthread when this code runs), so without the block below the worker's table is
+  // empty and the first read dies with "Cannot read properties of undefined (reading 'getSize')".
+  //
+  // The fix keeps this file a forwarder. On a pthread we:
+  //   1. take the channel main postMessages us (addEventListener coexists with Emscripten's onmessage),
+  //   2. replace wasmFS$backends with a PROXY that lazily builds the table for whatever backend pointer
+  //      is asked about — so main's pointer arrives as the lookup KEY and nothing is handshaken,
+  //   3. importScripts the real glue bundle (synchronously — which is what a sync FS hook needs) and let
+  //      it build the worker's backend.
+  //
+  // ⚠ __postset only survives if the symbol is REFERENCED: an unused $symbol is dead-stripped silently,
+  // no error and no bootstrap. It is force-included via -sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE in the link
+  // flags — do not remove that without removing this.
+  $ueWorker: {
+    sab: null,
+    budget: undefined,
+    target: null,
+    table: null,
+  },
+
+  $ueWorkerBoot__deps: ['$ueWorker', '$wasmFS$backends'],
+  $ueWorkerBoot__postset: 'ueWorkerBoot();',
+  $ueWorkerBoot: function() {
+    if (typeof ENVIRONMENT_IS_PTHREAD === 'undefined' || !ENVIRONMENT_IS_PTHREAD) return;
+
+    addEventListener('message', function(e) {
+      if (!e || !e.data) return;
+      if (e.data.ufrontChannel) {
+        ueWorker.sab = e.data.ufrontChannel;
+        ueWorker.budget = e.data.ufrontBudget;
+        ueWorker.target = e.data.ufrontTarget;
+      }
+      // step 2.13.2 — ue_exec_command must run ON THIS THREAD. The frozen ABI is unchanged; what changes
+      // is routing: the host used to call Module._ue_exec_command directly, but under PROXY_TO_PTHREAD
+      // that executes engine code on the browser main thread, where there is no GL context and no engine
+      // state — it dies in glClearColor. Main posts the command instead and we run it here, between
+      // frames, on the thread that owns the engine.
+      if (typeof e.data.ufrontExec === 'string') {
+        console.log('[ufront/worker] exec received: ' + e.data.ufrontExec +
+          ' (export=' + (typeof Module['_ue_exec_command']) + ')');
+      }
+      if (typeof e.data.ufrontExec === 'string' && Module['_ue_exec_command']) {
+        var cmd = e.data.ufrontExec;
+        var len = lengthBytesUTF8(cmd) + 1;
+        var saved = stackSave();
+        try {
+          var ptr = stackAlloc(len);
+          stringToUTF8(cmd, ptr, len);
+          Module['_ue_exec_command'](ptr);
+        } finally {
+          stackRestore(saved);
+        }
+      }
+    });
+
+    wasmFS$backends = new Proxy({}, {
+      get: function(target, key) {
+        if (!(key in target)) {
+          if (!ueWorker.table) {
+            if (!ueWorker.sab) {
+              // Main posts the channel before callMain and the pthread is idle until then, so this is
+              // not expected. Fail loudly rather than serving zero-length reads that look like a
+              // corrupt install.
+              throw new Error('[ufront] WasmFS hook fired on the worker before the host handed over ' +
+                'the sync channel — the engine cannot read any asset');
+            }
+            importScripts('ufront-glue.js');
+            ueWorker.table = ufrontGlue.createWorkerFs({
+              Module: Module,
+              sab: ueWorker.sab,
+              budget: ueWorker.budget,
+              target: ueWorker.target,
+            });
+          }
+          target[key] = ueWorker.table;
+        }
+        return target[key];
+      },
+    });
+  },
 });
