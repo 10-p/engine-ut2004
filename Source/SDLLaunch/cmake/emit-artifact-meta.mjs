@@ -28,7 +28,14 @@ const meta = {
   loaderStyle: 'global-module',                  // today's shell loads a classic <script> + bare globals
   provenance: { repo: 'engine-ut2004', gitSha: args.gitSha || 'unknown', builtAt: args.builtAt || 'unknown' },
   toolchain: { emscripten: args.emcc || 'unknown', gl4es: args.gl4es || '10-p/gl4es@fix/cubemap-bind-active-unit' },
-  buildFlags: ['-sASYNCIFY', '-sFULL_ES2', '-sALLOW_MEMORY_GROWTH', '-sFORCE_FILESYSTEM'],
+  buildFlags: [
+    // Descriptive, hand-maintained: keep it in step with the linker block or the descriptor
+    // quietly misstates what shipped. -sWASMFS landed in 2.13.1 and the threading set in 2.13.2,
+    // which makes this a THREADED-ONLY artifact (decision D2) — the host capability-gates on
+    // SharedArrayBuffer + OffscreenCanvas, so that is exactly what the descriptor must say.
+    '-sASYNCIFY', '-sFULL_ES2', '-sALLOW_MEMORY_GROWTH', '-sFORCE_FILESYSTEM', '-sWASMFS',
+    '-pthread', '-sPROXY_TO_PTHREAD', '-sOFFSCREENCANVAS_SUPPORT', '-sOFFSCREENCANVASES_TO_PTHREAD=#canvas',
+  ],
   exports: { symbolContract: 1 },
   checksums
 };

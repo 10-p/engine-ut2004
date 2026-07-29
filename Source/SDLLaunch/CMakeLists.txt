@@ -313,6 +313,13 @@ if(EMSCRIPTEN)
     OUTPUT_VARIABLE _emcc_ver OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
   string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+" META_EMCC "${_emcc_ver}")
   find_program(NODE_EXECUTABLE node REQUIRED)
+  # ufront 2.13.2 — the emitter is an INPUT to the artifact, and CMake cannot infer that from a
+  # POST_BUILD COMMAND: editing it changes nothing the build watches, so the target does not relink,
+  # POST_BUILD never re-runs, and a STALE meta.json ships while the build reports success. Hit for real
+  # when buildFlags was corrected. Same class of trap as the preloaded config and the vendored shims,
+  # same fix — LINK_DEPENDS forces the relink that re-runs POST_BUILD.
+  set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY LINK_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/emit-artifact-meta.mjs")
   add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
     COMMAND ${NODE_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/emit-artifact-meta.mjs
       --out=$<TARGET_FILE_DIR:${PROJECT_NAME}>
