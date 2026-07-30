@@ -80,9 +80,11 @@ mergeInto(LibraryManager.library, {
   // no error and no bootstrap. It is force-included via -sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE in the link
   // flags — do not remove that without removing this.
   $ueWorker: {
-    sab: null,
-    budget: undefined,
-    target: null,
+    // step 2.13.4: the WHOLE bootstrap message main posted, kept verbatim and forwarded verbatim. It used
+    // to be destructured into named fields here, which meant every new channel needed an edit to a file
+    // vendored into four engine repos + a rebuild + a re-gate of all of them. The glue owns the shape now;
+    // this file only has to deliver it.
+    boot: null,
     table: null,
   },
 
@@ -94,9 +96,7 @@ mergeInto(LibraryManager.library, {
     addEventListener('message', function(e) {
       if (!e || !e.data) return;
       if (e.data.ufrontChannel) {
-        ueWorker.sab = e.data.ufrontChannel;
-        ueWorker.budget = e.data.ufrontBudget;
-        ueWorker.target = e.data.ufrontTarget;
+        ueWorker.boot = e.data;
       }
       // step 2.13.2 — ue_exec_command must run ON THIS THREAD. The frozen ABI is unchanged; what changes
       // is routing: the host used to call Module._ue_exec_command directly, but under PROXY_TO_PTHREAD
@@ -125,7 +125,7 @@ mergeInto(LibraryManager.library, {
       get: function(target, key) {
         if (!(key in target)) {
           if (!ueWorker.table) {
-            if (!ueWorker.sab) {
+            if (!ueWorker.boot) {
               // Main posts the channel before callMain and the pthread is idle until then, so this is
               // not expected. Fail loudly rather than serving zero-length reads that look like a
               // corrupt install.
@@ -135,9 +135,7 @@ mergeInto(LibraryManager.library, {
             importScripts('ufront-glue.js');
             ueWorker.table = ufrontGlue.createWorkerFs({
               Module: Module,
-              sab: ueWorker.sab,
-              budget: ueWorker.budget,
-              target: ueWorker.target,
+              boot: ueWorker.boot,
             });
           }
           target[key] = ueWorker.table;
