@@ -9,7 +9,7 @@
 // $ueNet asserts Module.UE is injected at the right ABI version and returns the transport.
 // It is pulled in via each forwarder's __deps (the wasm imports the webrtc_* symbols).
 
-// ufront 2.13.2 — EVERY forwarder below is __proxy: 'sync'.
+// ufront 2.13.2 — every forwarder below is __proxy: 'sync', EXCEPT the two the packet rings own.
 //
 // Under -sPROXY_TO_PTHREAD the engine calls webrtc_* from the WORKER, but the net stack cannot follow it
 // there: RTCPeerConnection is a Window API and is not available in workers (W3C webrtc-extensions #77,
@@ -20,8 +20,20 @@
 //
 // __proxy: 'sync' runs each call on the main thread and blocks the caller until it returns, which is the
 // semantics the engine already expects. Pthreads share memory, so the proxied call reads packet bytes at
-// dataPtr and fills bufferPtr in the SAME heap — no marshalling. send/recv are polled per net-tick rather
-// than per frame, so the hop is not hot; a SAB ring buffer is the fallback if that ever changes.
+// dataPtr and fills bufferPtr in the SAME heap — no marshalling.
+//
+// ★ 2.13.6 — webrtc_send AND webrtc_recv ARE NO LONGER PROXIED, and that is the whole of this file's
+// change. The 2.13.2 note above said "send/recv are polled per net-tick rather than per frame, so the hop
+// is not hot; a SAB ring buffer is the fallback if that ever changes." It changed: a file transfer
+// saturates the send loop, and with MaxPacket pinned at 512 B that is thousands of synchronous
+// cross-thread round trips a second. The engine thread ended up parked in those calls instead of reaching
+// a point where it drains its OWN incoming proxy queue, which then grew until main could no longer enqueue
+// an input event and the run aborted with
+//     Aborted(Assertion failed: false && "emscripten_proxy_async failed", .../html5/callback.c,42)
+// The two hot calls now read and write SHARED-MEMORY PACKET RINGS instead: the host builds this thread's
+// Module.UE.net (@ufront/glue installWorkerNet, from the same bootstrap message that carries the FS
+// channels), so the unproxied forwarder finds a net object HERE, on the engine thread, and never leaves it.
+// The other 17 stay proxied — they are per-tick or per-user-action, not per-packet.
 //
 // The frozen C ABI is UNCHANGED (still v1): this adds thread ROUTING, not a new contract.
 mergeInto(LibraryManager.library, {
@@ -43,12 +55,11 @@ mergeInto(LibraryManager.library, {
   webrtc_connect__proxy: 'sync',
   webrtc_connect: function(peerIdPtr) { return ueNet().webrtc_connect(peerIdPtr); },
 
+  // --- the packet path: NOT proxied (2.13.6). Answered on the engine thread by the shared rings. ---
   webrtc_send__deps: ['$ueNet'],
-  webrtc_send__proxy: 'sync',
   webrtc_send: function(connId, dataPtr, len) { return ueNet().webrtc_send(connId, dataPtr, len); },
 
   webrtc_recv__deps: ['$ueNet'],
-  webrtc_recv__proxy: 'sync',
   webrtc_recv: function(connId, bufferPtr, maxLen) { return ueNet().webrtc_recv(connId, bufferPtr, maxLen); },
 
   webrtc_accept_connection__deps: ['$ueNet'],
