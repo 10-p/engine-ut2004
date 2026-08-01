@@ -26,6 +26,42 @@ static EM_BOOL on_visibility_change(int eventType,
     }
     return EM_TRUE;
 }
+
+#ifdef __EMSCRIPTEN_PTHREADS__
+// ufront 2.13.7 (option E) — YIELD ONCE PER FRAME, BUT WITHOUT setTimeout's CLAMP.
+//
+// The engine thread MUST return to its event loop every frame: with explicitSwapControl and no
+// -sOFFSCREEN_FRAMEBUFFER, emscripten_webgl_commit_frame is a no-op ("swap is implicit") and a
+// worker-owned OffscreenCanvas is composited when the worker's task ENDS. Yielding less often was
+// tried and measured (branch step/2.13.7-worker-pump): the screen updated at exactly the yield rate
+// while the engine happily counted frames nobody saw. So frequency is fixed; only COST is available.
+//
+// appSleep(0) -> emscripten_sleep(0) pays TWO costs. The Asyncify unwind/rewind of the engine stack is
+// unavoidable here. The second is pure waste: emscripten_sleep resumes from setTimeout, and NO browser
+// honours a 0 ms timer — the HTML spec's timer clamp floors it at >= 1 ms (worse once nested). We do not
+// want a timer at all; we want the shortest possible task boundary.
+//
+// A MessagePort message is exactly that: a macrotask, dispatched on the next turn, with NO clamp. Same
+// task boundary the compositor needs, minus the timer floor. (This is what emscripten_set_immediate uses
+// internally — libeventloop.js:57-80 — but that is a callback API, and the engine loop needs to BLOCK
+// here, so EM_ASYNC_JS + Asyncify is the shape that fits.)
+//
+// EM_ASYNC_JS names its import __asyncjs__ufront_yield_frame, and link.py's DEFAULT_ASYNCIFY_IMPORTS is
+// ['__asyncjs__*'], so this is registered with Asyncify automatically — no ASYNCIFY_IMPORTS edit.
+EM_ASYNC_JS(void, ufront_yield_frame, (void), {
+    let y = globalThis.__ufrontYield;
+    if (!y) {
+        // One channel for the process; resolvers queue in FIFO order, so a message always wakes the
+        // caller that posted it. Created lazily because this runs on the engine's pthread.
+        const ch = new MessageChannel();
+        const q = [];
+        ch.port1.onmessage = () => { const r = q.shift(); if (r) r(); };
+        ch.port1.start();
+        y = globalThis.__ufrontYield = { ch, q };
+    }
+    await new Promise((resolve) => { y.q.push(resolve); y.ch.port2.postMessage(0); });
+});
+#endif
 #endif
 
 #if defined(__ANDROID__)
@@ -422,7 +458,10 @@ inline void	CMainLoop::RunLoop(void)
 	// noted there.)
 	guard(WorkerYield);
 	if( GUseFixedTimeStep || !IncludeMessaging || Engine->GetMaxTickRate() <= 0.f )
-		appSleep( 0.f );
+		// ufront 2.13.7 (option E): same yield, EVERY frame, exactly as 2.13.2 — only the resume is
+		// scheduled by an unclamped MessagePort macrotask instead of a >= 1 ms setTimeout. Frequency is
+		// deliberately unchanged: the yield is the frame's present point (see ufront_yield_frame above).
+		ufront_yield_frame();
 	unguard;
 #endif
 
