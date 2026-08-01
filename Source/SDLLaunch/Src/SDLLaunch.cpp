@@ -33,8 +33,9 @@ static EM_BOOL on_visibility_change(int eventType,
 // The engine thread MUST return to its event loop every frame: with explicitSwapControl and no
 // -sOFFSCREEN_FRAMEBUFFER, emscripten_webgl_commit_frame is a no-op ("swap is implicit") and a
 // worker-owned OffscreenCanvas is composited when the worker's task ENDS. Yielding less often was
-// tried and measured (branch step/2.13.7-worker-pump): the screen updated at exactly the yield rate
-// while the engine happily counted frames nobody saw. So frequency is fixed; only COST is available.
+// tried and MEASURED: at a 100 ms yield the screen updated 9.8 times a second — exactly the yield
+// rate — while the engine cheerfully reported 152 fps, i.e. it was counting frames nobody ever saw,
+// and the heavy demos regressed for real. So frequency is fixed; only COST is available.
 //
 // appSleep(0) -> emscripten_sleep(0) pays TWO costs. The Asyncify unwind/rewind of the engine stack is
 // unavoidable here. The second is pure waste: emscripten_sleep resumes from setTimeout, and NO browser
