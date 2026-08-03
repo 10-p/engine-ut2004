@@ -294,8 +294,19 @@ if(EMSCRIPTEN)
   # (tempVertexBuffers1[idx]) -> "Cannot read properties of undefined" -> render crash / black
   # screen. GL4ES passes the batch as a client-side array (legal in GLES2; WebGL only emulates it
   # up to the cap). Raise the cap to 16MB post-link so the whole batch fits one bucket.
+  #
+  # ufront 2.19 — the pattern must tolerate BOTH emitted formats. Emscripten minifies at -O3
+  # ("MAX_TEMP_BUFFER_SIZE:2097152") but pretty-prints at -O0 ("MAX_TEMP_BUFFER_SIZE: 2097152"), and the
+  # old regex `MAX_TEMP_BUFFER_SIZE:[0-9]*` matched ZERO digits before that space — so instead of REPLACING
+  # it INSERTED, producing `MAX_TEMP_BUFFER_SIZE:16777216 2097152` and a hard "Uncaught SyntaxError:
+  # Unexpected number" that took the entire debug build down before main() ever ran. `[0-9][0-9]*` requires
+  # at least one digit, making the zero-width match impossible; [[:space:]]* absorbs the space.
   add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND sed -i "s/MAX_TEMP_BUFFER_SIZE:[0-9]*/MAX_TEMP_BUFFER_SIZE:16777216/" "$<TARGET_FILE_DIR:${PROJECT_NAME}>/SDLLaunch.js"
+    COMMAND sed -i "s/MAX_TEMP_BUFFER_SIZE:[[:space:]]*[0-9][0-9]*/MAX_TEMP_BUFFER_SIZE:16777216/" "$<TARGET_FILE_DIR:${PROJECT_NAME}>/SDLLaunch.js"
+    # …and VERIFY it, because the failure above was SILENT: the build reported success and shipped a .js no
+    # browser can parse. Requiring the object-literal comma right after the value rejects the corrupt
+    # "16777216 2097152," form, which a bare "is 16777216 present?" check would happily accept.
+    COMMAND sh -c "grep -qE 'MAX_TEMP_BUFFER_SIZE:[[:space:]]*16777216[[:space:]]*,' \"$<TARGET_FILE_DIR:${PROJECT_NAME}>/SDLLaunch.js\" || { echo 'ERROR: MAX_TEMP_BUFFER_SIZE patch did not apply cleanly - SDLLaunch.js may be syntactically broken'; exit 1; }"
     COMMENT "Raise WebGL temp vertex buffer cap 2MB->16MB (UT2004 batches exceed it; DM-AChina crash)"
     VERBATIM
   )
