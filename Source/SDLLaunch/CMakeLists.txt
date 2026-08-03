@@ -170,6 +170,28 @@ if(EMSCRIPTEN)
       -sNO_DISABLE_EXCEPTION_CATCHING
     )
   endif()
+
+  # ufront 2.19 — DIAGNOSTIC mode: assertions + symbols on top of the PERF build.
+  #
+  # Why this exists rather than "just use the -O0 debug preset": the -O0 configuration currently aborts
+  # during static init ("native code called abort()") before the engine logs anything, and -sSAFE_HEAP on
+  # top makes it worse — SAFE_HEAP is incompatible with -sWASMFS and fires inside Emscripten's OWN
+  # wasmfs::FileTable constructor. Meanwhile -O3 is the configuration every E2E exercises, so it is the
+  # one that actually reaches gameplay. This yields a build that BOOTS and still names an assertion,
+  # which is what diagnosing a bug report needs.
+  #
+  # Applied AFTER the perf/debug branch, deliberately: emcc takes the LAST flag and the perf branch sets
+  # -sASSERTIONS=0 / -g0. CMAKE_EXE_LINKER_FLAGS cannot do this — CMake places it BEFORE
+  # target_link_options, so the target's own flags win and the override silently does nothing.
+  option(UT_WEB_ASSERTIONS "Emscripten: keep runtime assertions + DWARF in the perf build (diagnostic)" OFF)
+  if(UT_WEB_ASSERTIONS)
+    message(STATUS "SDLLaunch: DIAGNOSTIC build - assertions + stack checks + DWARF on top of -O3")
+    target_link_options(${PROJECT_NAME} PRIVATE
+      -g
+      -sASSERTIONS=2
+      -sSTACK_OVERFLOW_CHECK=2
+    )
+  endif()
   # Common Emscripten linker flags (both modes): Asyncify for sync-to-async, SDL2/OpenAL ports, WebGL.
   target_link_options(${PROJECT_NAME} PRIVATE
     -sSTACK_SIZE=2097152
