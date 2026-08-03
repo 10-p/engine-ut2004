@@ -66,12 +66,20 @@
     },
     {
       "name": "wasm",
-      "displayName": "Web (Emscripten/WASM) -- dev/debug",
-      "description": "Emscripten gl4es web build: -O0 + assertions + DWARF/source maps. Builds in build-wasm/. Run `source ~/emsdk/emsdk_env.sh` first (sets EMSDK).",
+      "displayName": "Web (Emscripten/WASM) -- dev default",
+      "description": "Emscripten gl4es web build: -O2 + DWARF + assertions + exception catching. The everyday dev build — named stacks and readable errors while the engine still runs at a playable speed. NOT the small one: DWARF plus un-cleaned-up inlining makes it the largest of the three. Builds in build-wasm/. Run `source ~/emsdk/emsdk_env.sh` first (sets EMSDK).",
       "generator": "Unix Makefiles",
       "binaryDir": "${sourceDir}/build-wasm",
       "toolchainFile": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
-      "cacheVariables": { "UT_WEB_PERF": "OFF" }
+      "cacheVariables": { "UT_WEB_PERF": "OFF", "UT_WEB_DEBUG": "OFF" }
+    },
+    {
+      "name": "wasm-debug",
+      "displayName": "Web (Emscripten/WASM) -- -O0, last resort",
+      "description": "Emscripten gl4es web build: -O0, nothing inlined, every local live. Reach for it when the OPTIMISER is the suspect — a bug that shows at one -O level and not another is almost always undefined behaviour. ~5x the wasm and a much slower boot. Builds in build-wasm-debug/.",
+      "inherits": "wasm",
+      "binaryDir": "${sourceDir}/build-wasm-debug",
+      "cacheVariables": { "UT_WEB_DEBUG": "ON" }
     },
     {
       "name": "wasm-perf",
@@ -90,6 +98,7 @@
     { "name": "gl4es-full", "configurePreset": "gl4es-full" },
     { "name": "legacy-full", "configurePreset": "legacy-full" },
     { "name": "wasm",      "configurePreset": "wasm" },
+    { "name": "wasm-debug", "configurePreset": "wasm-debug" },
     { "name": "wasm-perf", "configurePreset": "wasm-perf" }
   ]
 }

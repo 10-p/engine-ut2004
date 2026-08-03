@@ -33,10 +33,33 @@ endif()
 #-----------------------------------------------------------------------------
 
 option(BUILD_STATIC "Build all modules as static libraries" ON)
-# Emscripten web build optimization mode (EMSCRIPTEN only). OFF (default) = -O0 + assertions +
-# DWARF/source-maps for development/diagnosis. ON = -O3, assertions off, no debug info -> max
-# performance + much smaller wasm. Toggle via the `wasm` / `wasm-perf` CMake presets.
-option(UT_WEB_PERF "Emscripten: build with maximum optimizations instead of the -O0 debug build" OFF)
+# ★ THE THREE WEB BUILD MODES (EMSCRIPTEN only), identical in all four engine repos — ufront 2.19d.
+#
+#   preset        UT_WEB_PERF  UT_WEB_DEBUG  compile   what it is for
+#   wasm-perf     ON           -             -O3 -g0   shipping: fastest, smallest, no symbols
+#   wasm          OFF          OFF           -O2 -g    THE DEV DEFAULT: named stacks, DWARF, assertions
+#   wasm-debug    OFF          ON            -O0 -g    last resort: every local live, nothing inlined
+#
+# `wasm` was -O0 here and -O2 in the three UE1 engines, which is backwards from how debugging on this
+# project actually goes (engine logs + a symbolised build, not a stepping debugger). -O2 -g gives named
+# stacks, readable DWARF and runtime assertions while the engine still RUNS AT A PLAYABLE SPEED, which is
+# the point; -O0 is what you switch to when the OPTIMISER is the suspect, because a bug that appears at
+# one -O level and not another is almost always undefined behaviour rather than a logic error.
+#
+# ⚠ THE DEV BUILD IS NOT THE SMALL ONE — measured 2026-08-03, ut2004:
+#
+#   mode          total     DWARF    code     what dominates
+#   wasm-perf     9.4 MB    0.0      8.9      nothing; -g0 strips it all
+#   wasm-debug   32.8 MB   21.7      9.8      debug info
+#   wasm         49.0 MB   27.4     20.6      debug info AND inlining bloat
+#
+# -O2's code section is more than TWICE -O0's, because DWARF forces Emscripten to "run only limited
+# binaryen optimizations" and these builds link at -O1, so -O2's inlining is never cleaned up the way the
+# perf build's is. Speed is what the dev default buys, not size. (Dropping the dev build to -g2 — function
+# names in the name section, no DWARF — would reclaim most of the 27 MB and still give named stacks, since
+# -O2 cannot honour variable info anyway. Not done; it is a separate change.)
+option(UT_WEB_PERF "Emscripten: shipping build — -O3, no assertions, no debug info" OFF)
+option(UT_WEB_DEBUG "Emscripten: -O0 instead of the -O2 dev default (nothing inlined, every local live)" OFF)
 
 # Graphics/driver backend selection (mutually-exclusive, HARD-SPLIT driver stacks):
 #   legacy = SDL 1.2 (SDLDrv)  + desktop OpenGL (OpenGLDrv)   -> build-legacy/  ut2004-legacy.bin
@@ -297,6 +320,15 @@ if(EMSCRIPTEN AND UT_WEB_PERF)
   # run only "limited binaryen optimizations", so the wasm stays large. -g0 strips it -> full -O3.
   add_compile_options(-O3 -g0)
   add_definitions(-D_REENTRANT -D_NDEBUG=1 -DNDEBUG)
+elseif(EMSCRIPTEN AND UT_WEB_DEBUG)
+  # Last-resort debug build: nothing inlined, every local live, faithful stepping. Costs ~5x the wasm
+  # size of the dev default and a much slower boot, so it is opt-in rather than the default.
+  add_compile_options(-O0 -g)
+  add_definitions(-D_REENTRANT -D_NDEBUG=1)
+elseif(EMSCRIPTEN)
+  # ★ THE DEV DEFAULT (ufront 2.19d) — was -O0. See the option block at the top for why -O2.
+  add_compile_options(-O2 -g)
+  add_definitions(-D_REENTRANT -D_NDEBUG=1)
 elseif(CMAKE_BUILD_TYPE STREQUAL "Debug")
   add_compile_options(-O0 -g)
   add_definitions(-D_DEBUG)
@@ -492,12 +524,12 @@ if(EMSCRIPTEN OR UT_GFX_BACKEND STREQUAL "gl4es")
     # translation layer is unaffected and its `[GL4ES-DBG]` logging is untouched. The engine's own
     # sources keep -O0; a debug build exists to debug THIS engine, not a vendored dependency.
     #
-    # Web only, and only when the global is -O0: native has neither Asyncify nor V8's limit, and
-    # appending this in the perf build would DE-optimise GL4ES from -O3 to -O2 (target options come
-    # after directory options, so the last -O flag would be this one).
-    if(EMSCRIPTEN AND NOT UT_WEB_PERF)
+    # Web only, and only in the -O0 mode: native has neither Asyncify nor V8's limit, and the -O2/-O3
+    # dev and perf builds already inline this far past the problem. Narrow rather than
+    # `NOT UT_WEB_PERF`, so the condition says exactly what it protects against.
+    if(EMSCRIPTEN AND UT_WEB_DEBUG)
       target_compile_options(GL PRIVATE -O2)
-      message(STATUS "GL4ES: forcing -O2 in the web debug build (at -O0 + Asyncify, "
+      message(STATUS "GL4ES: forcing -O2 in the -O0 web build (at -O0 + Asyncify, "
                      "generateInstruction exceeds V8's 50000-local limit and the module will not compile)")
     endif()
   endif()
