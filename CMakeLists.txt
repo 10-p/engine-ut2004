@@ -467,6 +467,39 @@ if(EMSCRIPTEN OR UT_GFX_BACKEND STREQUAL "gl4es")
     if(NOT TARGET gl4es::GL)
       add_library(gl4es::GL ALIAS GL)
     endif()
+
+    # ★ THE WEB DEBUG BUILD MUST NOT COMPILE GL4ES AT -O0 — the module becomes uncompilable.
+    #
+    # GL4ES asks for -O2 itself (its build type is RelWithDebInfo), but this file's directory-wide
+    # `add_compile_options(-O0 -g)` is appended AFTER it and emcc takes the last -O flag, so the
+    # non-perf web build was silently handing GL4ES a -O0 it never asked for. That is fatal here,
+    # because of what happens downstream:
+    #
+    #   `generateInstruction` (arbgenerator.c, a ~950-line macro-expanded ARB-assembly switch)
+    #     compiled at -O0 declares  4800 locals ->  91016 after -sASYNCIFY instrumentation
+    #     compiled at -O2 declares     7 locals ->    358 after -sASYNCIFY instrumentation
+    #
+    # V8 rejects any function declaring more than 50000 locals, so Chromium refused the WHOLE
+    # module: `CompileError: Compiling function #16243:"generateInstruction" failed: local count
+    # too large`. Nothing ran — not even static init — which is why this was mis-recorded as a
+    # static-init abort. Measured 2026-08-03 by re-running the exact compile command at each level
+    # and counting the declared locals in the object, then again through `wasm-opt --asyncify`
+    # (binaryen warns about it in as many words: "Some VMs may not accept this binary because it
+    # has a large number of locals").
+    #
+    # -O2, not -O1, because it is what GL4ES's own build type selects — this restores its choice
+    # rather than inventing one. `-g` still comes from the directory options, so DWARF for the
+    # translation layer is unaffected and its `[GL4ES-DBG]` logging is untouched. The engine's own
+    # sources keep -O0; a debug build exists to debug THIS engine, not a vendored dependency.
+    #
+    # Web only, and only when the global is -O0: native has neither Asyncify nor V8's limit, and
+    # appending this in the perf build would DE-optimise GL4ES from -O3 to -O2 (target options come
+    # after directory options, so the last -O flag would be this one).
+    if(EMSCRIPTEN AND NOT UT_WEB_PERF)
+      target_compile_options(GL PRIVATE -O2)
+      message(STATUS "GL4ES: forcing -O2 in the web debug build (at -O0 + Asyncify, "
+                     "generateInstruction exceeds V8's 50000-local limit and the module will not compile)")
+    endif()
   endif()
 endif()
 
