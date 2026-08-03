@@ -190,6 +190,15 @@ if(EMSCRIPTEN)
       -g
       -sASSERTIONS=2
       -sSTACK_OVERFLOW_CHECK=2
+        # Exception CATCHING back on. The perf branch disables it on the stated grounds that "the engine
+        # has zero throw statements ... the only compiled try/catch is the error reporter, never hit in
+        # normal play". The first half is wrong: FOutputDeviceAnsiError::Serialize THROWS, and every
+        # appError/Critical reaches it. So the moment anything actually goes wrong the throw hits
+        # __cxa_throw with catching off and the runtime aborts with "Exception thrown, but exception
+        # catching is not enabled" — destroying the very message that says WHAT went wrong, and wedging
+        # the pthread so the tab freezes. With catching on the engine unwinds into its own handler and
+        # prints the error (which is the entire point of a diagnostic build).
+        -sNO_DISABLE_EXCEPTION_CATCHING
     )
   endif()
   # Common Emscripten linker flags (both modes): Asyncify for sync-to-async, SDL2/OpenAL ports, WebGL.
