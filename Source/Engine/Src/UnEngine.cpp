@@ -305,6 +305,27 @@ UBOOL UEngine::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 {
 	guard(UEngine::Exec);
 
+	// ufront 2.28: force the config cache out to the filesystem, on demand.
+	//
+	// WHY IT IS FIRST. Every handler below gets the command before the engine's own block, so a subsystem
+	// could shadow this one; persistence is not something a render device may override. It is also why it
+	// lives in UEngine rather than a game class: UEngine::Exec is the one point all four ufront engines
+	// reach from `ue_exec_command`.
+	//
+	// This engine's SaveConfig already ends in GConfig->Flush(0), so an in-game setting change reaches the
+	// filesystem by itself. What this adds is the EXPLICIT "persist now" the host calls before harvesting
+	// the files into durable storage — a browser tab is closed, never shut down, so nothing may be left
+	// waiting for an exit that does not happen.
+	{
+		const TCHAR* FlushStr = Cmd;
+		if( ParseCommand(&FlushStr,TEXT("FLUSHCONFIG")) )
+		{
+			GConfig->Flush( 0 );
+			Ar.Log( TEXT("ufront: flushed config to disk (ok)") );
+			return 1;
+		}
+	}
+
 	// See if any other subsystems claim the command.
 	if( GSys    && GSys->Exec		(Cmd,Ar) ) return 1;
 #ifdef _XBOX
