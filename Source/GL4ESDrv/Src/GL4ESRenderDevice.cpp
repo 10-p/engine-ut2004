@@ -99,6 +99,27 @@ void UGL4ESRenderDevice::StaticConstructor()
 	// is never reached and detail-texture material layers silently vanish. Overridable via ini.
 	DetailTextures					= 1;
 
+	// ★ UseVBO must default ON, and on the web it is the single largest render cost there is.
+	//
+	// Same failure as DetailTextures above, but far more expensive. With UseVBO false,
+	// SUPPORTS_GL_ARB_vertex_buffer_object is cleared (see Init), so CommitStreams hands
+	// glVertexPointer/glColorPointer/glTexCoordPointer RAW CLIENT-SIDE POINTERS. GL4ES passes those
+	// straight through, and WebGL does not accept client-side arrays at all -- Emscripten's FULL_ES2
+	// emulation therefore COPIES THE VERTEX RANGE INTO A TEMP BUFFER ON EVERY SINGLE DRAW CALL.
+	//
+	// MEASURED on the CTF-CBP2-Skorbut timedemo (ufront step 2.30, RTX 3090, 1024x768): 882 draws per
+	// frame turned into 15,322 WebGL calls per frame and 585 MB of per-frame vertex re-upload
+	// (7.6 GB/s) -- 4.9 bufferSubData + 6.9 bindBuffer + 3.9 vertexAttribPointer PER DRAW. That is
+	// also why the link has to raise Emscripten's MAX_TEMP_BUFFER_SIZE to 16 MB (see
+	// Source/SDLLaunch/CMakeLists.txt): the temp buffer only exists because of this default.
+	//
+	// The VBO path (FGL4ESVertexStreamARB_VBO / FGL4ESIndexBufferARB_VBO) is fully implemented and
+	// GL4ES advertises GL_ARB_vertex_buffer_object, so the data belongs in real buffer objects that
+	// are uploaded once and re-bound per draw. The false default is inherited from stock UT2004's
+	// [OpenGLDrv.OpenGLRenderDevice], where it dates from 2004-era desktop drivers; it was never a
+	// decision about the web. Overridable via ini, like every other option here.
+	UseVBO							= 1;
+
 	SupportsCubemaps				= 1;
 	SupportsZBIAS					= 1;
 	SupportsRenderToTextureRGBA8888	= 0;
@@ -503,7 +524,26 @@ UBOOL UGL4ESRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Ful
 			setenv("LIBGL_ES", "2", 1);               // Target GLES2
 			setenv("LIBGL_NOBANNER", "1", 1);          // Suppress GL4ES banner
 			setenv("LIBGL_NOERROR", "0", 1);           // Keep error reporting for debugging
-			setenv("LIBGL_USEVBO", "0", 1);            // Client-side arrays (OpenGLDrv default)
+			// ★★ LIBGL_USEVBO=1 -- the single largest render cost on the web, and the SECOND of two
+			// switches that both had to say "VBO" (see the UseVBO note in StaticConstructor for the
+			// first). With this at 0, gl4es never gives its buffer objects a real_buffer, so
+			// realize_glenv hands glVertexAttribPointer RAW CLIENT-SIDE POINTERS no matter what the
+			// driver did -- flipping only the driver's UseVBO changes the engine's log line and
+			// nothing else whatsoever (measured: the GL stream was bit-for-bit identical).
+			//
+			// Client-side arrays DO NOT EXIST IN WebGL. Emscripten's FULL_ES2 emulation therefore
+			// copies the used vertex range into a temp buffer BEFORE EVERY DRAW CALL, and the same
+			// for indices. MEASURED on the CTF-CBP2-Skorbut timedemo (ufront step 2.30, RTX 3090,
+			// 1024x768) with a WebGL call census + JS stack attribution: 882 draws/frame became
+			// 15,322 WebGL calls/frame and 585 MB/frame of re-upload (7.6 GB/s), with the stacks
+			// naming Object.preDrawHandleClientVertexAttribBindings and _emscripten_glDrawElements
+			// as the callers -- i.e. every byte of it was emulation overhead, not our data.
+			//
+			// The old comment justified 0 as "OpenGLDrv default", which is a 2004 DESKTOP default
+			// where client arrays are legal and cheap. It is not a statement about GLES/WebGL.
+			// Android benefits too (tiled GLES2 drivers hate client arrays), so this is deliberately
+			// NOT scoped to __EMSCRIPTEN__.
+			setenv("LIBGL_USEVBO", "1", 1);            // Real VBOs; client arrays don't exist in WebGL
 			setenv("LIBGL_BATCH", "0", 1);             // No draw-call batching initially
 			setenv("LIBGL_NOARBPROGRAM", "0", 1);      // Allow ARB_fragment_program conversion
 			setenv("LIBGL_AVOID16BITS", "1", 1);       // 32-bit textures for quality
@@ -688,6 +728,7 @@ UBOOL UGL4ESRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Ful
 	SUPPORTS_GL_ARB_texture_env_crossbar |= SUPPORTS_GL_NV_texture_env_combine4;
 
 	// Use ARB_vbo where available.
+	const UBOOL DeviceHasVBO = SUPPORTS_GL_ARB_vertex_buffer_object;   // the else below CLEARS the flag
 	if( SUPPORTS_GL_ARB_vertex_buffer_object && UseVBO )
 	{
 		SUPPORTS_GL_ATI_element_array			= 0;
@@ -698,6 +739,16 @@ UBOOL UGL4ESRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Ful
 	}
 	else
 		SUPPORTS_GL_ARB_vertex_buffer_object = 0;
+
+	// SAY WHICH PATH WON. This decision is the difference between uploading each vertex range once
+	// and re-uploading it on every draw call (see the UseVBO note in StaticConstructor), and it was
+	// previously silent -- so an ini that never reached the driver looked exactly like an ini that
+	// did. Report BOTH inputs, not just the outcome: "off" because the device lacks the extension and
+	// "off" because config said so need completely different fixes, and the outcome alone cannot tell
+	// them apart. DeviceHasVBO is snapshotted above precisely because the else branch destroys it.
+	debugf( TEXT("GL4ES: Vertex buffers: %s (UseVBO=%i, device GL_ARB_vertex_buffer_object=%i)"),
+		SUPPORTS_GL_ARB_vertex_buffer_object ? TEXT("VBO") : TEXT("CLIENT-SIDE ARRAYS (slow on WebGL)"),
+		(INT)UseVBO, (INT)DeviceHasVBO );
 
 	// Only enable VAR if VAR2 is exposed as well.
 	SUPPORTS_GL_NV_vertex_array_range &= SUPPORTS_GL_NV_vertex_array_range2;

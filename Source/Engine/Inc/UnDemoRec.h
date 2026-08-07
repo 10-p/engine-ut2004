@@ -67,6 +67,19 @@ class ENGINE_API UDemoRecDriver : public UNetDriver
 	DOUBLE			LastClientRecordTime; // for capping client-side demo recording FPS.
 	FLOAT			DemoRecMultiFrameDeltaTime;
 
+	// --- timedemo FRAME-TIME DISTRIBUTION (ufront step 2.30) ---------------------------------------
+	// The timedemo has always reported a MEAN, and a mean cannot see the thing players complain about:
+	// "it drops to ~15 fps at times" is a statement about the TAIL, and a run that is smooth at 60 and
+	// a run that alternates 120/20 can report the same average. These accumulate a fixed-bucket
+	// histogram of per-frame wall time plus the worst frame, which costs one appSeconds() and one
+	// increment per frame and needs no allocation. Only maintained when NoFrameCap (i.e. `?timedemo`),
+	// so ordinary demo playback is byte-for-byte unaffected.
+	enum { DEMO_FT_BUCKETS = 8 };
+	DOUBLE			LastTimedFrameStart;
+	INT				FrameTimeBuckets[DEMO_FT_BUCKETS];
+	INT				FrameTimeSamples;
+	DOUBLE			WorstFrameMs;
+
 	// Constructors.
 	void StaticConstructor();
 	UDemoRecDriver();

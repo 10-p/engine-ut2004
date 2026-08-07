@@ -91,6 +91,16 @@ UBOOL UDemoRecDriver::InitBase( UBOOL Connect, FNetworkNotify* InNotify, FURL& C
 	FrameNum       = 0;
 	DemoEnded      = 0;
 
+	// Zero the frame-time distribution here as well as at the start of timing: the reporting block is
+	// guarded on FrameTimeSamples, and a demo that ends before precaching finishes never reaches the
+	// timing-start branch. UObject memory is zeroed on construction, but a LOOPED demo reuses the
+	// driver, and without this the second run would report the first run's tail.
+	FrameTimeSamples    = 0;
+	WorstFrameMs        = 0.0;
+	LastTimedFrameStart = 0.0;
+	for( INT i=0; i<DEMO_FT_BUCKETS; i++ )
+		FrameTimeBuckets[i] = 0;
+
 	return 1;
 	unguard;
 }
@@ -357,6 +367,35 @@ UBOOL UDemoRecDriver::UpdateDemoTime( FLOAT* DeltaTime, FLOAT TimeDilation )
 		{
 			PlaybackStartTime = appSeconds();
 			InitialFrameStart = FrameNum;
+			// Start the distribution at the same instant the mean starts, so the two describe exactly
+			// the same set of frames and cannot disagree about what was measured.
+			LastTimedFrameStart = PlaybackStartTime;
+			FrameTimeSamples = 0;
+			WorstFrameMs = 0.0;
+			for( INT i=0; i<DEMO_FT_BUCKETS; i++ )
+				FrameTimeBuckets[i] = 0;
+		}
+		else if( NoFrameCap && InitialFrameStart != 0 )
+		{
+			// One sample per frame of the timed run. Buckets are chosen as the frame rates a player
+			// would actually name, not round millisecond numbers, so the histogram reads directly as
+			// "how much of the run was above 60 / below 30 / below 15".
+			const DOUBLE Now = appSeconds();
+			const DOUBLE Ms  = (Now - LastTimedFrameStart) * 1000.0;
+			LastTimedFrameStart = Now;
+			if( Ms > WorstFrameMs )
+				WorstFrameMs = Ms;
+			INT B;
+			if     ( Ms <  8.333 ) B = 0;   // >120 fps
+			else if( Ms < 16.667 ) B = 1;   // 60-120
+			else if( Ms < 33.333 ) B = 2;   // 30-60
+			else if( Ms < 50.0   ) B = 3;   // 20-30
+			else if( Ms < 66.667 ) B = 4;   // 15-20
+			else if( Ms < 100.0  ) B = 5;   // 10-15
+			else if( Ms < 200.0  ) B = 6;   // 5-10
+			else                   B = 7;   // <5 fps
+			FrameTimeBuckets[B]++;
+			FrameTimeSamples++;
 		}
 
 		if( ServerConnection->State==USOCK_Open ) 
@@ -439,7 +478,30 @@ void UDemoRecDriver::TickDispatch( FLOAT DeltaTime )
 					FString Result = FString::Printf(TEXT("Demo %s ended: %d frames in %lf seconds (%.3f fps)"), *DemoFilename, FrameNum-InitialFrameStart, Seconds, (FrameNum-InitialFrameStart)/Seconds );
 					debugf(TEXT("%s"),*Result);
 					ServerConnection->Actor->eventClientMessage( *Result, NAME_None );//!!localize!!
-				
+
+					// ★ THE DISTRIBUTION, not just the mean (ufront step 2.30). The average above cannot
+					// distinguish a steady 30 fps from an alternating 120/15, and the complaint this
+					// instrument exists to chase is precisely about the bad frames. Printed on ONE line,
+					// machine-greppable, in frame-rate bands rather than milliseconds so it can be read
+					// without conversion. Percentages are of the timed frames only.
+					if( FrameTimeSamples > 0 )
+					{
+						static const TCHAR* BandNames[DEMO_FT_BUCKETS] =
+						{
+							TEXT(">120"), TEXT("60-120"), TEXT("30-60"), TEXT("20-30"),
+							TEXT("15-20"), TEXT("10-15"), TEXT("5-10"),  TEXT("<5")
+						};
+						FString Dist;
+						for( INT i=0; i<DEMO_FT_BUCKETS; i++ )
+							Dist += FString::Printf( TEXT("%s:%d(%.1f%%) "), BandNames[i], FrameTimeBuckets[i],
+								100.f * FrameTimeBuckets[i] / FrameTimeSamples );
+						// "below 30 fps" is the number a player feels, so state it outright rather than
+						// leaving it to be summed from the bands by whoever reads the log.
+						const INT Below30 = FrameTimeBuckets[3]+FrameTimeBuckets[4]+FrameTimeBuckets[5]+FrameTimeBuckets[6]+FrameTimeBuckets[7];
+						debugf( TEXT("Demo %s distribution (%d frames): %s| worst %.1f ms | below 30fps: %.1f%%"),
+							*DemoFilename, FrameTimeSamples, *Dist, WorstFrameMs, 100.f * Below30 / FrameTimeSamples );
+					}
+
 					if( ParseParam(appCmdLine(),TEXT("EXITAFTERDEMO")) )
 					{
 						// Output average framerate.
