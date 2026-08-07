@@ -544,7 +544,7 @@ UBOOL UGL4ESRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Ful
 			// Android benefits too (tiled GLES2 drivers hate client arrays), so this is deliberately
 			// NOT scoped to __EMSCRIPTEN__.
 			setenv("LIBGL_USEVBO", "1", 1);            // Real VBOs; client arrays don't exist in WebGL
-			setenv("LIBGL_BATCH", "0", 1);             // No draw-call batching initially
+			setenv("LIBGL_BATCH", "0", 1);             // No draw-call batching: MEASURED as a big regression (2.30)
 			setenv("LIBGL_NOARBPROGRAM", "0", 1);      // Allow ARB_fragment_program conversion
 			setenv("LIBGL_AVOID16BITS", "1", 1);       // 32-bit textures for quality
 			setenv("LIBGL_MIPMAP", "0", 1);            // Normal mipmap handling
