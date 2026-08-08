@@ -189,12 +189,16 @@ endif()
 # - UT2004's internal strings are 2-byte encoded
 # - 4-byte wchar_t misinterprets 2-byte string data, truncating filenames
 # This matches the original Makefile's NO_UNICODE_OS_SUPPORT=1 setting.
-if(EMSCRIPTEN OR ANDROID)
+if(EMSCRIPTEN OR ANDROID OR MINGW)
   # Android, like Emscripten, uses the ANSI (char-based TCHAR) path. bionic's wchar_t is 32-bit
   # and its <wchar.h> uses a different include guard than glibc's _WCHAR_H, so the engine's 16-bit
   # wcs* redeclarations (UNICODE_BY_HAND block) clash with the system ones pulled in by SDL2.
   # NO_UNICODE_OS_SUPPORT compiles that block out and sidesteps the whole wchar/-fshort-wchar/libc
   # issue -- the same, already-shipping approach as the web build.
+  # ufront 2.33 — MinGW joins them for the same reason from the other direction: its wchar_t is 16-bit
+  # (the Windows width the engine wants), but it is still a DISTINCT type from the engine's UNICHAR, so
+  # every UNICODE_BY_HAND redeclaration of wcslen/wcstoul/_wtof "ambiguates" the one MinGW already
+  # declares. Same block, same cure.
   add_definitions(-DNO_UNICODE_OS_SUPPORT=1)
 else()
   add_definitions(-DUNICODE=1 -D_UNICODE=1)
@@ -550,8 +554,13 @@ endif()
 # SDL 1.2 paths are only needed by the legacy backend (vendored 2006 .so + headers).
 # USE_SDL12 is derived from UT_GFX_BACKEND above (legacy => ON); it is no longer a separate option.
 if(USE_SDL12)
-  set(SDL12_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/Thirdparty/SDL12/include")
-  set(SDL12_LIBRARY "${CMAKE_SOURCE_DIR}/Thirdparty/SDL12/libSDL-1.2.so.0")
+  if(MINGW)
+    # ufront 2.33 — no Windows build of SDL 1.2 to vendor; fetch SDL's own prebuilt MinGW binaries.
+    include(SDL12Mingw)
+  else()
+    set(SDL12_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/Thirdparty/SDL12/include")
+    set(SDL12_LIBRARY "${CMAKE_SOURCE_DIR}/Thirdparty/SDL12/libSDL-1.2.so.0")
+  endif()
 endif()
 
 # Emscripten: SDL2 is provided by the port flag; add global compile option for SDL.h includes

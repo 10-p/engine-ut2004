@@ -32,6 +32,14 @@
    typedef __int32 ogg_int32_t;
    typedef unsigned __int32 ogg_uint32_t;
    typedef __int16 ogg_int16_t;
+#  elif defined(__MINGW32__)
+   /* ufront 2.33: MinGW is _WIN32 *and* __GNUC__, so it fell into the Cygwin branch below and reached
+      for glibc's internal <_G_config.h>, which no MinGW sysroot has. It has C99 stdint instead. */
+   #include <stdint.h>
+   typedef int64_t ogg_int64_t;
+   typedef int32_t ogg_int32_t;
+   typedef uint32_t ogg_uint32_t;
+   typedef int16_t ogg_int16_t;
 #  else
    /* Cygwin */
    #include <_G_config.h>
