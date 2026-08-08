@@ -21,6 +21,15 @@
 #  define UT_MKDIR(p) mkdir((p), S_IRUSR | S_IWUSR | S_IXUSR)
 #endif
 
+// ufront 2.33 ★ THE ut2004 WINDOWS STARTUP CRASH. MinGW's open() defaults to TEXT mode, which translates
+// CRLF and stops at Ctrl-Z — so read() returns FEWER bytes than asked for, every archive read "fails",
+// and the engine died reading its own ini before it could log a word. The fopen() calls in this file
+// already say "rb"; these open() calls said nothing. O_BINARY is 0 on POSIX (no text/binary distinction),
+// so OR-ing it in is a no-op for Linux and the web.
+#ifndef O_BINARY
+#  define O_BINARY 0
+#endif
+
 #ifndef _WIN32
 #include <pwd.h>	// ufront 2.33: no passwd database on Windows (see the home-dir lookup below)
 #endif
@@ -134,7 +143,7 @@ public:
 		guardSlow(FArchiveFileReaderMMAP::Serialize);
 
 		if (Length > (this->Size - this->Pos))
-			Error->Logf( TEXT("ReadFile beyond EOF %i+%i/%i"), Pos, Length, Size );
+			if( Error ) Error->Logf( TEXT("ReadFile beyond EOF %i+%i/%i"), Pos, Length, Size );
         
         memcpy(V, Buffer + Pos, Length);
         Pos += Length;
@@ -182,7 +191,7 @@ public:
 		if( read( File, Buffer, BufferCount ) != BufferCount )
 		{
 			ArIsError = 1;
-			Error->Logf( TEXT("read failed: BufferCount=%i errno=%d"), BufferCount, (int) errno );
+			if( Error ) Error->Logf( TEXT("read failed: BufferCount=%i errno=%d"), BufferCount, (int) errno );
 			return;
 		}
 		FLOAT	DeltaTime	= (FLOAT) (appSeconds() - StartTime);
@@ -198,7 +207,7 @@ public:
 		if( lseek(File,InPos,SEEK_SET) == -1 )
 		{
 			ArIsError = 1;
-			Error->Logf( TEXT("seek Failed %i/%i: %i %i"), InPos, Size, Pos, errno );
+			if( Error ) Error->Logf( TEXT("seek Failed %i/%i: %i %i"), InPos, Size, Pos, errno );
 		}
 		Pos         = InPos;
 		BufferBase  = Pos;
@@ -235,7 +244,7 @@ public:
 					if( read( File, V, Length )!=Length )
 					{
 						ArIsError = 1;
-						Error->Logf( TEXT("read failed: Length=%i errno=%i"), Length, (int) errno );
+						if( Error ) Error->Logf( TEXT("read failed: Length=%i errno=%i"), Length, (int) errno );
 					}
 					Pos += Length;
 					BufferBase += Length;
@@ -246,7 +255,7 @@ public:
 				if( Copy<=0 )
 				{
 					ArIsError = 1;
-					Error->Logf( TEXT("ReadFile beyond EOF %i+%i/%i"), Pos, Length, Size );
+					if( Error ) Error->Logf( TEXT("ReadFile beyond EOF %i+%i/%i"), Pos, Length, Size );
 				}
 				if( ArIsError )
 					return;
@@ -294,7 +303,7 @@ public:
 		if( lseek(File,InPos,SEEK_SET) == -1 )
 		{
 			ArIsError = 1;
-			Error->Logf( LocalizeError("SeekFailed",TEXT("Core")) );
+			if( Error ) Error->Logf( LocalizeError("SeekFailed",TEXT("Core")) );
 		}
 		Pos = InPos;
 	}
@@ -309,7 +318,7 @@ public:
 		if( ( File >= 0 ) && ( close( File ) == -1 ) )
 		{
 			ArIsError = 1;
-			Error->Logf( LocalizeError("WriteFailed",TEXT("Core")) );
+			if( Error ) Error->Logf( LocalizeError("WriteFailed",TEXT("Core")) );
 		}
 		File = -1;
 		return !ArIsError;
@@ -338,7 +347,7 @@ public:
 		if( BufferCount && write( File, Buffer, BufferCount )!=BufferCount )
 		{
 			ArIsError = 1;
-			Error->Logf( LocalizeError("WriteFailed",TEXT("Core")) );
+			if( Error ) Error->Logf( LocalizeError("WriteFailed",TEXT("Core")) );
 		}
 		BufferCount=0;
 	}
@@ -450,7 +459,7 @@ public:
             unixToANSI( ansipath, tmp );
     		char* Filename = appUnixPath(ansipath);
             if (!isdir(Filename))
-    		    File = open(Filename, O_RDONLY, S_IRUSR | S_IWUSR);
+    		    File = open(Filename, O_RDONLY | O_BINARY, S_IRUSR | S_IWUSR);
         }
 
         if ( File < 0 )  // not in homedir? try game dir.
@@ -458,7 +467,7 @@ public:
             unixToANSI( ansipath, FakeFilename );
             char *Filename = appUnixPath(ansipath);
             if (!isdir(Filename))
-		        File = open(Filename, O_RDONLY, S_IRUSR | S_IWUSR);
+		        File = open(Filename, O_RDONLY | O_BINARY, S_IRUSR | S_IWUSR);
         }
 
 		if ( ( File < 0 ) || ( fstat ( File, &statbuf ) < 0 ) )
@@ -521,7 +530,7 @@ public:
 			return NULL;
 
         int Mode = O_WRONLY | O_CREAT | ((Flags & FILEWRITE_Append) ? O_APPEND : O_TRUNC);
-		int File = open(Filename, Mode, S_IRUSR | S_IWUSR);
+		int File = open(Filename, Mode | O_BINARY, S_IRUSR | S_IWUSR);
 		if( File < 0 )
 		{
 			if( Flags & FILEWRITE_NoFail )

@@ -758,6 +758,29 @@ static UEngine* InitEngine()
             GConfig->SetString(TEXT("Engine.Engine"), TEXT("ViewportManager"), TEXT("SDL2Drv.SDL2Client"));
         }
     }
+#else
+    // ufront 2.33 — THE MIRROR OF THE ABOVE, which was missing. The ini is shared between backends and
+    // whichever ran last wins, so a legacy binary routinely inherits `SDL2Drv.SDL2Client` from a previous
+    // gl4es run — a class it does not contain. StaticLoadClass then fails inside UGameEngine::Init with
+    // LOAD_NoFail, i.e. appError before the log file exists, so it looks like a silent exit-1. That is
+    // exactly how the first Windows boot presented; it is NOT Windows-specific (a native `legacy` run
+    // after a `gl4es` run hits the same thing).
+    if( appStricmp(GConfig->GetStr(TEXT("Engine.Engine"),TEXT("ViewportManager"),TEXT("System")),TEXT("SDL2Drv.SDL2Client"))==0 )
+    {
+        if( !ParseParam(appCmdLine(),TEXT("NoForceSDLDrv")) )
+        {
+            debugf(TEXT("Auto-switching from SDL2Drv to SDLDrv for the SDL 1.2 binary."));
+            GConfig->SetString(TEXT("Engine.Engine"), TEXT("ViewportManager"), TEXT("SDLDrv.SDLClient"));
+        }
+    }
+    if( appStricmp(GConfig->GetStr(TEXT("Engine.Engine"),TEXT("RenderDevice"),TEXT("System")),TEXT("GL4ESDrv.GL4ESRenderDevice"))==0 )
+    {
+        if( !ParseParam(appCmdLine(),TEXT("NoForceGL4ES")) )
+        {
+            debugf(TEXT("Auto-switching from GL4ESDrv to OpenGLDrv for the SDL 1.2 binary."));
+            GConfig->SetString(TEXT("Engine.Engine"), TEXT("RenderDevice"), TEXT("OpenGLDrv.OpenGLRenderDevice"));
+        }
+    }
 #endif
 
     // Auto-switch from TcpNetDriver to WebRTCNetDriver on Emscripten (per D-05).
