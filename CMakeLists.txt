@@ -175,8 +175,13 @@ if(NOT ANDROID)
 endif()
 
 # Linux platform
-add_definitions(-DLINUX=1)
-add_definitions(-D__LINUX_X86__)
+# ufront 2.33: these were unconditional, which is fine while every non-web target IS Linux. A Windows
+# (MinGW) build must not claim to be Linux — LINUX/__LINUX_X86__ select the POSIX file, socket, threading
+# and dynamic-loader paths throughout the engine.
+if(NOT WIN32)
+  add_definitions(-DLINUX=1)
+  add_definitions(-D__LINUX_X86__)
+endif()
 
 # Unicode support
 # On Emscripten, use ANSI mode (char-based TCHAR) because:
@@ -384,15 +389,22 @@ if(NOT EMSCRIPTEN AND UT_GFX_BACKEND STREQUAL "gl4es")
   else()
     set(SDL_SHARED OFF CACHE BOOL "" FORCE)
     set(SDL_STATIC ON CACHE BOOL "" FORCE)
-    # Force X11 video driver — SDL2's CMake misses 32-bit X11 libs during -m32 cross-compile.
-    # Point find_library and find_path at the i386 multiarch directories.
-    set(SDL_X11 ON CACHE BOOL "" FORCE)
-    set(SDL_WAYLAND OFF CACHE BOOL "" FORCE)
-    set(SDL_X11_SHARED OFF CACHE BOOL "" FORCE)
-    list(APPEND CMAKE_LIBRARY_PATH /usr/lib/i386-linux-gnu)
-    list(APPEND CMAKE_PREFIX_PATH /usr/lib/i386-linux-gnu)
-    set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY BOTH)
-    FetchContent_MakeAvailable(SDL2)
+    if(MINGW)
+      # ufront 2.33 (Windows) — SDL2 selects its own Windows video/audio backends. The X11 forcing below
+      # is a Linux -m32 cross-compile workaround; applying it here would send SDL2 hunting for X11 libs
+      # that do not exist on a Windows target.
+      FetchContent_MakeAvailable(SDL2)
+    else()
+      # Force X11 video driver — SDL2's CMake misses 32-bit X11 libs during -m32 cross-compile.
+      # Point find_library and find_path at the i386 multiarch directories.
+      set(SDL_X11 ON CACHE BOOL "" FORCE)
+      set(SDL_WAYLAND OFF CACHE BOOL "" FORCE)
+      set(SDL_X11_SHARED OFF CACHE BOOL "" FORCE)
+      list(APPEND CMAKE_LIBRARY_PATH /usr/lib/i386-linux-gnu)
+      list(APPEND CMAKE_PREFIX_PATH /usr/lib/i386-linux-gnu)
+      set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY BOTH)
+      FetchContent_MakeAvailable(SDL2)
+    endif()
   endif()
 endif()
 
