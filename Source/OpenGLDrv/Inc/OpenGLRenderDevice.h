@@ -76,7 +76,7 @@ public:
 									ConfigVARSize;
 	UBOOL							IsR100;
 
-#ifdef WIN32
+#ifdef UT_OPENGLDRV_WGL
 	HGLRC							hRC;
 	HWND							hWnd;
 	HDC								hDC;
@@ -91,7 +91,7 @@ public:
 	static INT						VARIndex;
 	static INT						VARSize;
 
-#ifdef WIN32
+#ifdef UT_OPENGLDRV_WGL
 	static HMODULE					hModuleGLMain;
 	static HGLRC					hCurrentRC;
 	static HMODULE					hModuleGLGDI;

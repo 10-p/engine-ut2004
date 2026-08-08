@@ -22,6 +22,21 @@
 #include <errno.h>
 
 // System includes.
+// ufront 2.33 (Windows/MinGW): this file is the platform layer for every non-MSVC target, Windows now
+// included. MinGW has unistd/dirent/utime/sys-time/sys-stat, but not the process, resource-limit or
+// name-resolution headers; Windows answers those through Win32 and WinSock.
+#ifdef _WIN32
+#include <winsock2.h>
+#include <windows.h>
+#include <process.h>	// _spawnv
+#include <unistd.h>
+#include <dirent.h>
+#include <utime.h>
+#include <sys/time.h>
+#include <sys/stat.h>
+#include <pthread.h>	// winpthreads (the toolchain's `posix` thread model)
+#include <sys/types.h>
+#else
 #include <sys/param.h>
 #include <unistd.h>
 #include <dirent.h>
@@ -43,13 +58,15 @@
 #include <pthread.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#endif
 
 #if __FILE_NOCASE
 #include <dirent.h>
 #endif
 
 // Stack traces via C runtime...
-#if ((MACOSX) || (__FreeBSD__) || defined(__EMSCRIPTEN__))
+// ufront 2.33: MinGW has no <execinfo.h> either — backtrace()/backtrace_symbols() are a glibc extension.
+#if ((MACOSX) || (__FreeBSD__) || defined(__EMSCRIPTEN__) || defined(_WIN32))
 #  define HAVE_EXECINFO_H 0
 #else
 #  define HAVE_EXECINFO_H 1
@@ -58,6 +75,13 @@
 
 #ifdef __EMSCRIPTEN__
 #  include <emscripten.h>
+#endif
+
+#ifdef _WIN32
+// ufront 2.33: MAXPATHLEN is a BSD/glibc spelling; the Win32 equivalent is MAX_PATH.
+#  ifndef MAXPATHLEN
+#    define MAXPATHLEN MAX_PATH
+#  endif
 #endif
 
 // Core includes.
@@ -1214,6 +1238,13 @@ UBOOL USystem::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
         char ansistr[RELAUNCH_ARRAY];
         appToAnsi(Arg0, ansistr);
 
+#ifdef _WIN32
+		// ufront 2.33: no fork() on Windows. _spawnl already means "start it and keep going", so the
+		// child/parent split collapses to spawn-then-exit.
+		if( _spawnl( _P_NOWAIT, "./ucc.exe", "ucc", "server", ansistr, (char*)NULL ) == -1 )
+			appErrorf( TEXT("Failed to launch process.") );
+		appRequestExit( 0 );
+#else
 		if (fork() == 0)
 		{
 			appSleep(3);
@@ -1223,6 +1254,7 @@ UBOOL USystem::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 		} else {
 			appRequestExit( 0 );
 		}
+#endif
 #endif
 		return 1;
 	}
@@ -1342,12 +1374,23 @@ void* appGetDllHandle( const TCHAR* Filename )
 	return (void*)-1;
 #endif
 
+#ifdef _WIN32
+	// ufront 2.33 — same answer as Emscripten, for the same reason: BUILD_STATIC is ON by default in this
+	// engine, so every package IS the main binary and there is nothing to load. The generic static path
+	// below is `#if 0`'d, and native Linux instead leans on dlopen(NULL) returning a handle to the
+	// executable — a POSIX behaviour Windows has no equivalent of. The sentinel sidesteps it entirely, so
+	// no LoadLibrary and no Core.dll/Engine.dll question. (A future SHARED Windows build would need a real
+	// LoadLibrary path here plus exported symbols; it does not exist today.)
+	return (void*)-1;
+#endif
+
 	void *Result = NULL;
 
 	#if 0 //__STATIC_LINK
 		return((void*) -1);
 	#endif
 
+#ifndef _WIN32	// ufront 2.33: unreachable on Windows (sentinel above), and dlfcn does not exist there.
 	check(Filename);
 	const TCHAR* PackageName = Filename;
 	TCHAR* Cur;
@@ -1442,6 +1485,7 @@ void* appGetDllHandle( const TCHAR* Filename )
 #endif
 
 	return Result;
+#endif // !_WIN32
 	unguard;
 }
 
@@ -1456,9 +1500,15 @@ void appFreeDllHandle( void* DllHandle )
 	if (DllHandle == (void *) -1)
 		return;
 
+#ifdef _WIN32
+	// ufront 2.33: appGetDllHandle only ever returns the sentinel here, so this is unreachable — but do
+	// not fall through to dlclose(), which does not exist on Windows.
+	return;
+#else
 	// remember that you can unload bundles,
 	//  but not .dylib files on Darwin! --ryan.
 	dlclose( DllHandle );
+#endif
 
 	unguard;
 }
@@ -1483,6 +1533,18 @@ void* appGetDllExport( void* DllHandle, const TCHAR* ProcName )
 	}
 #endif
 
+#ifdef _WIN32
+	// ufront 2.33 — the sentinel means "it is in the exe". GetProcAddress on the module handle is the
+	// Win32 spelling of dlsym(RTLD_DEFAULT), and it resolves only EXPORTED names — so the launcher links
+	// with --export-all-symbols (see CMakeLists.txt), which is what makes the package registrants
+	// (GLoaded<Package>) visible to this lookup.
+	{
+		HMODULE Module = GetModuleHandleA( NULL );
+		return (void*)GetProcAddress( Module, appToAnsi(ProcName) );
+	}
+#endif
+
+#ifndef _WIN32	// ufront 2.33: unreachable on Windows (GetProcAddress above).
 	void* Result = NULL;
 
 	const char *Error;
@@ -1495,6 +1557,7 @@ void* appGetDllExport( void* DllHandle, const TCHAR* ProcName )
 		debugf( TEXT("dlerror: %s"), ANSI_TO_TCHAR(Error) );
 
 	return Result;
+#endif // !_WIN32
 
 	unguard;
 }
@@ -1539,9 +1602,17 @@ void* appCreateProc( const TCHAR* URL, const TCHAR* Parms )
 	appStrcat(LocalParms, TEXT(" "));
 	appStrcat(LocalParms, Parms);
 
+#ifdef _WIN32
+	// ufront 2.33: _spawnlp via the shell is the Windows equivalent of fork-then-system. The returned
+	// handle is a process handle rather than a pid; appGetProcReturnCode's map is keyed on it either way.
+	intptr_t pid = _spawnlp( _P_NOWAIT, "cmd.exe", "cmd.exe", "/c", appToAnsi(LocalParms), (char*)NULL );
+	if( pid == -1 )
+		debugf( TEXT("appCreateProc: failed to launch %s"), LocalParms );
+#else
 	pid_t pid = fork();
 	if (pid == 0)
 		_exit( system( appToAnsi(LocalParms) ) );
+#endif
 
 	return (void*) ((PTRINT) pid);
 	unguard;
@@ -1567,10 +1638,15 @@ UBOOL appGetProcReturnCode( void* ProcHandle, INT* ReturnCode )
 
 static void HandleChild(int Signal)
 {
+#ifndef _WIN32
+	// ufront 2.33: SIGCHLD reaping is POSIX-only. Windows has no zombie processes to reap — a spawned
+	// child's exit code is read from its handle — and this is only ever installed by the sigaction block
+	// in appPlatformInit, which is itself POSIX-only.
 	int Status;
 	pid_t pid;
 	while( (pid=waitpid(-1, &Status, WNOHANG)) > 0 )
 		ExitCodeMap->Set( pid, WEXITSTATUS(Status) );
+#endif
 }
 
 static pid_t mainPID;
@@ -1583,30 +1659,40 @@ static void HandleSignal( int Signal )
 	char* sig_text;
 	switch (Signal)
 	{
+#ifndef _WIN32	// ufront 2.33: not defined by MinGW's <signal.h> — no such signal on Windows.
 		case SIGHUP:
 			sig_text = "Signal: SIGHUP [hangup]";
 			SignalExit++;
 			break;
+#endif
+#ifndef _WIN32	// ufront 2.33: not defined by MinGW's <signal.h> — no such signal on Windows.
 		case SIGQUIT:
 			sig_text = "Signal: SIGQUIT [quit]";
 			SignalExit++;
 			break;
+#endif
 		case SIGILL:
 			sig_text = "Signal: SIGILL [illegal instruction]";
 			SignalCritical++;
 			break;
+#ifndef _WIN32	// ufront 2.33: not defined by MinGW's <signal.h> — no such signal on Windows.
 		case SIGTRAP:
 			sig_text = "Signal: SIGTRAP [trap]";
 			SignalCritical++;
 			break;
+#endif
+#ifndef _WIN32	// ufront 2.33: not defined by MinGW's <signal.h> — no such signal on Windows.
 		case SIGIOT:
 			sig_text = "Signal: SIGIOT [iot trap]";
 			SignalCritical++;
 			break;
+#endif
+#ifndef _WIN32	// ufront 2.33: not defined by MinGW's <signal.h> — no such signal on Windows.
 		case SIGBUS:
 			sig_text = "Signal: SIGBUS [bus error]";
 			SignalCritical++;
 			break;
+#endif
 		case SIGFPE:
 			sig_text = "Signal: SIGFPE [floating point exception]";
 			SignalCritical++;
@@ -1818,7 +1904,11 @@ CORE_API void appArgv0(const char *argv0)
     buf[sizeof (buf) - 1] = '\0';  // null terminate, just in case.
 
     char realbuf[MAXPATHLEN];
+#ifdef _WIN32	// ufront 2.33: _fullpath is the Win32 realpath (note the reversed argument order).
+    if (_fullpath(realbuf, buf, sizeof(realbuf)) == NULL)
+#else
     if (realpath(buf, realbuf) == NULL)
+#endif
         return;
 
     char *ptr = strstr(realbuf, "/Contents/MacOS/");
@@ -1923,7 +2013,11 @@ static bool FindBinaryInPath(FString &cmd)
         binpath += bin;
 
         char realized[MAXPATHLEN];
+#ifdef _WIN32	// ufront 2.33: see above.
+        if (_fullpath(realized, appToAnsi(*binpath), sizeof(realized)) != NULL)
+#else
         if (realpath(appToAnsi(*binpath), realized) != NULL)
+#endif
         {
             struct stat statbuf;
             if (stat(realized, &statbuf) != -1)
@@ -2204,7 +2298,15 @@ CORE_API const TCHAR* appUserName()
 	static TCHAR Result[256]=TEXT("");
 	if( !Result[0] )
 	{
+#ifdef _WIN32	// ufront 2.33: no getlogin() on Windows.
+		ANSICHAR NameBuf[256] = "";
+		DWORD NameLen = ARRAY_COUNT(NameBuf);
+		if( !GetUserNameA( NameBuf, &NameLen ) )
+			strcpy( NameBuf, "Player" );
+		ANSICHAR *str = NameBuf;
+#else
 		ANSICHAR *str = getlogin();
+#endif
 		appStrncpy( Result, ANSI_TO_TCHAR(str), sizeof(Result) );
 	}
 	return Result;
@@ -2262,6 +2364,18 @@ void appPlatformPreInit()
     GMacOSVer = (INT) osver;
     check((long) GMacOSVer == osver);
 
+#elif defined(_WIN32)
+    // ufront 2.33 — the engine only wants a human-readable OS string here.
+    {
+        OSVERSIONINFOA osvi;
+        appMemzero( &osvi, sizeof(osvi) );
+        osvi.dwOSVersionInfoSize = sizeof(osvi);
+        if( GetVersionExA( &osvi ) )
+            appSprintf( GMachineOS, TEXT("Windows %u.%u (build %u)"),
+                (unsigned) osvi.dwMajorVersion, (unsigned) osvi.dwMinorVersion, (unsigned) osvi.dwBuildNumber );
+        else
+            appStrcpy( GMachineOS, TEXT("Windows") );
+    }
 #else
     // (more to come. --ryan.)
     #error fill in your platform.
@@ -2407,11 +2521,15 @@ static void DoCPUID( int i, DWORD *A, DWORD *B, DWORD *C, DWORD *D )
 }
 
 
+#ifndef _WIN32
+// ufront 2.33: <winnt.h> already defines LARGE_INTEGER (as a union, with the members the other way
+// round). Nothing here uses it on Windows, so take the platform's rather than redefine it.
 typedef struct
 {
     DWORD HighPart;
     DWORD LowPart;
 } LARGE_INTEGER;
+#endif
 
 #define DESIRED_FILE_HANDLES 1024
 void appPlatformInit()
@@ -2686,6 +2804,15 @@ void appPlatformInit()
 	}
 	unguard;
 
+#ifdef _WIN32
+	// ufront 2.33 — the rest of appPlatformInit is POSIX process plumbing with no Windows equivalent:
+	//   * sigaction() crash/interrupt handlers — Windows uses SetUnhandledExceptionFilter, and the engine
+	//     already survives without them (the launcher's guard/unguard chain still reports the call site).
+	//   * setrlimit(RLIMIT_NOFILE) — Windows has no per-process descriptor limit to raise; the CRT's
+	//     _setmaxstdio ceiling only applies to stdio streams, which the engine does not use for packages.
+	// Both are best-effort on Linux too (failures are logged, not fatal), so omitting them changes no
+	// behaviour the engine depends on.
+#else
 	struct sigaction SigAction;
 
 	// Only try once.
@@ -2787,6 +2914,7 @@ void appPlatformInit()
             debugf(NAME_Init, TEXT("Changed file handle limit to soft=(%d), hard=(%d)."), (int) rl.rlim_cur, (int) rl.rlim_max);
         }
     }
+#endif // !_WIN32
 
 	unguard;
 }
@@ -2943,6 +3071,12 @@ void appPlatformExit()
         }
         ansiargs[args.Num()] = NULL;
 
+#ifdef _WIN32
+        // ufront 2.33: this is the "respawn the game after exit" path (GUnixSpawnOnExit). fork-then-execv
+        // becomes one _spawnv, and the parent then exits as it did before.
+        _spawnv( _P_NOWAIT, cmd, ansiargs );
+        _exit(0);
+#else
         int rc = fork();
         if (rc == -1)
         {
@@ -2954,6 +3088,7 @@ void appPlatformExit()
         {
             _exit(0);
         }
+#endif
 
         #if DEBUG_HACKY_CMDLINE_PARSER
             for (int x = 0; ansiargs[x]; x++)

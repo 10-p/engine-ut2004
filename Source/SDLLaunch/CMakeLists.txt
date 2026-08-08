@@ -386,7 +386,16 @@ else()
   # Native: link SDL library and system libraries
   # SDL must come AFTER all static archives for correct symbol resolution
   # (Pitfall 2 in RESEARCH.md and Phase 1 fix).
-  if(USE_SDL12)
+  if(MINGW)
+    # ufront 2.33 (Windows) — no libdl (module loading is Win32, and BUILD_STATIC means there is nothing
+    # to load anyway) and no -rpath. winpthread is linked STATICALLY so the exe needs no extra DLL.
+    target_link_libraries(${PROJECT_NAME} ${SDL12_LIBRARY}
+      -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic
+      opengl32 ws2_32 winmm ole32 oleaut32 imm32 version setupapi gdi32 user32 shell32 advapi32 m)
+    # --export-all-symbols is the PE spelling of -export-dynamic, and it is what makes the package
+    # registrants (GLoaded<Package>) visible to appGetDllExport's GetProcAddress lookup.
+    target_link_options(${PROJECT_NAME} PRIVATE -Wl,--export-all-symbols)
+  elseif(USE_SDL12)
     target_link_libraries(${PROJECT_NAME} ${SDL12_LIBRARY} dl pthread m)
   else()
     target_link_libraries(${PROJECT_NAME} SDL2::SDL2-static dl pthread m)
@@ -394,7 +403,9 @@ else()
 
   # -export-dynamic: needed for the engine's reflection/class-loading system.
   # -rpath,.: allows finding vendored .so files in the same directory at runtime.
-  target_link_options(${PROJECT_NAME} PRIVATE -m32 -Wl,-export-dynamic -Wl,-rpath,.)
+  if(NOT MINGW)
+    target_link_options(${PROJECT_NAME} PRIVATE -m32 -Wl,-export-dynamic -Wl,-rpath,.)
+  endif()
 endif()
 
 #-----------------------------------------------------------------------------

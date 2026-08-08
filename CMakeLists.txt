@@ -183,6 +183,14 @@ if(NOT WIN32)
   add_definitions(-D__LINUX_X86__)
 endif()
 
+if(MINGW)
+  # ufront 2.33 — link GCC's runtime statically. Without this the .exe imports libgcc_s_dw2-1.dll and
+  # libstdc++-6.dll, which live in the toolchain (or MSYS2's /mingw32/bin), NOT in a Windows install: the
+  # binary runs on the build machine and dies with "not found" everywhere else. SDL.dll still ships beside
+  # it (SDL 1.2 gives us an import library, not a static one).
+  add_link_options(-static-libgcc -static-libstdc++)
+endif()
+
 # Unicode support
 # On Emscripten, use ANSI mode (char-based TCHAR) because:
 # - wchar_t is 4 bytes on Emscripten (no -fshort-wchar support)
@@ -645,7 +653,10 @@ add_subdirectory(Source/SDLLaunch)
 
 # ufront 2.12 Part B: ucc-bin — native command-line tool (dedicated server / commandlets). Native only
 # (no ucc on the web build; the WASM target has no headless-tool use). Not built for Android either.
-if(NOT EMSCRIPTEN AND NOT ANDROID)
+# ufront 2.33: nor on Windows yet — UCC.cpp's Windows path wants the UNICODE-era winToUNICODE/
+# winGetSizeUNICODE helpers that only UnVcWin32.h provides. The GAME does not need it, so it is left out
+# of the first Windows cut rather than half-ported.
+if(NOT EMSCRIPTEN AND NOT ANDROID AND NOT MINGW)
   add_subdirectory(Source/UCC)
 endif()
 

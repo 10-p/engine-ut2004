@@ -14,7 +14,10 @@ Revision history:
 #endif
 
 // Socket API.
-#if _MSC_VER
+// ufront 2.33: keyed on the PLATFORM, not the compiler. Under `_MSC_VER` a MinGW build took the BSD arm
+// and failed on <sys/socket.h>, which MinGW does not ship — Windows is WinSock whichever compiler built
+// the binary. (Same change as engine-ut99's IpDrvPrivate.h.)
+#ifdef _WIN32
 	#define __WINSOCK__ 1
 	#define SOCKET_API TEXT("WinSock")
 #else
@@ -34,6 +37,7 @@ Revision history:
 	#include <windows.h>
 	#include <winsock.h>
 	#include <conio.h>
+	#include <ws2tcpip.h>	// ufront 2.33: socklen_t, rather than an #if at every call site
 #endif
 #pragma pack(pop)
 #endif
@@ -124,7 +128,11 @@ public:
 		*Error = 0;
 		ThreadId = 1;
 
-#if _MSC_VER
+// ufront 2.33: was `#if _MSC_VER`, while the declaration above and the pthread_t member both switch on
+// __UNIX__. On MinGW those disagreed — the declaration took the Win32 arm (so no `ResolveThread` member
+// exists) but the constructor fell through to the pthread arm and referenced it. Windows gets the
+// CreateThread resolver, which is what the declarations already promised.
+#ifdef _WIN32
 		HANDLE hThread = CreateThread( NULL, 0, ResolveThreadEntry, this, 0, &ThreadId );
 		check(hThread);
 		CloseHandle( hThread );

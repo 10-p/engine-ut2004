@@ -14,7 +14,16 @@
 #include <unistd.h>
 #include <limits.h>
 #include "FFileManagerGeneric.h"
-#include <pwd.h>
+// ufront 2.33: Windows' mkdir takes no mode — permissions are not a filesystem attribute there.
+#ifdef _WIN32
+#  define UT_MKDIR(p) mkdir(p)
+#else
+#  define UT_MKDIR(p) mkdir((p), S_IRUSR | S_IWUSR | S_IXUSR)
+#endif
+
+#ifndef _WIN32
+#include <pwd.h>	// ufront 2.33: no passwd database on Windows (see the home-dir lookup below)
+#endif
 #include <stdlib.h>
 #include <ctype.h>
 
@@ -400,7 +409,13 @@ public:
             return 0;
 
         struct tm tm;
+        // ufront 2.33: Windows spells the reentrant localtime `localtime_s`, with the arguments reversed
+        // and an errno_t return (0 == success).
+#ifdef _WIN32
+        if (localtime_s(&tm, &statbuf.st_mtime) != 0)
+#else
         if (localtime_r(&statbuf.st_mtime, &tm) == NULL)
+#endif
             return 0;
 
         Hours = (DWORD) (tm.tm_hour);  // 0 - 23
@@ -493,7 +508,7 @@ public:
                     {
                         *ptr = '\0';
                         // don't care if it fails, since fopen() will tell us.
-                        mkdir(ansitmp, S_IREAD | S_IWRITE | S_IEXEC);
+                        UT_MKDIR(ansitmp);
                         *ptr = '/';
                     }
                 }
@@ -586,7 +601,7 @@ public:
 			return FFileManagerGeneric::MakeDirectory( Path, Tree );
 
         unixToANSI(ansipath, tmp);
-		return mkdir(appUnixPath(ansipath), S_IREAD | S_IWRITE | S_IEXEC)==0 || errno==EEXIST;
+		return UT_MKDIR(appUnixPath(ansipath))==0 || errno==EEXIST;
 		unguard;
 	}
 	UBOOL DeleteDirectory( const TCHAR* FakePath, UBOOL RequireExists=0, UBOOL Tree=0 )
@@ -683,7 +698,14 @@ public:
             return(appBaseDir());
 
 	    char *Home = getenv("HOME");
-#if defined(__ANDROID__)
+#if defined(_WIN32)
+    	// ufront 2.33: Windows has no $HOME and no passwd database. USERPROFILE is its equivalent
+    	// (C:\Users\<name>); fall back to the base dir the way -nohomedir already does.
+    	if ( Home == NULL )
+    		Home = getenv("USERPROFILE");
+    	if ( Home == NULL )
+    		return(appBaseDir());
+#elif defined(__ANDROID__)
     	// bionic has no getpwent/setpwent/endpwent (no passwd-db enumeration). $HOME is provided
     	// by the Android app shell (set in the JNI bridge, step 2.10b); fall back to cwd otherwise.
     	if ( Home == NULL )
@@ -714,9 +736,9 @@ public:
 	#if MACOSX
 		// Make sure these two parent folders exist...
 		appStrcat( tmp, TEXT("/Library") );
-		mkdir(appToAnsi(tmp), S_IRWXU);
+		UT_MKDIR(appToAnsi(tmp));
 		appStrcat( tmp, TEXT("/Application Support") );
-		mkdir(appToAnsi(tmp), S_IRWXU);
+		UT_MKDIR(appToAnsi(tmp));
 
 		#if DEMOVERSION
 			appStrcat( tmp, TEXT("/Unreal Tournament 2004 Demo") );
@@ -731,9 +753,9 @@ public:
 		#endif
 	#endif
 
-        mkdir(appToAnsi(tmp), S_IRWXU);
+        UT_MKDIR(appToAnsi(tmp));
         appStrcat( tmp, TEXT("/System") );
-        mkdir(appToAnsi(tmp), S_IRWXU);
+        UT_MKDIR(appToAnsi(tmp));
 
         // If STILL not accessible don't use it.
         if ( access( appToAnsi(tmp), F_OK ) == -1 )

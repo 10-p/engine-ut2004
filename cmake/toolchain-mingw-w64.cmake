@@ -17,10 +17,22 @@ set(CMAKE_SYSTEM_NAME Windows)
 set(MINGW_TARGET_ARCH "i686" CACHE STRING "MinGW-w64 target arch: i686 or x86_64")
 set(CMAKE_SYSTEM_PROCESSOR ${MINGW_TARGET_ARCH})
 
+# MinGW-w64 ships two thread models. `win32` is the default and has no <pthread.h>; `posix` adds
+# winpthreads. This engine's platform layer implements its recursive mutexes on pthreads, so it selects
+# `posix` and gets them for free rather than having threading code rewritten against CRITICAL_SECTION —
+# the sort of change where a subtle mistake is expensive and invisible. winpthreads is linked STATICALLY
+# (see CMakeLists.txt), so this costs no extra DLL beside the exe.
+set(MINGW_THREAD_MODEL "win32" CACHE STRING "MinGW thread model: win32 (no pthreads) or posix (winpthreads)")
+if(MINGW_THREAD_MODEL STREQUAL "posix")
+  set(_MINGW_SUFFIX "-posix")
+else()
+  set(_MINGW_SUFFIX "")
+endif()
+
 set(_MINGW_TRIPLE "${MINGW_TARGET_ARCH}-w64-mingw32")
 
-set(CMAKE_C_COMPILER   ${_MINGW_TRIPLE}-gcc)
-set(CMAKE_CXX_COMPILER ${_MINGW_TRIPLE}-g++)
+set(CMAKE_C_COMPILER   ${_MINGW_TRIPLE}-gcc${_MINGW_SUFFIX})
+set(CMAKE_CXX_COMPILER ${_MINGW_TRIPLE}-g++${_MINGW_SUFFIX})
 set(CMAKE_RC_COMPILER  ${_MINGW_TRIPLE}-windres)
 
 # Look for headers/libs in the cross sysroot, never the host's /usr — a host libSDL2.so or glibc header

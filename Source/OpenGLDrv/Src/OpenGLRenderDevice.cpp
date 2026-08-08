@@ -14,12 +14,17 @@
 -----------------------------------------------------------------------------*/
 
 // !!! FIXME: This should get rid of all these win32 vs. SDL ifdefs. --ryan.
-#if ((__linux__) || (__FreeBSD__) || (MACOSX))
+// ufront 2.33 — that FIXME, scoped to what we can verify: the switch is not the platform, it is WHO OWNS
+// THE GL CONTEXT. Every build this repo produces gets it from SDL (SDLDrv/SDL2Drv), Windows included;
+// only Epic's original MSVC build created its own through WGL.
+#ifndef UT_OPENGLDRV_WGL
 #  define USE_SDL 1
 #endif
 
-#if (defined WIN32)
+#if (defined UT_OPENGLDRV_WGL)
 #   define GL_DLL (TEXT("OpenGL32.dll"))
+#elif defined(_WIN32)
+#   define GL_DLL (TEXT("OpenGL32.dll"))	// ufront 2.33: SDL owns the context, but keep the name honest
 #elif ((__linux__) || (__FreeBSD__))
 #   define GL_DLL (TEXT("libGL.so.1"))
 #elif MACOSX
@@ -35,7 +40,7 @@ BYTE*			UOpenGLRenderDevice::VARPointer		= 0;
 INT				UOpenGLRenderDevice::VARIndex		= 0;
 INT				UOpenGLRenderDevice::VARSize		= 0;
 
-#ifdef WIN32
+#ifdef UT_OPENGLDRV_WGL
 HGLRC			UOpenGLRenderDevice::hCurrentRC		= NULL;
 HMODULE			UOpenGLRenderDevice::hModuleGLMain	= NULL;
 HMODULE			UOpenGLRenderDevice::hModuleGLGDI	= NULL;
@@ -136,7 +141,7 @@ void UOpenGLRenderDevice::FindProc( void*& ProcAddress, char* Name, char* Suppor
 #if (defined USE_SDL)
 	if( !ProcAddress )
 		ProcAddress = (void*) SDL_GL_GetProcAddress( Name );
-#elif (defined WIN32)
+#elif (defined UT_OPENGLDRV_WGL)
 	if( !ProcAddress )
 		ProcAddress = appGetDllExport( hModuleGLMain, appFromAnsi(Name) );
 	if( !ProcAddress )
@@ -190,7 +195,7 @@ void UOpenGLRenderDevice::MakeCurrent()
 	guard(UOpenGLRenderDevice::MakeCurrent);
 
 	check(ValidContext);
-#ifdef WIN32
+#ifdef UT_OPENGLDRV_WGL
 	check(hRC);
 	check(hDC);
 	if( hCurrentRC!=hRC )
@@ -263,7 +268,7 @@ UBOOL UOpenGLRenderDevice::Init()
 	SupportsRenderToTextureRGB565	= 0;
 	SupportsRenderToTextureNPOT		= 0;
 
-#if (defined WIN32)
+#if (defined UT_OPENGLDRV_WGL)
 
 	// Get list of device modes.
 	for( INT i=0; ; i++ )
@@ -378,7 +383,7 @@ void UOpenGLRenderDevice::Exit(UViewport* Viewport)
 
 	RestoreGamma();
 
-#ifdef WIN32
+#ifdef UT_OPENGLDRV_WGL
 	// Shut down this GL context. May fail if window was already destroyed.
 	if( hDC )
 		ReleaseDC(hWnd,hDC);
@@ -447,7 +452,7 @@ UBOOL UOpenGLRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Fu
 	// Change window size.
 	Viewport->ResizeViewport( Fullscreen ? (BLIT_Fullscreen|BLIT_OpenGL) : (BLIT_OpenGL), NewX, NewY );
 
-#elif (defined WIN32)
+#elif (defined UT_OPENGLDRV_WGL)
 
 	// Get hWnd & hDC.
 	hWnd		= (HWND) Viewport->GetWindow();
@@ -660,7 +665,7 @@ UBOOL UOpenGLRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Fu
 		debugf( TEXT("OpenGL: Level of anisotropy is %f (max %f)."), (float) LevelOfAnisotropy, (float) MaxAnisotropy );
 	}
 
-#ifndef WIN32
+#ifndef UT_OPENGLDRV_WGL
 	if( !SUPPORTS_GL_ARB_multisample )
 		debugf( TEXT("OpenGL: Not using multisample") );
 	else
@@ -889,7 +894,7 @@ UBOOL UOpenGLRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Fu
 #if MACOSX
 			VARPointer	= new BYTE[ VARSize ];
 #else
-#ifdef WIN32
+#ifdef UT_OPENGLDRV_WGL
 			VARPointer	= (BYTE*) wglAllocateMemoryNV( VARSize, 0.f, 0.0f, 0.5f );
 #else
 			VARPointer	= (BYTE*) glXAllocateMemoryNV( VARSize, 0.f, 0.0f, 0.5f );
@@ -970,7 +975,7 @@ void UOpenGLRenderDevice::UnSetRes( UBOOL RestoreDisplaySettings )
 			glVertexArrayRangeAPPLE( 0, 0 );
 		delete [] VARPointer;
 #else
-#ifdef WIN32
+#ifdef UT_OPENGLDRV_WGL
 		wglFreeMemoryNV( VARPointer );
 #else
 		glXFreeMemoryNV( VARPointer );
@@ -981,7 +986,7 @@ void UOpenGLRenderDevice::UnSetRes( UBOOL RestoreDisplaySettings )
 	VARSize		= 0;
 	VARIndex	= 0;
 
-#ifdef WIN32
+#ifdef UT_OPENGLDRV_WGL
 	if( hDC	)
 		ReleaseDC( hWnd, hDC );
 
@@ -1160,7 +1165,7 @@ void UOpenGLRenderDevice::UpdateGamma(UViewport* Viewport)
 #else
 	SDL_SetWindowGammaRamp( (SDL_Window*)Viewport->GetWindow(), Ramp.red, Ramp.green, Ramp.blue );
 #endif
-#elif (defined WIN32)
+#elif (defined UT_OPENGLDRV_WGL)
 	SetDeviceGammaRamp( hDC, &Ramp );
 #else
 #   error Please handle this for your platform.
@@ -1199,7 +1204,7 @@ void UOpenGLRenderDevice::RestoreGamma()
 	if( GammaWindow )
 		SDL_SetWindowGammaRamp( GammaWindow, Ramp.red, Ramp.green, Ramp.blue );
 #endif
-#elif (defined WIN32)
+#elif (defined UT_OPENGLDRV_WGL)
 //	SetDeviceGammaRamp( hDC, &Ramp );
 	HDC DesktopDC = GetDC( GetDesktopWindow() );
 	SetDeviceGammaRamp( DesktopDC, &Ramp );
@@ -1467,7 +1472,7 @@ void UOpenGLRenderDevice::Present(UViewport* Viewport)
 
     // This kills framerate, causing bug reports, so it's
     //  not worth it for any "lag reduction".  --ryan.
-#if (defined WIN32)
+#if (defined UT_OPENGLDRV_WGL)
     if( ReduceMouseLag && !GIsBenchmarking )
 		glFinish();
 #endif
@@ -1478,7 +1483,7 @@ void UOpenGLRenderDevice::Present(UViewport* Viewport)
 #else
 	SDL_GL_SwapWindow((SDL_Window*)Viewport->GetWindow());
 #endif
-#elif (defined WIN32)
+#elif (defined UT_OPENGLDRV_WGL)
 	verify( SwapBuffers( hDC ) );
 #else
 #   error Please handle this for your platform.

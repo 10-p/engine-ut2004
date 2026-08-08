@@ -388,11 +388,9 @@ UBOOL SetNonBlocking( INT Socket )
 UBOOL SetSocketReuseAddr( INT Socket, UBOOL ReUse )
 {
 	INT optval = ReUse?1:0;
-#if _MSC_VER
-	return setsockopt( Socket, SOL_SOCKET, SO_REUSEADDR, (char *)&optval, sizeof(INT) ) == 0;
-#else
-	return setsockopt( Socket, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(INT) ) == 0;
-#endif
+	// ufront 2.33: WinSock types optval as `const char*` where POSIX has `const void*`; char* converts to
+	// void* implicitly, so the cast satisfies both and no platform behaves differently. (Was `_MSC_VER`.)
+	return setsockopt( Socket, SOL_SOCKET, SO_REUSEADDR, (const char *)&optval, sizeof(INT) ) == 0;
 }
 
 

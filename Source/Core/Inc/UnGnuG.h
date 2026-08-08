@@ -142,6 +142,15 @@
 #endif
 
 
+// ufront 2.33 (Windows/MinGW): the Win32 headers already declare DWORD and SIZE_T, and a second typedef
+// is a hard "conflicting declaration" error even where the widths agree. Take the platform's — they are
+// 32-bit on Win32 either way — and pull in just the two small headers that carry them rather than all of
+// <windows.h>, which would also drag in the IN/OUT and min/max macros.
+#ifdef _WIN32
+#include <minwindef.h>
+#include <basetsd.h>
+#endif
+
 // Undo any Windows defines.
 #undef BYTE
 #undef WORD
@@ -152,12 +161,23 @@
 #undef MAXWORD
 #undef MAXDWORD
 #undef MAXINT
+// ufront 2.33: keep VOID on Windows. This block exists to stop Win32 macros shadowing the ENGINE's types
+// when windows.h came first — but VOID is not an engine type, and the Win32 headers included LATER (via
+// IpDrv, SDL, GL) declare hundreds of prototypes with it. Removing it turned every one of those into a
+// syntax error far from here.
+#ifndef _WIN32
 #undef VOID
+#endif
 #undef CDECL
 
 // Make sure HANDLE is defined.
+// ufront 2.33: NOT on Windows. Win32 defines both properly (HANDLE is void*), and this macro rewrites
+// winnt.h's own `typedef void *HANDLE;` into `typedef void* DWORD` — which then cascades into a hundred
+// syntax errors far away from the cause.
+#ifndef _WIN32
 #define HANDLE DWORD
 #define HINSTANCE void*
+#endif
 
 // Sizes.
 enum {DEFAULT_ALIGNMENT = 8 }; // Default boundary to align memory allocations on.
@@ -189,7 +209,14 @@ enum {CACHE_LINE_SIZE   = 32}; // Cache line size.
 #define DLL_EXPORT_CLASS
 #define VARARGS
 #define CDECL
+// ufront 2.33: on Windows STDCALL is a real calling convention, not decoration — the Win32 callback
+// typedefs (LPTHREAD_START_ROUTINE, used by IpDrv's resolver) carry __stdcall, and a plain cdecl function
+// will not convert to them. Everywhere else it stays empty, exactly as before.
+#ifdef _WIN32
+#define STDCALL __stdcall
+#else
 #define STDCALL
+#endif
 #define FORCEINLINE inline
 #define ZEROARRAY 0 /* Zero-length arrays in structs */
 #define __cdecl
@@ -225,7 +252,9 @@ enum {CACHE_LINE_SIZE   = 32}; // Cache line size.
 // Unsigned base types.
 typedef unsigned char		BYTE;		// 8-bit  unsigned.
 typedef unsigned short		_WORD;		// 16-bit unsigned.
+#ifndef _WIN32
 typedef unsigned int		DWORD;		// 32-bit unsigned.
+#endif
 typedef unsigned long long	QWORD;		// 64-bit unsigned.
 #if __GNUC__
 //!!vogel: ???
@@ -260,11 +289,18 @@ typedef float				DOUBLE;		// 32-bit IEEE floating point.
 #else
 typedef double				DOUBLE;		// 64-bit IEEE double.
 #endif
+#ifndef _WIN32
 typedef unsigned int        SIZE_T;     // Corresponds to C SIZE_T.
+#endif
 
 // Bitfield type.
 #if FORCE_EXTREME_PACKING
 typedef BYTE                BITFIELD;	// For bitfields.
+#elif defined(_WIN32)
+// ufront 2.33: must be the SAME TYPE as DWORD, not merely the same width — UE serialises BITFIELD members
+// through `Ar << Member`, which resolves to operator<<'s DWORD overload. Splitting them makes every such
+// call ambiguous.
+typedef DWORD				BITFIELD;	// For bitfields.
 #else
 typedef unsigned int		BITFIELD;	// For bitfields.
 #endif

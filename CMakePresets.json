@@ -99,7 +99,8 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "UT_GFX_BACKEND": "legacy",
-        "MINGW_TARGET_ARCH": "i686"
+        "MINGW_TARGET_ARCH": "i686",
+        "MINGW_THREAD_MODEL": "posix"
       }
     }
   ],

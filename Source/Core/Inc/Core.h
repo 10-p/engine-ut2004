@@ -151,7 +151,10 @@ public:
 
 
 // OS specific include.
-#if __UNIX__
+// ufront 2.33: the header follows the SOURCE. UnUnix.cpp is the platform layer for every non-MSVC target
+// — Windows/MinGW included — so its prototypes (appGetLocalIP, appUnixPath, …) have to be visible there
+// too. Gating on __UNIX__ alone left UnGUID.cpp calling an undeclared appGetLocalIP.
+#if __UNIX__ || defined(__MINGW32__)
 	#include "UnUnix.h"
 #ifndef __MWERKS__
 	#include <signal.h>
@@ -236,6 +239,11 @@ enum ERunningCPU
 #else
 	#ifndef _TCHAR_DEFINED
 		typedef ANSICHAR  TCHAR;
+		typedef ANSICHARU TCHARU;
+	#elif defined(_WIN32)
+		// ufront 2.33 (Windows/MinGW): MinGW's <tchar.h>, reached through the Win32 headers, sets
+		// _TCHAR_DEFINED and supplies TCHAR (== char here, since we build with NO_UNICODE_OS_SUPPORT) —
+		// but it knows nothing about UE's TCHARU, so the branch above skipped BOTH.
 		typedef ANSICHARU TCHARU;
 	#endif
 	#undef TEXT

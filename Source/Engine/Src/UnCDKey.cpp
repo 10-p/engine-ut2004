@@ -1,5 +1,11 @@
 /*=============================================================================
 	UnCDKey.cpp: CD Key validation
+
+	ufront 2.33: the Win32 branches below were keyed on `_MSC_VER`, which meant "Windows" only while MSVC
+	was the only Windows compiler. The CD key lives in the Windows REGISTRY — that is a property of the
+	platform, not of the compiler — so a MinGW build should read it from there too, rather than falling
+	through to `#error Please fill in CD Key stuff for your platform!`. TCHAR_CALL_OS and appAlloca are
+	both defined for GCC (UnGnuG.h), so the existing code compiles as-is.
 	Copyright 1997-2002 Epic Games, Inc. All Rights Reserved.
 
 	Revision history:
@@ -13,7 +19,7 @@
 // This sucks, but I really don't want the code to read the CD key to be
 // in a DLL export.  So we have to declare the registry stuff we need here.
 
-#if _MSC_VER && !_XBOX
+#if defined(_WIN32) && !_XBOX
 #pragma pack(push, 8)
 #include <windows.h>
 #pragma pack(pop)
@@ -24,7 +30,7 @@
 	Win32 Registry access
 -----------------------------------------------------------------------------*/
 
-#if _MSC_VER && !_XBOX
+#if defined(_WIN32) && !_XBOX
 #define RegOpenKeyX(a,b,c)				TCHAR_CALL_OS(RegOpenKeyW(a,b,c),RegOpenKeyA(a,TCHAR_TO_ANSI(b),c))
 static inline LONG RegQueryValueExX( HKEY hKey, LPCTSTR lpValueName, LPDWORD lpReserved, LPDWORD lpType, LPBYTE lpData, LPDWORD lpcbData )
 {
@@ -69,7 +75,7 @@ static FString GetRealCDKey()
 	cdkey = TEXT("UT2004-UTDEMO-UTDEMO-UT2004");
 #else
 
-#if _MSC_VER && !_XBOX
+#if defined(_WIN32) && !_XBOX
 	// Read the cdkey from the registry.
 	TCHAR Temp[256];
 	FString Product;
