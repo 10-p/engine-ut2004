@@ -51,3 +51,4 @@ System/Shot*.bmp
 
 # Claude Code per-machine local override — never commit.
 .claude/settings.local.json
+/build-windows/

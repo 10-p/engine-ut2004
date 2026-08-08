@@ -88,6 +88,19 @@
       "inherits": "wasm",
       "binaryDir": "${sourceDir}/build-wasm-perf",
       "cacheVariables": { "UT_WEB_PERF": "ON", "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
+      "name": "windows",
+      "displayName": "Windows x86 (MinGW-w64) -- legacy SDL1.2 + desktop OpenGL",
+      "description": "32-bit Windows build, cross-compiled from Linux via cmake/toolchain-mingw-w64.cmake; the same preset works from an MSYS2 MINGW32 prompt. Uses the LEGACY stack (SDL 1.2 + desktop OpenGL) deliberately: GL4ES translates desktop GL *to* GLES2, which Linux drivers ship and Windows drivers generally do not, so on Windows the real opengl32 is already there and the translation layer only adds a dependency. Linux keeps both stacks. SDL 1.2 comes from SDL's prebuilt MinGW binaries (cmake/SDL12Mingw.cmake) — an IMPORT library, so SDL.dll ships beside the exe. Builds in build-windows/. [ufront 2.33]",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build-windows",
+      "toolchainFile": "${sourceDir}/cmake/toolchain-mingw-w64.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "UT_GFX_BACKEND": "legacy",
+        "MINGW_TARGET_ARCH": "i686"
+      }
     }
   ],
   "buildPresets": [
@@ -99,6 +112,7 @@
     { "name": "legacy-full", "configurePreset": "legacy-full" },
     { "name": "wasm",      "configurePreset": "wasm" },
     { "name": "wasm-debug", "configurePreset": "wasm-debug" },
-    { "name": "wasm-perf", "configurePreset": "wasm-perf" }
+    { "name": "wasm-perf", "configurePreset": "wasm-perf" },
+    { "name": "windows",   "configurePreset": "windows" }
   ]
 }

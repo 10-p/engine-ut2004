@@ -84,6 +84,20 @@
 	#undef ASMLINUX
 	#undef ASMPSX2
 	#define COMPILER "Compiled for GCN ("__VERSION__")"
+#elif defined(__MINGW32__)
+	// ufront 2.33 — Windows built with GCC. Code generation is the same x86/GCC story as the
+	// __LINUX_X86__ arm at the top: ASMLINUX selects GCC's AT&T inline asm, which MinGW also uses (the
+	// name is historical — it means "GCC asm", not "Linux"), and it is what keeps UnMath.h off the
+	// MSVC `__asm { mov … }` path that GCC cannot parse.
+	// What must NOT come with it is the Unix identity: __UNIX__/__LINUX__ select the POSIX file,
+	// socket, threading and dynamic-loader paths throughout the engine.
+	#define __INTEL__ 1
+	#define __INTEL_BYTE_ORDER__ 1
+	#undef ASM
+	#undef ASM3DNOW
+	#undef ASMKNI
+	#define ASMLINUX 1
+	#define COMPILER "Compiled with MinGW g++ ("__VERSION__")"
 #else
 	#error Unsupported platform.
 #endif
