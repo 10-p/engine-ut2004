@@ -107,14 +107,7 @@ static void AndroidRedirectStdioToLogcat()
 #include "UnRender.h"
 #include "UnNullRenderDevice.h"
 #define SDL2DRV_REGISTRATION_ONLY
-#define SDLDRV_REGISTRATION_ONLY
-#ifdef __EMSCRIPTEN__
-#include "SDL2Drv.h"
-#elif USE_SDL12
-#include "SDLDrv.h"
-#else
-#include "SDL2Drv.h"
-#endif
+#include "SDL2Drv.h"	// ufront 2.34: the only viewport driver — SDL 1.2 / SDLDrv is retired
 #if UT_RENDER_OPENGLDRV
 #include "OpenGLDrv.h"
 #endif
@@ -182,6 +175,16 @@ void AlertGameRangerHostReady(void)
 }
 #endif
 
+
+
+// True iff the render-device class is compiled into this build (its UClass registered at startup).
+static UBOOL IsRenderDeviceAvailable( const TCHAR* Device )
+{
+	FString Path = Device;
+	INT Dot = Path.InStr( TEXT("."), 1 );
+	const TCHAR* ClassName = ( Dot != INDEX_NONE ) ? ((*Path) + Dot + 1) : (*Path);
+	return UObject::StaticFindObject( UClass::StaticClass(), ANY_PACKAGE, ClassName ) != NULL;
+}
 
 /*-----------------------------------------------------------------------------
 	Global variables.
@@ -583,7 +586,6 @@ inline CMainLoop::~CMainLoop(void)
 			FLOAT FPS = 1000.f / BMFrameTimes(i);
 			MinFPS = Min( MinFPS, FPS );
 			MaxFPS = Max( MaxFPS, FPS );
-
 			// Calculate score.
 			Score += Max( BMFrameTimes(i), FrameTimeCap ) ;
 		}
@@ -707,81 +709,58 @@ static UEngine* InitEngine()
 	INT FirstRun=0;
 	GConfig->GetInt( TEXT("FirstRun"), TEXT("FirstRun"), FirstRun );
 
-    // WinDrv can't work on Linux -- force to the active SDL driver.
-	if( appStricmp(GConfig->GetStr(TEXT("Engine.Engine"),TEXT("ViewportManager"),TEXT("System")),TEXT("WinDrv.WindowsClient"))==0 )
+    // ★ ufront 2.34 — "if we have the wrong driver, select a NON-NULL driver" (owner's rule). Every one of
+    // the substitutions below used to be keyed on WHICH BACKEND WAS COMPILED (`#if USE_SDL12`), which was
+    // only ever a proxy for "is that class in this binary". Now that SDL 1.2 is retired and ONE binary
+    // carries both GL render devices, the backend can no longer answer the question — so ask it directly.
+    // IsRenderDeviceAvailable() is a StaticFindObject over the already-registered classes, which is exactly
+    // what "is it in this binary" means for a static build.
+    //
+    // The rule in every case: a device the ini names and this build HAS is left alone; anything else is
+    // replaced by the best REAL alternative, in preference order. This is what lets one binary boot from a
+    // retail Windows ini (WinDrv + D3D), from a previous gl4es run's ini, or from a legacy one.
+    if( !ParseParam(appCmdLine(),TEXT("NoForceSDLDrv")) )
     {
-	    if( !ParseParam(appCmdLine(),TEXT("NoForceSDLDrv")) )
+        // Viewport client: WinDrv (retail Windows) and a stale SDLDrv both land on whatever SDL client
+        // this build actually has.
+        const TCHAR* Viewport = GConfig->GetStr(TEXT("Engine.Engine"),TEXT("ViewportManager"),TEXT("System"));
+        if( !IsRenderDeviceAvailable(Viewport) )
         {
-#if USE_SDL12
-            debugf(TEXT("Your ini had WinDrv...Forcing use of SDLDrv instead."));
-			GConfig->SetString(TEXT("Engine.Engine"), TEXT("ViewportManager"), TEXT("SDLDrv.SDLClient"));
-#else
-            debugf(TEXT("Your ini had WinDrv...Forcing use of SDL2Drv instead."));
-			GConfig->SetString(TEXT("Engine.Engine"), TEXT("ViewportManager"), TEXT("SDL2Drv.SDL2Client"));
-#endif
+            static const TCHAR* const ViewportPreference[] = { TEXT("SDL2Drv.SDL2Client"), TEXT("SDLDrv.SDLClient") };
+            for( INT i=0; i<ARRAY_COUNT(ViewportPreference); i++ )
+            {
+                if( IsRenderDeviceAvailable(ViewportPreference[i]) )
+                {
+                    debugf(TEXT("ufront 2.34: ViewportManager=%s is not in this build -> %s"), Viewport, ViewportPreference[i]);
+                    GConfig->SetString(TEXT("Engine.Engine"), TEXT("ViewportManager"), ViewportPreference[i]);
+                    break;
+                }
+            }
         }
     }
 
-    // D3D can't work on Linux -- force to OpenGLDrv.
-    bool isd3d = false;
-    if (appStricmp(GConfig->GetStr(TEXT("Engine.Engine"),TEXT("RenderDevice"),TEXT("System")),TEXT("D3DDrv.D3DRenderDevice"))==0)
-        isd3d = true;
-    else if (appStricmp(GConfig->GetStr(TEXT("Engine.Engine"),TEXT("RenderDevice"),TEXT("System")),TEXT("D3D9Drv.D3D9RenderDevice"))==0)
-        isd3d = true;
-
-    if (isd3d)
+    if( !ParseParam(appCmdLine(),TEXT("NoForceGL4ES")) )
     {
-	    if( !ParseParam(appCmdLine(),TEXT("NoForceSDLDrv")) )
+        // Render device: D3DDrv/D3D9Drv (Windows retail), GLES3Drv (never built) and a driver from the
+        // other backend all resolve to the best GL device present. Desktop GL leads where it exists — it
+        // is the native path; GL4ES is a translation layer, which is the right answer only when it is the
+        // only one compiled in (the web and Android builds).
+        const TCHAR* Device = GConfig->GetStr(TEXT("Engine.Engine"),TEXT("RenderDevice"),TEXT("System"));
+        if( !IsRenderDeviceAvailable(Device) )
         {
-            debugf(TEXT("Your ini had D3DDrv...Forcing use of OpenGLDrv instead."));
-			GConfig->SetString(TEXT("Engine.Engine"), TEXT("RenderDevice"), TEXT("OpenGLDrv.OpenGLRenderDevice"));
+            static const TCHAR* const DevicePreference[] = { TEXT("OpenGLDrv.OpenGLRenderDevice"),
+                                                             TEXT("GL4ESDrv.GL4ESRenderDevice") };
+            for( INT i=0; i<ARRAY_COUNT(DevicePreference); i++ )
+            {
+                if( IsRenderDeviceAvailable(DevicePreference[i]) )
+                {
+                    debugf(TEXT("ufront 2.34: RenderDevice=%s is not in this build -> %s"), Device, DevicePreference[i]);
+                    GConfig->SetString(TEXT("Engine.Engine"), TEXT("RenderDevice"), DevicePreference[i]);
+                    break;
+                }
+            }
         }
     }
-
-    // Auto-switch from OpenGLDrv or GLES3Drv to GL4ESDrv when using SDL2 binary (per D-07).
-    // Also ensure ViewportManager is SDL2Drv when not using SDL 1.2.
-#if !USE_SDL12
-    if( appStricmp(GConfig->GetStr(TEXT("Engine.Engine"),TEXT("RenderDevice"),TEXT("System")),TEXT("OpenGLDrv.OpenGLRenderDevice"))==0
-     || appStricmp(GConfig->GetStr(TEXT("Engine.Engine"),TEXT("RenderDevice"),TEXT("System")),TEXT("GLES3Drv.GLES3RenderDevice"))==0 )
-    {
-        if( !ParseParam(appCmdLine(),TEXT("NoForceGL4ES")) )
-        {
-            debugf(TEXT("Auto-switching from OpenGLDrv/GLES3Drv to GL4ESDrv for SDL2 binary."));
-            GConfig->SetString(TEXT("Engine.Engine"), TEXT("RenderDevice"), TEXT("GL4ESDrv.GL4ESRenderDevice"));
-        }
-    }
-    if( appStricmp(GConfig->GetStr(TEXT("Engine.Engine"),TEXT("ViewportManager"),TEXT("System")),TEXT("SDLDrv.SDLClient"))==0 )
-    {
-        if( !ParseParam(appCmdLine(),TEXT("NoForceSDLDrv")) )
-        {
-            debugf(TEXT("Auto-switching from SDLDrv to SDL2Drv for SDL2 binary."));
-            GConfig->SetString(TEXT("Engine.Engine"), TEXT("ViewportManager"), TEXT("SDL2Drv.SDL2Client"));
-        }
-    }
-#else
-    // ufront 2.33 — THE MIRROR OF THE ABOVE, which was missing. The ini is shared between backends and
-    // whichever ran last wins, so a legacy binary routinely inherits `SDL2Drv.SDL2Client` from a previous
-    // gl4es run — a class it does not contain. StaticLoadClass then fails inside UGameEngine::Init with
-    // LOAD_NoFail, i.e. appError before the log file exists, so it looks like a silent exit-1. That is
-    // exactly how the first Windows boot presented; it is NOT Windows-specific (a native `legacy` run
-    // after a `gl4es` run hits the same thing).
-    if( appStricmp(GConfig->GetStr(TEXT("Engine.Engine"),TEXT("ViewportManager"),TEXT("System")),TEXT("SDL2Drv.SDL2Client"))==0 )
-    {
-        if( !ParseParam(appCmdLine(),TEXT("NoForceSDLDrv")) )
-        {
-            debugf(TEXT("Auto-switching from SDL2Drv to SDLDrv for the SDL 1.2 binary."));
-            GConfig->SetString(TEXT("Engine.Engine"), TEXT("ViewportManager"), TEXT("SDLDrv.SDLClient"));
-        }
-    }
-    if( appStricmp(GConfig->GetStr(TEXT("Engine.Engine"),TEXT("RenderDevice"),TEXT("System")),TEXT("GL4ESDrv.GL4ESRenderDevice"))==0 )
-    {
-        if( !ParseParam(appCmdLine(),TEXT("NoForceGL4ES")) )
-        {
-            debugf(TEXT("Auto-switching from GL4ESDrv to OpenGLDrv for the SDL 1.2 binary."));
-            GConfig->SetString(TEXT("Engine.Engine"), TEXT("RenderDevice"), TEXT("OpenGLDrv.OpenGLRenderDevice"));
-        }
-    }
-#endif
 
     // Auto-switch from TcpNetDriver to WebRTCNetDriver on Emscripten (per D-05).
     // TcpNetDriver uses BSD sockets which don't work in browsers.
@@ -964,12 +943,17 @@ static UEngine* InitEngine()
 // persisted value flows back untouched because the auto-switch guards leave GL4ES/OpenGL/Null alone. The
 // UE2 render-device key is "RenderDevice" (vs UE1's Game/Windowed/RenderDevice trio).
 //
+// ufront 2.34: hoisted above InitEngine — the ini normalisation there asks the same question the
+// -*RENDERER switches do ("is this class in this binary?"), so both use this one probe.
 struct FRenderSwitch { const TCHAR* Param; const TCHAR* Device; const TCHAR* Viewport; };
 static const FRenderSwitch GRenderSwitches[] =
 {
 	// -RENDERER switch           render device                          coupled SDL viewport (NULL = keep current)
 	{ TEXT("GL4ESRENDERER"),    TEXT("GL4ESDrv.GL4ESRenderDevice"),   TEXT("SDL2Drv.SDL2Client") }, // SDL2 (web / gl4es default)
-	{ TEXT("OPENGLRENDERER"),   TEXT("OpenGLDrv.OpenGLRenderDevice"), TEXT("SDLDrv.SDLClient")   }, // SDL1 (legacy preset)
+	// ufront 2.34: OpenGLDrv now rides the SAME SDL2 client as GL4ES — the SDL 1.2 pairing was never a
+	// property of the driver, only of the stack it happened to ship in (OpenGLDrv/CMakeLists.txt has had
+	// the SDL2 branch all along). Both GL devices live in one binary; this switch picks between them.
+	{ TEXT("OPENGLRENDERER"),   TEXT("OpenGLDrv.OpenGLRenderDevice"), TEXT("SDL2Drv.SDL2Client") }, // desktop GL on SDL2
 	{ TEXT("SOFTWARERENDERER"), TEXT("PixoDrv.PixoRenderDevice"),     NULL                       }, // Pixomatic (never built -> log-noop)
 	{ TEXT("NULLRENDERER"),     TEXT("Engine.NullRenderDevice"),      NULL                       }, // GPU-free (always available)
 };
@@ -977,14 +961,6 @@ static const FRenderSwitch GRenderSwitches[] =
 // The class a -*RENDERER switch requested (empty if none) -- persisted after a successful Init().
 static FString GRequestedRenderDevice;
 
-// True iff the render-device class is compiled into this build (its UClass registered at startup).
-static UBOOL IsRenderDeviceAvailable( const TCHAR* Device )
-{
-	FString Path = Device;
-	INT Dot = Path.InStr( TEXT("."), 1 );
-	const TCHAR* ClassName = ( Dot != INDEX_NONE ) ? ((*Path) + Dot + 1) : (*Path);
-	return UObject::StaticFindObject( UClass::StaticClass(), ANY_PACKAGE, ClassName ) != NULL;
-}
 
 // Apply the software-renderer quality downgrades (kept verbatim from the old -SOFTWARE path). Only reached
 // when PixoDrv is actually selected (i.e. available) -- dead in every current preset (Pixomatic isn't
@@ -1058,7 +1034,11 @@ static void PersistRenderChoiceIfSwitched()
 // Main entry point.
 // This is an example of how to initialize and launch the engine.
 //
-#if defined(USE_PIXOMATIC) && !defined(__EMSCRIPTEN__) && !defined(__ANDROID__)
+// ufront 2.34 — the READ_IMPLIES_EXEC re-exec below is a LINUX KERNEL mechanism (personality(2)); MinGW
+// has no <sys/personality.h> and Windows has no equivalent knob. Narrow the guard to Linux so the
+// Windows build compiles Pixomatic; whether its JIT can execute out of a DEP-protected heap there is a
+// separate question, and one this leaves open rather than pre-judging.
+#if defined(USE_PIXOMATIC) && defined(__linux__)
 // ufront 2.12 Part B: headers for the READ_IMPLIES_EXEC re-exec below (Pixomatic executable-heap fix).
 #include <sys/personality.h>
 #include <unistd.h>
@@ -1075,7 +1055,7 @@ int main(int argc, char **argv)
 #if defined(__ANDROID__)
     AndroidRedirectStdioToLogcat();
 #endif
-#if defined(USE_PIXOMATIC) && !defined(__EMSCRIPTEN__) && !defined(__ANDROID__)
+#if defined(USE_PIXOMATIC) && defined(__linux__)
     // ufront 2.12 Part B — Pixomatic executable-heap fix. Pixomatic (Michael Abrash's JIT software rasterizer)
     // generates x86 code at runtime and executes it out of malloc'd heap buffers — including via an internal
     // drawverts path we cannot hook (not PixoAllocCodeBuffer, which our PixoCodeExec.c already RWX-overrides).
@@ -1178,11 +1158,7 @@ int main(int argc, char **argv)
 
         // auto-generated lookups and statics
         AUTO_INITIALIZE_REGISTRANTS_ENGINE;
-        #if USE_SDL12
-        AUTO_INITIALIZE_REGISTRANTS_SDLDRV;
-        #else
         AUTO_INITIALIZE_REGISTRANTS_SDL2DRV;
-        #endif
         AUTO_INITIALIZE_REGISTRANTS_FIRE;
         AUTO_INITIALIZE_REGISTRANTS_ALAUDIO;
 #if UT_RENDER_OPENGLDRV
@@ -1216,11 +1192,7 @@ char blah;
 #if USE_PIXOMATIC
 extern BYTE GLoadedPixoDrv; snprintf(&blah, 1, "%d", (int) GLoadedPixoDrv);
 #endif
-#if USE_SDL12
-extern BYTE GLoadedSDLDrv; snprintf(&blah, 1, "%d", (int) GLoadedSDLDrv);
-#else
 extern BYTE GLoadedSDL2Drv; snprintf(&blah, 1, "%d", (int) GLoadedSDL2Drv);
-#endif
 #if UT_RENDER_OPENGLDRV
 extern BYTE GLoadedOpenGLDrv; snprintf(&blah, 1, "%d", (int) GLoadedOpenGLDrv);
 #endif

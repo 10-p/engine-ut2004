@@ -15,6 +15,20 @@
 
 #include "GL4ESDrv.h"
 
+// ufront 2.34 (Windows) — MinGW's CRT has no POSIX setenv(); the equivalent is _putenv_s, whose argument
+// order and "overwrite" semantics differ. gl4es is configured entirely through LIBGL_* environment
+// variables, so this shim is what makes the translation layer configurable on Windows at all. Named
+// setenv so the 13 call sites below stay one shared list rather than a per-platform fork of them.
+#if defined(_WIN32) && !defined(__CYGWIN__)
+#include <stdlib.h>
+static inline int setenv( const char* Name, const char* Value, int Overwrite )
+{
+	if( !Overwrite && getenv(Name) )
+		return 0;
+	return _putenv_s( Name, Value );
+}
+#endif
+
 #if defined(__ANDROID__)
 #include <sys/system_properties.h>   // __system_property_get / PROP_VALUE_MAX (emulator detection for LIBGL_NOBGRA)
 #endif

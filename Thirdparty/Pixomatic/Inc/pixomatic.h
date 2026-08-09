@@ -29,7 +29,14 @@
 
 #endif
 
-#if (BUILDING_PIXO || BUILDING_PIXO_STATIC)
+// ufront 2.34 — MinGW needs a third combination this header never had: the shipped Windows
+// `pixomatic.lib` is a STATIC library whose symbols are stdcall-decorated C (`_PixoFoo@40`), so neither
+// existing branch fits — the dllimport one adds __declspec(dllimport) we must not have, and the
+// BUILDING_PIXO_STATIC one drops the __stdcall the symbols carry.
+#if defined(__MINGW32__) && !defined(BUILDING_PIXO)
+  #define PIXO_DYNLINK(ret) __attribute__((stdcall)) ret
+  #define PIXO_DYNLINKDATA(type) type
+#elif (BUILDING_PIXO || BUILDING_PIXO_STATIC)
   #if BUILDING_PIXO_STATIC
     #define PIXO_DYNLINK(ret) ret
     #define PIXO_DYNLINKDATA(type) type

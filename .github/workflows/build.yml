@@ -1,0 +1,158 @@
+name: build
+
+# ufront 2.34 — CI for the engine build matrix.
+#
+# Scope, decided with the owner: build on EVERY push and pull request and upload the binaries as workflow
+# artifacts. No GitHub Releases — the artifacts on the run page are the deliverable.
+#
+# What this does NOT do: run the game, and NOT build the web target.
+#   * Running needs a GPU; a hosted runner has none (the monorepo's E2E is guarded by
+#     tools/e2e-gpu-guard.mjs for exactly this reason). Rendering stays a human check on the owner's box.
+#   * ⚠ The WEB link of THIS engine preloads `${UT_ASSETS_DIR}/System/Build.ini` — a file from the retail
+#     asset tree, which is not in this repo and never will be. unreal1 and ut99 preload only tracked
+#     config and so DO have a web job; ut2004 cannot until that preload is sourced from something
+#     tracked. Not a workaround to invent under time pressure: the web artifact is built on the owner's
+#     box, where the assets live.
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: linux ${{ matrix.preset }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The Karma on/off pair. Both carry SDL2 + OpenGLDrv + GL4ESDrv + PixoDrv in ONE binary; the
+          # only difference is the physics, and the pair exists so the web/Android ports' Karma-less
+          # behaviour can be reproduced somewhere a debugger can reach it.
+          - preset: native
+            bin: ut2004-pixo.bin
+          - preset: native-karma
+            bin: ut2004-karma-pixo.bin
+    steps:
+      - uses: actions/checkout@v4
+
+      # A 32-bit build (-m32): every dev package has to be the :i386 one. gcc-13 is what the preset pins.
+      - name: Install the 32-bit toolchain
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-13 g++-13 gcc-13-multilib g++-13-multilib \
+            libsdl2-dev:i386 libopenal-dev:i386 libx11-dev:i386 libxext-dev:i386
+
+      - name: Cache fetched dependencies
+        uses: actions/cache@v4
+        with:
+          path: build-${{ matrix.preset }}/_deps
+          key: deps-${{ matrix.preset }}-${{ hashFiles('CMakeLists.txt', 'Source/*/CMakeLists.txt', 'cmake/*.cmake') }}
+
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
+
+      - name: Build
+        run: cmake --build build-${{ matrix.preset }} -j$(nproc)
+
+      - name: Check the artifacts exist
+        run: |
+          test -x build-${{ matrix.preset }}/Source/SDLLaunch/${{ matrix.bin }}
+          test -x build-${{ matrix.preset }}/Source/UCC/ucc-bin.bin
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ut2004-linux-${{ matrix.preset }}
+          path: |
+            build-${{ matrix.preset }}/Source/SDLLaunch/${{ matrix.bin }}
+            build-${{ matrix.preset }}/Source/UCC/ucc-bin.bin
+          if-no-files-found: error
+
+  windows:
+    name: windows (MinGW-w64 cross, one self-contained .exe)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install MinGW-w64
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mingw-w64
+
+      - name: Cache fetched dependencies
+        uses: actions/cache@v4
+        with:
+          path: build-windows/_deps
+          key: deps-windows-${{ hashFiles('CMakeLists.txt', 'Source/*/CMakeLists.txt', 'cmake/*.cmake') }}
+
+      - name: Configure
+        run: cmake --preset windows
+
+      - name: Build
+        run: cmake --build build-windows -j$(nproc)
+
+      # ★ The check that matters for a "drop it somewhere and run it" binary. Without -static-libgcc /
+      # -static-libstdc++ the exe imports libgcc_s_dw2-1.dll and libstdc++-6.dll and runs ONLY on the
+      # machine that built it — and nothing else in the build fails when that happens. Retiring SDL 1.2
+      # in 2.34 is what removed the last non-system import (SDL.dll) from this target.
+      - name: Assert the exe imports nothing but system DLLs
+        run: |
+          set -euo pipefail
+          imports=$(i686-w64-mingw32-objdump -p build-windows/Source/SDLLaunch/ut2004.exe \
+                    | sed -n 's/^\tDLL Name: //p' | sort -u)
+          echo "$imports"
+          bad=$(echo "$imports" | grep -viE '^(ADVAPI32|GDI32|IMM32|KERNEL32|msvcrt|ole32|OLEAUT32|OPENGL32|SETUPAPI|SHELL32|USER32|VERSION|WINMM|WS2_32)\.dll$' || true)
+          if [ -n "$bad" ]; then echo "::error::non-system DLL imports: $bad"; exit 1; fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ut2004-windows
+          path: build-windows/Source/SDLLaunch/ut2004.exe
+          if-no-files-found: error
+
+  android:
+    name: android (x86_64 + arm64 + armv7 APK)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: android-actions/setup-android@v3
+
+      # The NDK and the CMake the Gradle plugin asks for; the versions match app/build.gradle's
+      # ndkVersion, because AGP silently downloads its own on a mismatch and then CI is not building what
+      # the local build builds. local.properties in the repo points at the owner's SDK; CI has its own.
+      - name: Install the NDK + CMake and point the build at this runner's SDK
+        run: |
+          sdkmanager --install "ndk;30.0.14904198" "cmake;4.1.2" >/dev/null
+          printf 'sdk.dir=%s\nndk.dir=%s/ndk/30.0.14904198\n' "$ANDROID_HOME" "$ANDROID_HOME" > Android/local.properties
+
+      - name: Build the APK
+        run: ./gradlew assembleDebug --console=plain
+        working-directory: Android
+
+      # All three ABIs must be in there. A silent drop to one ABI is the failure mode worth catching:
+      # the APK still installs, and only fails on the device you did not test.
+      - name: Assert every ABI is packaged
+        run: |
+          set -euo pipefail
+          apk=Android/app/build/outputs/apk/debug/app-debug.apk
+          for abi in x86_64 arm64-v8a armeabi-v7a; do
+            unzip -l "$apk" | grep -q "lib/$abi/libUT2004.so" || { echo "::error::missing $abi"; exit 1; }
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ut2004-android
+          path: Android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error

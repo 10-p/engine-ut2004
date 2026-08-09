@@ -57,10 +57,6 @@ else()
       ${gl4es_SOURCE_DIR}/include
     )
   endif()
-  # SDL 1.2 include path for OpenGLDrv.h / SDLDrv.h (which include SDL.h on non-Windows).
-  if(USE_SDL12)
-    target_include_directories(${PROJECT_NAME} PRIVATE ${SDL12_INCLUDE_DIR})
-  endif()
 endif()
 
 #-----------------------------------------------------------------------------
@@ -70,20 +66,20 @@ endif()
 # Order derived from SDLLaunch/Src/makefile lines 44+57.
 # Editor is excluded per D-10. UTV2004 was never in the link list.
 #
-# Only one SDL viewport driver is linked per binary because SDL 1.2 and SDL 2
-# share symbol names with incompatible internal state.
-# Switch with: cmake -B build -DUSE_SDL12=ON
+# ufront 2.34: SDL2Drv is the only viewport driver — SDL 1.2 is retired. BOTH GL render devices link
+# into the same binary (their GL headers are PRIVATE, so they never meet in a translation unit) and the
+# user picks one at startup with -OPENGLRENDERER / -GL4ESRENDERER.
 #-----------------------------------------------------------------------------
 
 if(EMSCRIPTEN)
-  # Emscripten forced stack: SDL2 + GL4ES + WebRTC (no OpenGLDrv, no SDLDrv, no GLES3Drv).
+  # Emscripten forced stack: SDL2 + GL4ES + WebRTC (no OpenGLDrv: no desktop GL in a browser).
   set(LINK_PACKAGES
     Engine Core Fire IpDrv WebRTCDrv UWeb XGame XInterface
     GL4ESDrv ALAudio Onslaught
     zlib ogg vorbis
   )
 else()
-  # Native: the render driver depends on the backend (HARD SPLIT). Only the built driver links.
+  # Native/Windows: every render driver this configure enabled links in; the choice is made at runtime.
   set(LINK_PACKAGES Engine Core Fire IpDrv UWeb XGame XInterface)
   if(UT_HAS_OPENGLDRV)
     list(APPEND LINK_PACKAGES OpenGLDrv)
@@ -100,15 +96,7 @@ endif()
 # WITH_SPEEX=0: ALAudio voice capture/VoIP disabled (no Speex dependency)
 target_compile_definitions(${PROJECT_NAME} PRIVATE WITH_SPEEX=0)
 
-if(EMSCRIPTEN)
-  # On Emscripten, always use SDL2Drv (no SDL 1.2 option)
-  list(APPEND LINK_PACKAGES SDL2Drv)
-elseif(USE_SDL12)
-  list(APPEND LINK_PACKAGES SDLDrv)
-  target_compile_definitions(${PROJECT_NAME} PRIVATE USE_SDL12=1)
-else()
-  list(APPEND LINK_PACKAGES SDL2Drv)
-endif()
+list(APPEND LINK_PACKAGES SDL2Drv)
 
 # Tell SDLLaunch.cpp which render drivers are actually linked in, so its includes / registrants /
 # dead-code refs match the link set exactly. An absent UT_RENDER_* macro evaluates to 0 via #if,
@@ -389,14 +377,15 @@ else()
   if(MINGW)
     # ufront 2.33 (Windows) — no libdl (module loading is Win32, and BUILD_STATIC means there is nothing
     # to load anyway) and no -rpath. winpthread is linked STATICALLY so the exe needs no extra DLL.
-    target_link_libraries(${PROJECT_NAME} ${SDL12_LIBRARY}
+    # ⚠ ORDER MATTERS: -lmingw32 and SDL2main must precede SDL2 — SDL.h renamed `main` to `SDL_main`, and
+    # SDL2main's WinMain is what calls it (ufront 2.34; the same link-order note SDL2Mingw.cmake carries in
+    # the UE1 engines).
+    target_link_libraries(${PROJECT_NAME} -lmingw32 SDL2::SDL2main SDL2::SDL2-static
       -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic
       opengl32 ws2_32 winmm ole32 oleaut32 imm32 version setupapi gdi32 user32 shell32 advapi32 m)
     # --export-all-symbols is the PE spelling of -export-dynamic, and it is what makes the package
     # registrants (GLoaded<Package>) visible to appGetDllExport's GetProcAddress lookup.
     target_link_options(${PROJECT_NAME} PRIVATE -Wl,--export-all-symbols)
-  elseif(USE_SDL12)
-    target_link_libraries(${PROJECT_NAME} ${SDL12_LIBRARY} dl pthread m)
   else()
     target_link_libraries(${PROJECT_NAME} SDL2::SDL2-static dl pthread m)
   endif()
@@ -409,7 +398,9 @@ else()
 endif()
 
 #-----------------------------------------------------------------------------
-# Output name: distinct per backend so the two builds are unambiguous and can sit side by side.
+# Output name. ufront 2.34: with SDL 1.2 retired there is no "which SDL" to encode, so the name says
+# what the binary CONTAINS beyond the base set -- karma and/or pixo -- and the plain build is `ut2004`.
+# The old ut2004-legacy / ut2004-gl4es pair is gone with the backend split that produced it.
 # Emscripten keeps the default SDLLaunch name (+ .html suffix) -- the web harness depends on it.
 #-----------------------------------------------------------------------------
 if(ANDROID)
@@ -417,11 +408,15 @@ if(ANDROID)
   # dlsym's SDL_main). Force the "lib" prefix (the root leaves the default prefix on Android).
   set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME UT2004 PREFIX "lib" SUFFIX ".so")
 elseif(NOT EMSCRIPTEN)
-  if(UT_GFX_BACKEND STREQUAL "legacy")
-    set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME ut2004-legacy)
-  else()
-    set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME ut2004-gl4es)
+  set(UT_BIN_NAME "ut2004")
+  if(BUILD_KARMA_REF)
+    set(UT_BIN_NAME "${UT_BIN_NAME}-karma")
   endif()
+  if(UT_HAS_PIXODRV)
+    set(UT_BIN_NAME "${UT_BIN_NAME}-pixo")
+  endif()
+  set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "${UT_BIN_NAME}")
+  message(STATUS "SDLLaunch output name: ${UT_BIN_NAME}")
 endif()
 
 #-----------------------------------------------------------------------------

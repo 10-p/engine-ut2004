@@ -63,7 +63,13 @@
 #define SPEW_PIXO_WARNING(_x)
 #endif
 
-#if WIN32
+// ufront 2.34 — PURE_C=0 selects Epic's hand-written MMX blocks, which are `__asm { mov eax, ... }`:
+// MSVC *syntax*, not Windows syntax. MinGW GCC cannot parse a line of it, so the guard has to say
+// _MSC_VER — the same mistake, in the same shape, as UnVcWin32.cpp and utglr's asm gate. The C paths it
+// falls back to are the ones every non-Windows build has always used, so the Windows binary loses some
+// software-rasterizer speed and nothing else. (Same trap as everywhere in 2.33/2.34: "the compiler is not
+// the platform".)
+#if WIN32 && defined(_MSC_VER)
 #  if defined(_WIN64) || defined(_DEBUG)
 #     define PURE_C      1
 #  else
@@ -71,6 +77,12 @@
 #  endif
 #else
 #  define PURE_C      1
+#endif
+
+// The POSIX stand-ins below are about the PLATFORM, not the compiler: MinGW gets POINT and _vsnprintf
+// from the Windows headers, so defining them here would be a redeclaration (ufront 2.34 — the PURE_C
+// guard above and this block used to be one #if, and separating them is the whole fix).
+#if !WIN32
 #  ifndef _vsnprintf
 #    define _vsnprintf vsnprintf
 #  endif

@@ -28,12 +28,12 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
   GPackage=OpenGLDrv
 )
 
-# Link against whichever SDL is active for GL context functions.
-if(USE_SDL12)
-  target_include_directories(${PROJECT_NAME} PRIVATE ${SDL12_INCLUDE_DIR})
-  target_compile_definitions(${PROJECT_NAME} PRIVATE USE_SDL12=1)
-  target_link_libraries(${PROJECT_NAME} PRIVATE Core Engine)
-elseif(EMSCRIPTEN)
+# SDL2 supplies the GL context functions (ufront 2.34: the SDL 1.2 branch is gone with SDL 1.2). Note
+# what is NOT here: any GL library. This driver binds every entry point through its own pointer table
+# (GL_PROC -> SDL_GL_GetProcAddress), which is exactly why it can share a binary with GL4ESDrv — there
+# are no duplicate GL symbols to collide, and neither driver's GL headers are visible to the other
+# (both include sets are PRIVATE).
+if(EMSCRIPTEN)
   target_link_libraries(${PROJECT_NAME} PRIVATE Core Engine)
 else()
   target_link_libraries(${PROJECT_NAME} PRIVATE Core Engine SDL2::SDL2-static)

@@ -61,15 +61,24 @@ option(BUILD_STATIC "Build all modules as static libraries" ON)
 option(UT_WEB_PERF "Emscripten: shipping build — -O3, no assertions, no debug info" OFF)
 option(UT_WEB_DEBUG "Emscripten: -O0 instead of the -O2 dev default (nothing inlined, every local live)" OFF)
 
-# Graphics/driver backend selection (mutually-exclusive, HARD-SPLIT driver stacks):
-#   legacy = SDL 1.2 (SDLDrv)  + desktop OpenGL (OpenGLDrv)   -> build-legacy/  ut2004-legacy.bin
-#   gl4es  = SDL2    (SDL2Drv) + GL4ES          (GL4ESDrv)    -> build-gl4es/    ut2004-gl4es.bin
-# The two stacks must NEVER share a binary: SDL 1.2 and SDL 2 export clashing symbols with
-# incompatible internal state, and OpenGLDrv (Mesa GL/gl.h) and GL4ESDrv (gl4es GL/gl.h) cannot
-# coexist in one translation unit. Each backend builds in its own folder; see CMakePresets.json.
-# Emscripten always uses its own forced gl4es-style stack (handled on dedicated branches below).
-set(UT_GFX_BACKEND "gl4es" CACHE STRING "Graphics/driver backend: legacy or gl4es")
-set_property(CACHE UT_GFX_BACKEND PROPERTY STRINGS legacy gl4es)
+# ★ ufront 2.34 — SDL 1.2 IS RETIRED. There is now ONE stack everywhere:
+#     SDL2 (SDL2Drv) + desktop OpenGL (OpenGLDrv) + GL4ES (GL4ESDrv), all in one binary,
+#     the render device chosen at startup with -OPENGLRENDERER / -GL4ESRENDERER.
+#
+# What the old hard split claimed, and why neither half holds any more:
+#   "SDL 1.2 and SDL 2 export clashing symbols" — true, and moot: SDLDrv and Thirdparty/SDL12 are gone.
+#   "OpenGLDrv (Mesa GL/gl.h) and GL4ESDrv (gl4es GL/gl.h) cannot coexist in one translation unit" —
+#     literally true, and already contained: both set their include directories PRIVATE, so neither ever
+#     sees the other's header. They are never in one TU. Their symbols do not collide either — OpenGLDrv
+#     links NO GL library (it binds through a pointer table filled by SDL_GL_GetProcAddress) and gl4es
+#     compiles -fvisibility=hidden off-Windows.
+# Only ONE device is live at a time: SDL creates one context per window and GRenderSwitches pairs each
+# device with its viewport, which is the arrangement the launcher already modelled.
+#
+# UT_GFX_BACKEND therefore no longer selects "which SDL"; it is kept only so an existing build directory
+# and the Android/web branches keep a value to read, and "gl4es" is the only one left.
+set(UT_GFX_BACKEND "gl4es" CACHE STRING "Graphics/driver backend (SDL 1.2 retired in 2.34; gl4es only)")
+set_property(CACHE UT_GFX_BACKEND PROPERTY STRINGS gl4es)
 
 if(BUILD_STATIC)
   set(LIB_TYPE STATIC)
@@ -84,10 +93,18 @@ endif()
 # Graphics Backend Resolution (back-compat, emscripten force, validate, lock, derive)
 #-----------------------------------------------------------------------------
 
-# Back-compat: the old -DUSE_SDL12=ON switch selects the legacy backend.
-if(DEFINED USE_SDL12 AND USE_SDL12 AND NOT UT_GFX_BACKEND STREQUAL "legacy")
-  message(WARNING "USE_SDL12=ON is deprecated; mapping to UT_GFX_BACKEND=legacy")
-  set(UT_GFX_BACKEND "legacy")
+# ufront 2.34 — the SDL 1.2 backend is gone. Fail loudly rather than silently building something else:
+# a caller asking for it (an old script, an old preset, -DUSE_SDL12=ON) is asking for a stack that no
+# longer exists, and the one that replaced it does everything the legacy one did.
+if(DEFINED USE_SDL12 AND USE_SDL12)
+  message(FATAL_ERROR
+    "USE_SDL12=ON: the SDL 1.2 stack was retired in ufront 2.34. The SDL2 build now contains BOTH GL "
+    "render devices — run it with -OPENGLRENDERER for the desktop-GL path the legacy binary provided.")
+endif()
+if(NOT UT_GFX_BACKEND STREQUAL "gl4es")
+  message(FATAL_ERROR
+    "UT_GFX_BACKEND='${UT_GFX_BACKEND}': only 'gl4es' remains (SDL 1.2 retired in ufront 2.34). "
+    "That stack carries OpenGLDrv as well; select it at runtime with -OPENGLRENDERER.")
 endif()
 
 # Emscripten always uses the forced gl4es-style stack; pin the knob so downstream reads agree.
@@ -95,28 +112,8 @@ if(EMSCRIPTEN)
   set(UT_GFX_BACKEND "gl4es")
 endif()
 
-if(NOT (UT_GFX_BACKEND STREQUAL "legacy" OR UT_GFX_BACKEND STREQUAL "gl4es"))
-  message(FATAL_ERROR "UT_GFX_BACKEND must be 'legacy' or 'gl4es' (got '${UT_GFX_BACKEND}')")
-endif()
-
-# Lock the backend to this build dir on first configure: the legacy/gl4es stacks cannot be
-# swapped inside one build tree (clashing SDL + GL symbols/headers). Force a clean separate dir.
-if(DEFINED UT_GFX_BACKEND_LOCKED AND NOT UT_GFX_BACKEND_LOCKED STREQUAL UT_GFX_BACKEND)
-  message(FATAL_ERROR
-    "This build directory was configured for UT_GFX_BACKEND='${UT_GFX_BACKEND_LOCKED}' but "
-    "'${UT_GFX_BACKEND}' was requested.\n"
-    "Backends cannot share a build directory. Use a separate folder or the matching preset "
-    "(build-legacy / build-gl4es).")
-endif()
-set(UT_GFX_BACKEND_LOCKED "${UT_GFX_BACKEND}" CACHE INTERNAL "Locked graphics backend for this build dir")
-
-# Derive the legacy switch used throughout the tree (normal var shadows any stale cache entry).
-if(UT_GFX_BACKEND STREQUAL "legacy")
-  set(USE_SDL12 ON)
-else()
-  set(USE_SDL12 OFF)
-endif()
-message(STATUS "Graphics backend: ${UT_GFX_BACKEND} (USE_SDL12=${USE_SDL12})")
+set(USE_SDL12 OFF)
+message(STATUS "Graphics backend: ${UT_GFX_BACKEND} (SDL2; OpenGLDrv + GL4ESDrv in one binary)")
 
 #-----------------------------------------------------------------------------
 # Architecture Detection
@@ -386,7 +383,15 @@ if(NOT EMSCRIPTEN AND UT_GFX_BACKEND STREQUAL "gl4es")
     GIT_SHALLOW    TRUE
   )
   set(SDL_TEST OFF CACHE BOOL "" FORCE)
-  set(SDL2_DISABLE_SDL2MAIN ON CACHE BOOL "" FORCE)
+  # ufront 2.34 — SDL2main is needed on Windows and only on Windows. SDL.h renames the app's `main` to
+  # `SDL_main`, and on Windows it is SDL2main that supplies the real WinMain which calls it; without the
+  # library the link ends in "undefined reference to `WinMain@16`" with no mention of SDL. Everywhere else
+  # SDL2main is an empty shim we do not want in the way.
+  if(MINGW)
+    set(SDL2_DISABLE_SDL2MAIN OFF CACHE BOOL "" FORCE)
+  else()
+    set(SDL2_DISABLE_SDL2MAIN ON CACHE BOOL "" FORCE)
+  endif()
   if(ANDROID)
     # Android: SDL2 SHARED -> libSDL2.so (SDLActivity's Java layer loads it first; the SDL JNI
     # lives in it). SDL2 auto-selects its Android video/audio backend -- no X11/Wayland/i386 hacks.
@@ -513,15 +518,24 @@ if(EMSCRIPTEN OR UT_GFX_BACKEND STREQUAL "gl4es")
   # CMAKE_ARCHIVE_OUTPUT_DIRECTORY to ${CMAKE_SOURCE_DIR}/lib, causing
   # both native and WASM builds to share the same libGL.a file. Redirect
   # each build's GL4ES output to its own binary directory.
+  # ufront 2.34 — gl4es names its library target after what it IMPERSONATES, and on Windows that is
+  # `OPENGL32`, not `GL` (it builds an opengl32 replacement there). Everything below refers to one handle,
+  # so normalise the name once. Without this the Windows configure dies in GL4ESDrv with "gl4es::GL is
+  # missing" — which reads like "the backend is wrong" and is really "the target has another name".
   if(TARGET GL)
-    set_target_properties(GL PROPERTIES
+    set(_UT_GL4ES_TARGET GL)
+  elseif(TARGET OPENGL32)
+    set(_UT_GL4ES_TARGET OPENGL32)
+  endif()
+  if(TARGET ${_UT_GL4ES_TARGET})
+    set_target_properties(${_UT_GL4ES_TARGET} PROPERTIES
       ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
       LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
     )
     # Unambiguous, namespaced handle so GL4ESDrv links the translation layer's libGL.a and can
     # never silently fall back to the system -lGL (the "two versions of OpenGL" hazard).
     if(NOT TARGET gl4es::GL)
-      add_library(gl4es::GL ALIAS GL)
+      add_library(gl4es::GL ALIAS ${_UT_GL4ES_TARGET})
     endif()
 
     # ★ THE WEB DEBUG BUILD MUST NOT COMPILE GL4ES AT -O0 — the module becomes uncompilable.
@@ -552,22 +566,10 @@ if(EMSCRIPTEN OR UT_GFX_BACKEND STREQUAL "gl4es")
     # dev and perf builds already inline this far past the problem. Narrow rather than
     # `NOT UT_WEB_PERF`, so the condition says exactly what it protects against.
     if(EMSCRIPTEN AND UT_WEB_DEBUG)
-      target_compile_options(GL PRIVATE -O2)
+      target_compile_options(${_UT_GL4ES_TARGET} PRIVATE -O2)
       message(STATUS "GL4ES: forcing -O2 in the -O0 web build (at -O0 + Asyncify, "
                      "generateInstruction exceeds V8's 50000-local limit and the module will not compile)")
     endif()
-  endif()
-endif()
-
-# SDL 1.2 paths are only needed by the legacy backend (vendored 2006 .so + headers).
-# USE_SDL12 is derived from UT_GFX_BACKEND above (legacy => ON); it is no longer a separate option.
-if(USE_SDL12)
-  if(MINGW)
-    # ufront 2.33 — no Windows build of SDL 1.2 to vendor; fetch SDL's own prebuilt MinGW binaries.
-    include(SDL12Mingw)
-  else()
-    set(SDL12_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/Thirdparty/SDL12/include")
-    set(SDL12_LIBRARY "${CMAKE_SOURCE_DIR}/Thirdparty/SDL12/libSDL-1.2.so.0")
   endif()
 endif()
 
@@ -622,18 +624,28 @@ if(EMSCRIPTEN)
   add_subdirectory(Source/WebRTCDrv)
   set(UT_HAS_SDL2DRV ON)
   set(UT_HAS_GL4ESDRV ON)
-elseif(UT_GFX_BACKEND STREQUAL "legacy")
-  # Legacy stack: SDL 1.2 + desktop OpenGL.
-  add_subdirectory(Source/SDLDrv)
-  add_subdirectory(Source/OpenGLDrv)
-  set(UT_HAS_SDLDRV ON)
-  set(UT_HAS_OPENGLDRV ON)
 else() # gl4es
-  # GL4ES stack: SDL2 + GL4ES translation layer.
+  # GL4ES stack: SDL2 + GL4ES translation layer + desktop OpenGL (ufront 2.34 — see below).
   add_subdirectory(Source/SDL2Drv)
   add_subdirectory(Source/GL4ESDrv)
   set(UT_HAS_SDL2DRV ON)
   set(UT_HAS_GL4ESDRV ON)
+  # ★ ufront 2.34 — OpenGLDrv joins the SDL2 stack, so ONE binary carries both GL render devices and the
+  # user picks at startup (-OPENGLRENDERER / -GL4ESRENDERER). The old comment above said the two "must
+  # NEVER share a binary" for two reasons; neither survives:
+  #   - "SDL 1.2 and SDL 2 export clashing symbols" — true, and irrelevant now that SDL 1.2 is retired
+  #     and both drivers sit on SDL2.
+  #   - "OpenGLDrv (Mesa GL/gl.h) and GL4ESDrv (gl4es GL/gl.h) cannot coexist in one translation unit" —
+  #     literally true and already contained: each sets its include directories PRIVATE, so neither ever
+  #     sees the other's header. They are never in one TU.
+  # Nor do their symbols collide: OpenGLDrv links no GL library at all (it binds every entry point
+  # through a pointer table filled by SDL_GL_GetProcAddress), and gl4es compiles -fvisibility=hidden on
+  # non-Windows so its glXxx never reaches the dynamic symbol table. Only one device is ever LIVE — SDL
+  # creates one context per window, and GRenderSwitches pairs each device with its viewport.
+  if(NOT EMSCRIPTEN AND NOT ANDROID)
+    add_subdirectory(Source/OpenGLDrv)
+    set(UT_HAS_OPENGLDRV ON)
+  endif()
 endif()
 
 # ufront 2.12 Part B: optional Pixomatic software render device (-SOFTWARERENDERER). Native only; the
