@@ -15,11 +15,20 @@ android {
         externalNativeBuild {
             cmake {
                 abiFilters 'x86_64', 'arm64-v8a', 'armeabi-v7a'
-                // Reuse the local SDL clone (version-matched to the vendored Java layer);
-                // avoids a re-download and guarantees C/Java parity.
-                arguments '-DANDROID_STL=c++_shared',
-                          '-DUT_GFX_BACKEND=gl4es',
-                          '-DFETCHCONTENT_SOURCE_DIR_SDL2=/home/ion/engines/.cache-sdl2-2.32'
+                // ufront 2.34 — the SDL2 source directory is OPT-IN, not baked in. This used to be a hard
+                // '-DFETCHCONTENT_SOURCE_DIR_SDL2=/home/ion/engines/.cache-sdl2-2.32', an absolute path on
+                // one machine; anywhere else FetchContent stops with "Manually specified source directory
+                // is missing" — which is exactly what CI hit on its first run. Point it at a local clone
+                // with `-Psdl2Dir=/abs/path` or SDL2_SOURCE_DIR in the environment to skip the download and
+                // guarantee C/Java SDL parity; with neither, FetchContent clones the pinned SDL2 itself.
+                def sdl2Dir = project.findProperty('sdl2Dir') ?: System.getenv('SDL2_SOURCE_DIR')
+                def cmakeArgs = ['-DANDROID_STL=c++_shared', '-DUT_GFX_BACKEND=gl4es']
+                if (sdl2Dir && file(sdl2Dir).isDirectory()) {
+                    cmakeArgs += "-DFETCHCONTENT_SOURCE_DIR_SDL2=${sdl2Dir}".toString()
+                } else if (sdl2Dir) {
+                    logger.warn("sdl2Dir=${sdl2Dir} does not exist — letting FetchContent clone SDL2")
+                }
+                arguments(*cmakeArgs)
                 // OpenAL (openal-soft) is built + packaged but NOT linked into libUT2004 (see
                 // SDLLaunch/CMakeLists.txt): ALAudio dlopens libopenal.so at audio-init, after the
                 // engine allocator is up. Listed here so AGP builds/packages the standalone target.

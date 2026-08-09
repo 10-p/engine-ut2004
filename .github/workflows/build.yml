@@ -26,6 +26,10 @@ jobs:
   linux:
     name: linux ${{ matrix.preset }}
     runs-on: ubuntu-24.04
+    # ⚠ A CONTAINER, not the bare runner — the runner image preinstalls amd64 -dev packages that make
+    # `libsdl2-dev:i386` uninstallable (libglib2.0-dev-bin is Multi-Arch: foreign, so apt ends in "held
+    # broken packages"). A stock ubuntu:24.04 resolves multiarch normally.
+    container: ubuntu:24.04
     strategy:
       fail-fast: false
       matrix:
@@ -38,16 +42,27 @@ jobs:
           - preset: native-karma
             bin: ut2004-karma-pixo.bin
     steps:
+      # The image is bare: even git has to be installed before checkout can use it.
+      - name: Base tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates cmake make pkg-config
+
       - uses: actions/checkout@v4
 
       # A 32-bit build (-m32): every dev package has to be the :i386 one. gcc-13 is what the preset pins.
+      # SDL2 is built FROM SOURCE here (FetchContent) with SDL_X11 forced on, so it needs the i386 X11
+      # development headers too — a shorter list makes SDL2 configure "successfully" without a video
+      # driver, and the failure only shows up as a black window much later.
       - name: Install the 32-bit toolchain
         run: |
-          sudo dpkg --add-architecture i386
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          dpkg --add-architecture i386
+          apt-get update
+          apt-get install -y --no-install-recommends \
             gcc-13 g++-13 gcc-13-multilib g++-13-multilib \
-            libsdl2-dev:i386 libopenal-dev:i386 libx11-dev:i386 libxext-dev:i386
+            libsdl2-dev:i386 libopenal-dev:i386 \
+            libx11-dev:i386 libxext-dev:i386 libxrandr-dev:i386 libxcursor-dev:i386 \
+            libxi-dev:i386 libxss-dev:i386 libxxf86vm-dev:i386 libgl-dev:i386
 
       - name: Cache fetched dependencies
         uses: actions/cache@v4
