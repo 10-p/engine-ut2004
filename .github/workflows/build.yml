@@ -30,6 +30,12 @@ jobs:
     # `libsdl2-dev:i386` uninstallable (libglib2.0-dev-bin is Multi-Arch: foreign, so apt ends in "held
     # broken packages"). A stock ubuntu:24.04 resolves multiarch normally.
     container: ubuntu:24.04
+    # ⚠ A container job defaults to `sh -e`, not bash — GitHub only picks bash on the bare runner image.
+    # dash has no `set -o pipefail`, so a step that opens with `set -euo pipefail` dies on line 1 with a
+    # bare "exit code 2" and no message about the shell. Pin it.
+    defaults:
+      run:
+        shell: bash
     strategy:
       fail-fast: false
       matrix:
