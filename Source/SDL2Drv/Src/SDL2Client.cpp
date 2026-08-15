@@ -33,6 +33,68 @@ void USDL2Client::StaticConstructor()
 {
     guard(USDL2Client::StaticConstructor);
     new(GetClass(),TEXT("StartupFullscreen"), RF_Public)UBoolProperty(CPP_PROPERTY(StartupFullscreen), TEXT("Display"), CPF_Config );
+
+    // ★ COMPILED DEFAULTS FOR THE INHERITED UClient SETTINGS (ufront 2.35).
+    //
+    // UClient::StaticConstructor (Engine/Src/UnCamMgr.cpp) REGISTERS ~30 CPF_Config properties and assigns
+    // NOT ONE VALUE, so without a [SDL2Drv.SDL2Client] ini section every one of them falls back to a
+    // zero-initialised default -- and the zeroes are not merely conservative, they are wrong:
+    //
+    //   TextureLODSet[*] = 0  -> UltraHigh. The ETextureDetail enum lists UltraHigh FIRST, so the zero
+    //                            default is the single MOST EXPENSIVE value, not a safe middle.
+    //   Brightness/Contrast/Gamma = 0 -> a black picture.
+    //   WindowedViewportX/Y = 0 -> a 0x0 window.
+    //   Decals/Coronas/DecoLayers/Projectors/ScreenFlashes = 0 -> silently off.
+    //
+    // This is the same trap GL4ESDrv had before DetailTextures and UseVBO got real compiled defaults (see
+    // UGL4ESRenderDevice::StaticConstructor) -- and it is not hypothetical here either: a RETAIL UT2004.ini
+    // has no [SDL2Drv.SDL2Client] section at all, because SDL2 did not exist in 2004, so any install seeded
+    // from one gets the whole table above. Measured in the sibling engine on 2026-08-11: engine-ut99's
+    // run-tree ini has [NSDLDrv.NSDLClient] WindowedViewportX=0 -> a 320x240 window under Xvfb, and
+    // Brightness=0.000000 -> CityIntro renders as an apparently black frame.
+    //
+    // The values below are exactly the ones Engine/Config/Default.ini already ships for this section (and
+    // its web/ twin, byte-identical), so the compiled default and the documented ini now AGREE -- which is
+    // the property that was missing. Nothing visible changes for an install that has the section; this is
+    // for the installs that do not. Every line stays overridable by ini, like any other config option.
+    CaptureMouse            = 1;
+    ScreenFlashes           = 1;
+    NoLighting              = 0;
+    Decals                  = 1;
+    NoDynamicLights         = 0;
+    NoFractalAnim           = 0;
+    Coronas                 = 1;
+    DecoLayers              = 1;
+    Projectors              = 1;
+    ReportDynamicUploads    = 0;
+    WeatherEffects          = 1;
+    StartupFullscreen       = 0;
+
+    // ⚠ The web build does NOT take its render size from these: USDL2Viewport::ResizeViewport queries the
+    // canvas whenever the requested size is 0x0, and the browser viewport is what governs there (measured
+    // 2026-08-11 across a 640x480 -> 2560x1440 sweep). These are the NATIVE window size and the fallback.
+    WindowedViewportX       = 1024;
+    WindowedViewportY       = 768;
+    FullscreenViewportX     = 1280;
+    FullscreenViewportY     = 720;
+    MenuViewportX           = 640;
+    MenuViewportY           = 480;
+
+    Brightness              = 0.8f;
+    Contrast                = 0.7f;
+    Gamma                   = 0.8f;
+
+    MinDesiredFrameRate     = 35.0f;
+    ScaleHUDX               = 0.0f;
+    AnimMeshDynamicLOD      = 0.0f;
+    DrawDistanceLOD         = 1.0f;
+
+    // UltraHigh (== 0) for every LOD set: what SDL1's section shipped, what this section ships today, and
+    // -- by coincidence -- what the zero default already produced. Written out so it is a DECISION rather
+    // than an accident; the accident is exactly what made the table above survive this long.
+    for( INT i=0; i<LODSET_MAX; i++ )
+        TextureLODSet[i] = 0;
+
     unguard;
 }
 
