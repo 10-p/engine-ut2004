@@ -380,6 +380,38 @@ UBOOL ULevel::DestroyActor( AActor* ThisActor, UBOOL bNetForce )
 	ThisActor->bDeleteMe = 1;
 	unguardSlow;
 
+	// ---- ufront 2.36b — a destroyed PlayerController must not stay installed in a viewport ----
+	// UPlayer::Actor is a RAW pointer the garbage collector cannot see (UPlayer::Serialize does not
+	// serialize it and no property registers it), and destroyed actors are physically `delete`d in
+	// FinishDestroyedActors below — not left for a GC pass. So the instant a PlayerController that owns
+	// a viewport is destroyed, Viewport->Actor dangles, and the next UGameEngine::Draw calls
+	// eventPlayerCalcView through freed memory.
+	//
+	// ★ On the web that is far nastier than on desktop: a null/garbage read at a low address does not
+	// fault under wasm, so the corpse is only discovered at the first VIRTUAL call ("indirect call to
+	// null"), and if the freed block is recycled first the call lands on a live object of the WRONG
+	// class — measured on a guest, where a replicated GameReplicationInfo took the block and the engine
+	// died with "Failed to find function PlayerCalcView in GameReplicationInfo".
+	{
+		APlayerController* DyingPC = ThisActor->GetAPlayerController();
+		if( DyingPC && DyingPC->Player && DyingPC->Player->Actor==DyingPC )
+		{
+			debugf( NAME_Warning,
+				TEXT("[ufront] DestroyActor: %s (0x%08x, class %s, role=%i, netforce=%i) was the INSTALLED viewport actor — cleared Player->Actor (would otherwise dangle)"),
+				DyingPC->GetName(), (DWORD)(PTRINT)DyingPC, DyingPC->GetClass()->GetName(),
+				(INT)DyingPC->Role, (INT)bNetForce );
+			DyingPC->Player->Actor = NULL;
+		}
+		else if( DyingPC )
+		{
+			debugf( NAME_DevNet,
+				TEXT("[UFRONT-DIAG] DestroyActor: PlayerController %s (0x%08x, class %s, role=%i, netforce=%i, Player=%s) destroyed"),
+				DyingPC->GetName(), (DWORD)(PTRINT)DyingPC, DyingPC->GetClass()->GetName(),
+				(INT)DyingPC->Role, (INT)bNetForce,
+				DyingPC->Player ? DyingPC->Player->GetName() : TEXT("none") );
+		}
+	}
+
 	// Do object destroy.
 	guardSlow(ShutupSound);
 	if( Engine->Audio )

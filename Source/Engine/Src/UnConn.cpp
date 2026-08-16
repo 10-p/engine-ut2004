@@ -869,14 +869,41 @@ void UNetConnection::Tick()
 		}
 
 		// Init counters.
-		// Log periodic traffic stats (every stat interval, ~1 second).
+		// ufront 2.36b — WINDOWED, not once a second. Same 10s window as the WebRTC driver's receive
+		// accumulator. Averages alone would hide a spike, so the peaks and the worst loss/lag in the
+		// window are carried too; `samples` says how many one-second stat intervals it covers.
 		if( InRate > 0 || OutRate > 0 )
 		{
-			printf("[NET-TRAFFIC] %s: In=%.0fB/s/%.0fpkt/s Out=%.0fB/s/%.0fpkt/s Loss=%.0f%%/%.0f%% Channels=%d Lag=%.0fms\n",
-				Driver->ServerConnection ? "Client" : "Server",
-				InRate, InPackets, OutRate, OutPackets,
-				InLoss, OutLoss, OpenChannels.Num(),
-				BestLag * 1000.f);
+			DOUBLE LogNow = appSeconds();
+			if( UfrontLogWinStart == 0.0 )
+				UfrontLogWinStart = LogNow;
+			UfrontLogSamples++;
+			UfrontLogInRate  += InRate;      UfrontLogOutRate += OutRate;
+			UfrontLogInPkts  += InPackets;   UfrontLogOutPkts += OutPackets;
+			UfrontLogPeakIn   = ::Max( UfrontLogPeakIn,  InRate );
+			UfrontLogPeakOut  = ::Max( UfrontLogPeakOut, OutRate );
+			UfrontLogWorstLoss= ::Max( UfrontLogWorstLoss, ::Max(InLoss, OutLoss) );
+			UfrontLogLagSum  += BestLag * 1000.f;
+			UfrontLogLagPeak  = ::Max( UfrontLogLagPeak, BestLag * 1000.f );
+
+			DOUBLE LogElapsed = LogNow - UfrontLogWinStart;
+			if( LogElapsed >= 10.0 && UfrontLogSamples > 0 )
+			{
+				printf("[NET-TRAFFIC] %s: %.0fs avg — In=%.0fB/s/%.0fpkt/s Out=%.0fB/s/%.0fpkt/s (peak In=%.0f Out=%.0f) Loss(worst)=%.0f%% Channels=%d Lag avg=%.0fms peak=%.0fms over %d samples\n",
+					Driver->ServerConnection ? "Client" : "Server",
+					LogElapsed,
+					UfrontLogInRate/UfrontLogSamples,  UfrontLogInPkts/UfrontLogSamples,
+					UfrontLogOutRate/UfrontLogSamples, UfrontLogOutPkts/UfrontLogSamples,
+					UfrontLogPeakIn, UfrontLogPeakOut, UfrontLogWorstLoss,
+					OpenChannels.Num(),
+					UfrontLogLagSum/UfrontLogSamples, UfrontLogLagPeak,
+					UfrontLogSamples);
+				UfrontLogWinStart = LogNow;
+				UfrontLogSamples = 0;
+				UfrontLogInRate = UfrontLogOutRate = UfrontLogInPkts = UfrontLogOutPkts = 0.f;
+				UfrontLogPeakIn = UfrontLogPeakOut = UfrontLogWorstLoss = 0.f;
+				UfrontLogLagSum = UfrontLogLagPeak = 0.f;
+			}
 		}
 		LagAcc			= 0;
 		BestLagAcc		= 9999;
@@ -969,6 +996,10 @@ void UNetConnection::HandleClientPlayer( APlayerController *PC )
 	PC->RendMap	  = REN_DynLight;
 	PC->SetPlayer( Viewport );
 	debugf(TEXT("%s setplayer %s"),PC->GetName(), Viewport->GetName());
+	// ufront 2.36b DIAGNOSTIC — the pointer the viewport now holds, so a later "unusable Viewport->Actor"
+	// can be matched against the object that was installed here.
+	debugf( NAME_DevNet, TEXT("[UFRONT-DIAG] HandleClientPlayer: viewport %s -> actor %s (0x%08x, class %s)"),
+		Viewport->GetName(), PC->GetName(), (DWORD)(PTRINT)PC, PC->GetClass()->GetName() );
 	PC->GetLevel()->Engine->Client->Viewports(0)->Input->ResetInput();
 //	PC->GetLevel()->Engine->Flush( 1 );
 	PC->Level->LevelAction = LEVACT_None;

@@ -109,6 +109,9 @@ class UWebRTCNetDriver : public UNetDriver
 
 	// UWebRTCNetDriver interface.
 	UWebRTCConnection* GetServerConnection();
+	// ufront 2.36b — substitute usable values for the CPF_Config properties no ini supplies for this
+	// class (there is no [WebRTCDrv.WebRTCNetDriver] section anywhere), and log what was substituted.
+	void NormalizeConfigDefaults( const TCHAR* Context );
 };
 
 #endif

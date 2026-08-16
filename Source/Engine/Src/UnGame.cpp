@@ -924,6 +924,11 @@ static void MatchViewportsToActors( UClient* Client, ULevel* Level, const FURL& 
         if( !PlayerController)
 			appErrorf( TEXT("%s"), *Error );
 
+		// ufront 2.36b DIAGNOSTIC — and the window CLOSES here. Pair it with the dissociate line.
+		debugf( NAME_DevNet, TEXT("[UFRONT-DIAG] MatchViewportsToActors: viewport %s -> actor %s (0x%08x, class %s) in level %s"),
+			Viewport->GetName(), PlayerController->GetName(), (DWORD)(PTRINT)PlayerController,
+			PlayerController->GetClass()->GetName(), Level->GetName() );
+
 		PlayerController->bForceFeedbackSupported = (UBOOL)GForceFeedbackAvailable;
 		if ( appStrlen(MenuClassName) )
 		{
@@ -2310,6 +2315,9 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 		for( INT i=0; i<Client->Viewports.Num(); i++ )
 		{
 			APlayerController* Actor    = Client->Viewports(i)->Actor;
+			// ufront 2.36b DIAGNOSTIC — the window where Viewport->Actor is NULL opens HERE.
+			debugf( NAME_DevNet, TEXT("[UFRONT-DIAG] LoadMap: dissociating viewport %s (actor=%s) — Actor goes NULL until MatchViewportsToActors"),
+				Client->Viewports(i)->GetName(), Actor ? Actor->GetName() : TEXT("NULL") );
 			ULevel*      Level          = Actor->GetLevel();
 			Actor->Player               = NULL;
 			Client->Viewports(i)->Actor = NULL;
@@ -3122,6 +3130,46 @@ void UGameEngine::Draw( UViewport* Viewport, UBOOL Blit, BYTE* HitData, INT* Hit
 
 	clock(GStats.DWORDStats( GEngineStats.STATS_Frame_RenderCycles ));
 
+	// ---- ufront 2.36b DIAGNOSTIC — NOT FOR SHIPPING -----------------------------------------
+	// A web guest traps just below with "indirect call to null". The eventPlayerCalcView call is a
+	// VTABLE call, and on wasm a NULL or dead Actor does NOT fault on the Location/Rotation reads
+	// above — address 0 is readable there, so the corpse is only found at the first virtual call.
+	// Report what Viewport->Actor actually is, and skip the frame instead of trapping, so the
+	// session survives and the log shows what the client does next.
+	{
+		APlayerController* DiagActor = Viewport->Actor;
+		// GetIndexedObject() is the public, bounds-checked way in (GObjObjects itself is private) and
+		// returns NULL for an out-of-range index, so a wild pointer answers "not live" rather than trapping.
+		// ★ The CLASS check is not paranoia: once the freed controller's block is recycled the pointer is
+		// live again but is some other actor — measured, a replicated GameReplicationInfo — and without
+		// this the engine reaches FindFunctionChecked(PlayerCalcView) and appErrors on it.
+		UBOOL DiagLive = DiagActor
+			&& UObject::GetIndexedObject( (INT)DiagActor->GetIndex() ) == (UObject*)DiagActor
+			&& DiagActor->IsA( APlayerController::StaticClass() );
+		if( !DiagLive )
+		{
+			static INT DiagLogged = 0;
+			if( DiagLogged++ < 20 )
+			{
+				UBOOL Recycled = DiagActor
+					&& UObject::GetIndexedObject( (INT)DiagActor->GetIndex() ) == (UObject*)DiagActor;
+				debugf( NAME_Warning,
+					TEXT("[ufront] Draw skipped — unusable Viewport->Actor: ptr=0x%08x null=%i live=%i class=%s ")
+					TEXT("GLevel=%s GEntry=%s Pending=%i LevelAction=%i NetMode=%i hit=%i"),
+					(DWORD)(PTRINT)DiagActor, (INT)(DiagActor==NULL), (INT)Recycled,
+					Recycled ? DiagActor->GetClass()->GetName() : TEXT("<dead>"),
+					GLevel  ? GLevel->GetName()  : TEXT("none"),
+					GEntry  ? GEntry->GetName()  : TEXT("none"),
+					(INT)(GPendingLevel!=NULL),
+					(GLevel && GLevel->GetLevelInfo()) ? (INT)GLevel->GetLevelInfo()->LevelAction : -1,
+					(GLevel && GLevel->GetLevelInfo()) ? (INT)GLevel->GetLevelInfo()->NetMode : -1,
+					DiagLogged );
+			}
+			unclock(GStats.DWORDStats( GEngineStats.STATS_Frame_RenderCycles ));
+			return;
+		}
+	}
+
 	// Determine the camera actor, location and rotation.
 	AActor*		CameraActor		= Viewport->Actor;
 	FVector		CameraLocation	= CameraActor->Location;
@@ -3798,7 +3846,12 @@ void UGameEngine::Tick( FLOAT DeltaSeconds )
 	unguard;
 #endif
 
-	if( Client && Client->Viewports.Num() && Client->Viewports(0)->Actor->GetLevel()!=GLevel )
+	// ufront 2.36b — `Actor` may legitimately be NULL now: 2.36b clears it when the installed
+	// PlayerController is destroyed (rather than leaving a dangling pointer), and UE2 wrote this line
+	// assuming a viewport always has one. Under wasm the null deref does not fault here — it reads far
+	// enough out to trap as "index out of bounds", which is what it did.
+	if( Client && Client->Viewports.Num() && Client->Viewports(0)->Actor
+		&& Client->Viewports(0)->Actor->GetLevel()!=GLevel )
 	{
 		Client->Viewports(0)->Actor->GetLevel()->Tick( LEVELTICK_All, DeltaSeconds );
 	}

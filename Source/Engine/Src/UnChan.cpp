@@ -123,6 +123,15 @@ void UChannel::Close()
 {
 	guard(UChannel::Close);
 	check(Connection->Channels[ChIndex]==this);
+	// ufront 2.36b DIAGNOSTIC — one half of the decisive pair. If a close-notify shows up on the client
+	// with NO matching line here on the server, the close flag was never sent and the bunch header is
+	// being misread by the transport; if the server logs it, the engine really did decide to close.
+	debugf( NAME_DevNetTraffic,
+		TEXT("[UFRONT-DIAG] UChannel::Close SEND ch=%i type=%i closing=%i connState=%i isServer=%i actor=%s"),
+		ChIndex, (INT)ChType, (INT)Closing, (INT)Connection->State,
+		(INT)(Connection->Driver && Connection->Driver->ServerConnection==NULL),
+		(ChType==CHTYPE_Actor && ((UActorChannel*)this)->Actor)
+			? ((UActorChannel*)this)->Actor->GetName() : TEXT("-") );
 	if
 	(	!Closing
 	&&	(Connection->State==USOCK_Open || Connection->State==USOCK_Pending) )
@@ -289,6 +298,13 @@ UBOOL UChannel::ReceivedSequencedBunch( FInBunch& Bunch )
 		// Handle a close-notify.
 		if( InRec )
 			appErrorfSlow( TEXT("Close Anomaly %i / %i"), Bunch.ChSequence, InRec->ChSequence );
+		// ufront 2.36b DIAGNOSTIC — the other half of the pair (NAME_DevNetTraffic below is off in this
+		// build, which is why a channel closing under the player's own controller was invisible).
+		debugf( NAME_DevNetTraffic,
+			TEXT("[UFRONT-DIAG] CLOSE-NOTIFY RECEIVED ch=%i type=%i bOpen=%i bReliable=%i seq=%i actor=%s — the actor dies with the channel"),
+			ChIndex, (INT)ChType, (INT)Bunch.bOpen, (INT)Bunch.bReliable, (INT)Bunch.ChSequence,
+			(ChType==CHTYPE_Actor && ((UActorChannel*)this)->Actor)
+				? ((UActorChannel*)this)->Actor->GetName() : TEXT("-") );
 		debugf( NAME_DevNetTraffic, TEXT("      Channel %i got close-notify"), ChIndex );
 		delete this;
 		return 1;

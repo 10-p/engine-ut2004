@@ -56,21 +56,10 @@ UBOOL UWebRTCNetDriver::InitConnect( FNetworkNotify* InNotify, FURL& ConnectURL,
 		return 0;
 	}
 
-	// Set default timeouts — WebRTC handshake (PeerJS signaling + ICE) takes
-	// longer than TCP connect. Without these defaults, the INI-loaded values
-	// are 0 (no [WebRTCDrv.WebRTCNetDriver] section in Default.ini) and the
-	// connection times out immediately on the first tick.
-	//
-	// ConnectionTimeout must be high (300s) because Emscripten map loading
-	// downloads assets via synchronous XHR, which can take 30-120+ seconds.
-	// During that time no game ticks run, so LastReceiveTime goes stale.
-	// On first tick after map load, Time-LastReceiveTime would exceed a low
-	// timeout and immediately disconnect. WebRTC/ICE handles actual connection
-	// monitoring at a lower level (ICE state → disconnected/failed).
-	if( InitialConnectTimeout <= 0.f )
-		InitialConnectTimeout = 600.f;
-	if( ConnectionTimeout <= 0.f )
-		ConnectionTimeout = 300.f;
+	// ufront 2.36b — no ini names this class, so EVERY CPF_Config property arrives as zero unless we
+	// substitute. Previously only the two timeouts below were patched here; RelevantTimeout=0 was what
+	// made a guest's own PlayerController channel close within a tick of opening. See the normaliser.
+	NormalizeConfigDefaults( TEXT("InitConnect") );
 
 	// D-06: FURL.Host carries the room name.
 	RoomName = ConnectURL.Host;
@@ -111,12 +100,9 @@ UBOOL UWebRTCNetDriver::InitListen( FNetworkNotify* InNotify, FURL& LocalURL, FS
 		return 0;
 	}
 
-	// Set default timeouts (no [WebRTCDrv.WebRTCNetDriver] INI section).
-	// Must match InitConnect — 300s ConnectionTimeout for Emscripten map loading.
-	if( InitialConnectTimeout <= 0.f )
-		InitialConnectTimeout = 600.f;
-	if( ConnectionTimeout <= 0.f )
-		ConnectionTimeout = 300.f;
+	// ufront 2.36b — see InitConnect; the listen side needs the same substitution (it is the side that
+	// was closing the guest's channels).
+	NormalizeConfigDefaults( TEXT("InitListen") );
 
 	// D-07: Extract room name from travel URL options.
 	RoomName = LocalURL.GetOption( TEXT("room="), TEXT("default") );
@@ -133,6 +119,137 @@ UBOOL UWebRTCNetDriver::InitListen( FNetworkNotify* InNotify, FURL& LocalURL, FS
 
 	return 1;
 	unguard;
+}
+
+/*-----------------------------------------------------------------------------
+	Config defaults (ufront 2.36b).
+
+	★ THE SAME DISEASE AS 2.35's COMPILED CLIENT DEFAULTS. `UNetDriver` registers nine CPF_Config
+	properties and its constructor assigns only two of them; the rest arrive from
+	`[<Package>.<Class>]` in the ini. Our class is `WebRTCDrv.WebRTCNetDriver`, which no 2004-era ini
+	has ever heard of — the shipped section is `[IpDrv.TcpNetDriver]` — so every unassigned one is a
+	zero-initialised default, and the zeroes are not conservative, they are WRONG:
+
+	  RelevantTimeout=0      ⇒ the keep-alive clause in ULevel::ServerTickClients
+	                           (`Time - Channel->RelevantTime < RelevantTimeout`) can never be true, so
+	                           a channel survives only on the tick its relevance is re-evaluated — and
+	                           that check is itself gated to once a second. Measured: a listen server
+	                           closed the guest's own xPlayer channel within a tick of opening it, over
+	                           and over, so the guest received a PlayerController, lost it, received
+	                           another — never joining, stuck on the loading screen forever. It closed
+	                           bAlwaysRelevant actors (the GameReplicationInfo) the same way.
+	  SpawnPrioritySeconds=0 ⇒ newly spawned actors get no priority boost.
+	  ServerTravelPause=0    ⇒ no pause before server travel.
+	  KeepAliveTime=0        ⇒ no keep-alives on an idle connection.
+	  MaxClientRate=0        ⇒ every client's rate clamps to zero.
+	  NetServerMaxTickRate=0 ⇒ no server tick pacing.
+
+	The previous author hit exactly this and patched the two timeouts they were bitten by (the comment
+	they left says the ini values "are 0"); the other seven stayed at zero and cost this step three
+	rounds of debugging. So normalise the WHOLE set, from the values the game itself ships in
+	`[IpDrv.TcpNetDriver]`, and SAY so — 2.35's other lesson was that the wrong values survived because
+	nothing ever printed them.
+-----------------------------------------------------------------------------*/
+void UWebRTCNetDriver::NormalizeConfigDefaults( const TCHAR* Context )
+{
+	guard(UWebRTCNetDriver::NormalizeConfigDefaults);
+
+	FString Patched;
+	#define UFRONT_NETCFG( Field, Default )										\
+		if( Field <= 0 )														\
+		{																		\
+			Field = Default;													\
+			Patched += FString::Printf( TEXT(" %s=%s"), TEXT(#Field), *FString::Printf(TEXT("%g"), (FLOAT)(Default)) );	\
+		}
+
+	// Web-specific (kept): the WebRTC handshake plus Emscripten's synchronous asset loading dwarf a
+	// TCP connect, and no game ticks run while a map streams.
+	UFRONT_NETCFG( InitialConnectTimeout, 600.f )
+	UFRONT_NETCFG( ConnectionTimeout,     300.f )
+	// Stock UT2004 values, straight from the shipped [IpDrv.TcpNetDriver] section.
+	UFRONT_NETCFG( KeepAliveTime,           0.2f )
+	UFRONT_NETCFG( RelevantTimeout,         5.0f )
+	UFRONT_NETCFG( SpawnPrioritySeconds,    1.0f )
+	UFRONT_NETCFG( ServerTravelPause,       4.0f )
+	UFRONT_NETCFG( MaxClientRate,          15000 )
+	UFRONT_NETCFG( MaxInternetClientRate,  10000 )
+	UFRONT_NETCFG( NetServerMaxTickRate,      20 )
+	#undef UFRONT_NETCFG
+
+	debugf( NAME_Log, TEXT("[WebRTC] %s: net config resolved — ConnectionTimeout=%.1f InitialConnectTimeout=%.1f KeepAliveTime=%.2f RelevantTimeout=%.1f SpawnPrioritySeconds=%.1f ServerTravelPause=%.1f MaxClientRate=%i MaxInternetClientRate=%i NetServerMaxTickRate=%i%s"),
+		Context, ConnectionTimeout, InitialConnectTimeout, KeepAliveTime, RelevantTimeout,
+		SpawnPrioritySeconds, ServerTravelPause, MaxClientRate, MaxInternetClientRate, NetServerMaxTickRate,
+		Patched.Len() ? *(FString(TEXT("  [substituted:")) + Patched + TEXT(" ]")) : TEXT("  [all from ini]") );
+
+	unguard;
+}
+
+/*-----------------------------------------------------------------------------
+	Receive-traffic log accumulator (ufront 2.36b).
+
+	The per-tick "Recv from …: N packets, M bytes" line printed on EVERY tick that carried traffic —
+	tens of lines a second. That is not merely noisy: the browser console keeps a bounded ring, so the
+	flood TRUNCATES the diagnostics either side of it, which is exactly how a channel closing under the
+	guest's own PlayerController stayed invisible for three rounds of debugging.
+
+	So: accumulate, and emit one summary per window per direction. Silence is reported too — but only
+	ONCE per quiet stretch, so a link that goes dead says so and then stops talking. "Nothing received"
+	is a real diagnostic here: a host showing In=0 while it happily sends is the shape of a half-open
+	pipe.
+-----------------------------------------------------------------------------*/
+
+#define UFRONT_NET_LOG_WINDOW 10.0	/* seconds */
+#define UFRONT_NET_MAX_CONNS  64
+
+struct FUfrontRecvWindow
+{
+	DOUBLE	Start;
+	INT		Packets;
+	INT		Bytes;
+	INT		Ticks;		// ticks that carried at least one packet — shows burstiness
+	UBOOL	SilenceReported;
+	FUfrontRecvWindow()
+	: Start(0.0), Packets(0), Bytes(0), Ticks(0), SilenceReported(0)
+	{}
+};
+
+// Server side is keyed by connId (a listen server has one per guest); the client has a single
+// server connection and uses its own window.
+static FUfrontRecvWindow GUfrontRecvFromClient[UFRONT_NET_MAX_CONNS];
+static FUfrontRecvWindow GUfrontRecvFromServer;
+
+// Call EVERY tick, with (0,0) when nothing arrived — that is what lets a window close on time and
+// what makes a link going quiet detectable.
+static void UfrontAccumRecv( FUfrontRecvWindow& W, const char* From, INT ConnId, INT Packets, INT Bytes )
+{
+	DOUBLE Now = appSeconds();
+	if( W.Start == 0.0 )
+		W.Start = Now;
+	W.Packets += Packets;
+	W.Bytes   += Bytes;
+	if( Packets > 0 )
+		W.Ticks++;
+
+	DOUBLE Elapsed = Now - W.Start;
+	if( Elapsed < UFRONT_NET_LOG_WINDOW )
+		return;
+
+	if( W.Packets > 0 )
+	{
+		printf( "[WebRTC] TickDispatch: Recv from %s connId=%d — %.1fs: %d packets, %d bytes (%.1f KB/s, %.0f pkt/s, over %d ticks)\n",
+			From, ConnId, Elapsed, W.Packets, W.Bytes,
+			W.Bytes / 1024.0 / Elapsed, W.Packets / Elapsed, W.Ticks );
+		W.SilenceReported = 0;
+	}
+	else if( !W.SilenceReported )
+	{
+		printf( "[WebRTC] TickDispatch: Recv from %s connId=%d — %.1fs: NOTHING RECEIVED\n", From, ConnId, Elapsed );
+		W.SilenceReported = 1;
+	}
+	W.Start   = Now;
+	W.Packets = 0;
+	W.Bytes   = 0;
+	W.Ticks   = 0;
 }
 
 void UWebRTCNetDriver::TickDispatch( FLOAT DeltaTime )
@@ -182,8 +299,12 @@ void UWebRTCNetDriver::TickDispatch( FLOAT DeltaTime )
 			}
 			if( PacketCount > 0 )
 			{
-				printf("[WebRTC] TickDispatch: Recv from client connId=%d: %d packets, %d bytes\n", Conn->WebRTCConnId, PacketCount, TotalBytes);
+				debugf( NAME_DevNetTraffic, TEXT("[WebRTC] TickDispatch: Recv from client connId=%d: %d packets, %d bytes"), Conn->WebRTCConnId, PacketCount, TotalBytes );
 			}
+			// ufront 2.36b — windowed summary instead of a line per tick (see the accumulator above).
+			UfrontAccumRecv(
+				GUfrontRecvFromClient[ (Conn->WebRTCConnId >= 0 && Conn->WebRTCConnId < UFRONT_NET_MAX_CONNS) ? Conn->WebRTCConnId : 0 ],
+				"client", Conn->WebRTCConnId, PacketCount, TotalBytes );
 
 			// Check for connection closure
 			INT JSState = webrtc_get_connection_state( Conn->WebRTCConnId );
@@ -231,8 +352,10 @@ void UWebRTCNetDriver::TickDispatch( FLOAT DeltaTime )
 			}
 			if( PacketCount > 0 )
 			{
-				printf("[WebRTC] TickDispatch: Recv from server connId=%d: %d packets, %d bytes\n", GetServerConnection()->WebRTCConnId, PacketCount, TotalBytes);
+				debugf( NAME_DevNetTraffic, TEXT("[WebRTC] TickDispatch: Recv from server connId=%d: %d packets, %d bytes"), GetServerConnection()->WebRTCConnId, PacketCount, TotalBytes );
 			}
+			// ufront 2.36b — windowed summary instead of a line per tick (see the accumulator above).
+			UfrontAccumRecv( GUfrontRecvFromServer, "server", GetServerConnection()->WebRTCConnId, PacketCount, TotalBytes );
 		}
 	}
 

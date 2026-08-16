@@ -1359,6 +1359,30 @@ INT ULevel::ServerTickClients( FLOAT DeltaSeconds )
 					}
 					else if( Channel )
 					{
+						// ufront 2.36b DIAGNOSTIC — WHY was this closed? Measured: a listen server closes
+						// the guest's own xPlayer channel over and over (and its GRI/PRI), so the guest
+						// gets a PlayerController, loses it, gets another — forever on the loading screen.
+						// Every input to the decision is printed, because the two candidates (relevance
+						// really false vs. RelevantTime/Time arithmetic) are indistinguishable from the
+						// outside. Capped, so it cannot become the next console flood.
+						{
+							static INT UfrontRelClose = 0;
+							if( UfrontRelClose++ < 40 )
+								debugf( NAME_DevNetTraffic,
+									TEXT("[UFRONT-DIAG] RELEVANCE CLOSE #%i: actor=%s class=%s cansee=%i alwaysRel=%i onlyOwner=%i ")
+									TEXT("relTime=%.2f driverTime=%.2f age=%.2f timeout=%.2f | viewer=%s realViewer=%s viewTarget=%s ")
+									TEXT("connState=%i sinceRecv=%.2f"),
+									UfrontRelClose,
+									Actor->GetName(), Actor->GetClass()->GetName(), (INT)CanSee,
+									(INT)Actor->bAlwaysRelevant, (INT)Actor->bOnlyRelevantToOwner,
+									Channel->RelevantTime, NetDriver->Time,
+									NetDriver->Time - Channel->RelevantTime, NetDriver->RelevantTimeout,
+									Viewer ? Viewer->GetName() : TEXT("none"),
+									InViewer ? InViewer->GetName() : TEXT("none"),
+									(InViewer && InViewer->ViewTarget) ? InViewer->ViewTarget->GetName() : TEXT("none"),
+									(INT)Connection->State,
+									NetDriver->Time - Connection->LastReceiveTime );
+						}
 						Channel->Close();
 						// skeletal attachments aren't relevant anymore either
 						if ( Cast<USkeletalMesh>(Actor->Mesh) )
@@ -1392,12 +1416,32 @@ INT ULevel::ServerTickClients( FLOAT DeltaSeconds )
 	}
 	Mark.Pop();
 
-	// Log replication stats periodically (not every frame — only when actors were replicated)
-	static INT sReplicateLogCounter = 0;
-	if( Updated > 0 && (++sReplicateLogCounter % 30) == 0 )
+	// ufront 2.36b — WINDOWED replication summary. "Every 30th pass" still lands ~twice a second, and
+	// the console keeps a bounded ring: this is one of the lines that truncated the logs the guest bug
+	// was diagnosed from. Same 10s window as the other net accumulators; the peak is kept because an
+	// average hides the burst that actually matters.
 	{
-		printf("[NET-TRAFFIC] Server: Replicated %d actors to %d clients\n",
-			Updated, NetDriver->ClientConnections.Num());
+		static DOUBLE UfrontRepWinStart = 0.0;
+		static INT    UfrontRepActors = 0, UfrontRepPasses = 0, UfrontRepPeak = 0;
+		DOUBLE RepNow = appSeconds();
+		if( UfrontRepWinStart == 0.0 )
+			UfrontRepWinStart = RepNow;
+		if( Updated > 0 )
+		{
+			UfrontRepActors += Updated;
+			UfrontRepPasses++;
+			UfrontRepPeak = ::Max( UfrontRepPeak, Updated );
+		}
+		DOUBLE RepElapsed = RepNow - UfrontRepWinStart;
+		if( RepElapsed >= 10.0 )
+		{
+			if( UfrontRepPasses > 0 )
+				printf("[NET-TRAFFIC] Server: %.0fs — replicated %d actors to %d clients over %d passes (avg %.1f/pass, peak %d)\n",
+					RepElapsed, UfrontRepActors, NetDriver->ClientConnections.Num(),
+					UfrontRepPasses, (FLOAT)UfrontRepActors/UfrontRepPasses, UfrontRepPeak);
+			UfrontRepWinStart = RepNow;
+			UfrontRepActors = UfrontRepPasses = UfrontRepPeak = 0;
+		}
 	}
 
 	return Updated;
