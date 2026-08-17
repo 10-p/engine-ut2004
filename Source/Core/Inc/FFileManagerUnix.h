@@ -693,23 +693,42 @@ public:
         unguard;
 	}
 	// --- gam
-	void Init(UBOOL Startup) 
+	// ufront 2.37: the home-dir redirect is now OPT-IN, and the default is what every one of our
+	// launchers already asked for. It used to be the other way round -- user files (log, User.ini,
+	// saves, the download cache) went to ~/.ut2004/System/ unless you remembered `-nohomedir` --
+	// which meant EVERY caller carried the flag (web ENGINE_OPTS_DEFAULT, the Android bridge, the
+	// native smoke harness, every doc'd command line) and the one that forgot silently wrote its
+	// state somewhere nobody looked. `-nohomedir` is still ACCEPTED and is now a no-op, so no
+	// existing command line, ini or script breaks; `-usehomedir` restores the old behaviour.
+	void Init(UBOOL Startup)
 	{
-        if ((ParseParam(appCmdLine(),TEXT("nohomedir"))))
-            BaseDir[0] = 0;
-        else
+        if (UseHomeDir())
             appStrcpy(BaseDir, CalcHomeDir());
+        else
+            BaseDir[0] = 0;
 	}
+
+    // Opt in with -usehomedir. -nohomedir is the default and is kept only so old command lines
+    // keep parsing.
+    UBOOL UseHomeDir(void)
+    {
+        return ParseParam(appCmdLine(),TEXT("usehomedir"));
+    }
+
+    const TCHAR *GetUserDir(void)
+    {
+        return BaseDir[0] ? BaseDir : appBaseDir();
+    }
 
     const TCHAR *CalcHomeDir(void)
     {
-        if (ParseParam(appCmdLine(),TEXT("nohomedir")))
+        if (!UseHomeDir())
             return(appBaseDir());
 
 	    char *Home = getenv("HOME");
 #if defined(_WIN32)
     	// ufront 2.33: Windows has no $HOME and no passwd database. USERPROFILE is its equivalent
-    	// (C:\Users\<name>); fall back to the base dir the way -nohomedir already does.
+    	// (C:\Users\<name>); fall back to the base dir, which is where we land by default anyway.
     	if ( Home == NULL )
     		Home = getenv("USERPROFILE");
     	if ( Home == NULL )

@@ -190,8 +190,11 @@ public class GameActivity extends SDLActivity {
 
     @Override
     protected String[] getArguments() {
-        // -nohomedir keeps engine writes (UT2004.log, UT2004.ini, User.ini, config flush) in the
-        // cwd (<dataRoot>/System) instead of ~/.ut2004 — everything stays on external storage.
+        // Engine writes (UT2004.log, UT2004.ini, User.ini, config flush) land in the cwd
+        // (<dataRoot>/System) instead of ~/.ut2004 — everything stays on external storage. That used
+        // to need an explicit "-nohomedir"; since ufront 2.37 it is the engine's default and the flag
+        // is an accepted no-op, so it is gone from here. "-usehomedir" would opt back in; nothing on
+        // Android wants that ($HOME is the app shell's, set in the JNI bridge).
         //
         // CPUSPEED=3000 (2.10 arm boot): ARM has no rdtsc and /proc/cpuinfo has no "cpu MHz", so
         // Core's CheckCpuSpeed (UnUnix.cpp, the UT_NO_X86_INTRIN path) fatally appErrors
@@ -200,7 +203,7 @@ public class GameActivity extends SDLActivity {
         // passes the identical CPUSPEED=3000 (packages/frontend shell/boot.ts). GSecondsPerCycle only
         // scales appCycles()->seconds for profiling; the game loop uses appSeconds wall-clock, so the
         // exact value is non-critical — 3000 matches web.
-        return new String[] { "-nohomedir", "CPUSPEED=3000" };
+        return new String[] { "CPUSPEED=3000" };
     }
 
     private static float clamp(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }

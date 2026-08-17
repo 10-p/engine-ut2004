@@ -2250,6 +2250,9 @@ CORE_API void appInit( const TCHAR* InPackage, const TCHAR* InCmdLine, FMalloc* 
 
 	debugf( NAME_Init, TEXT("Character set: %s"), sizeof(TCHAR)==1 ? TEXT("ANSI") : TEXT("Unicode") );
 	debugf( NAME_Init, TEXT("Base directory: %s"), appBaseDir() );
+	// ufront 2.37: say which path won. User files default to the base dir; -usehomedir opts back
+	// into the ~/.ut2004 redirect, and when it is on this is the ONLY line that says so.
+	debugf( NAME_Init, TEXT("User directory: %s"), GFileManager->GetUserDir() );
 	debugf( NAME_Init, TEXT("Ini:%s   UserIni:%s"), GIni, GUserIni );
 
 	// Init config.

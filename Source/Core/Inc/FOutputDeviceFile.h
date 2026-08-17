@@ -54,7 +54,8 @@ public:
                         // ufront 2.33: the base-dir prefix belongs to the WINDOWS FILE MANAGER, not to
                         // Windows-the-platform. This build is a hybrid — a Windows binary using
                         // FFileManagerUnix — and that manager resolves relative paths itself, including
-                        // the ~/.ut2004 home-dir redirect (unless -nohomedir). Prefixing an already
+                        // the ~/.ut2004 home-dir redirect (only when -usehomedir asks for it, since
+                        // ufront 2.37). Prefixing an already
                         // absolute "Z:\path\System/" then produced the nested absurdity
                         //   ~/.ut2004/System/Z:/tmp/.../System/UT2004.log
                         // which is why the log looked missing. Behave like Linux: leave it empty and let

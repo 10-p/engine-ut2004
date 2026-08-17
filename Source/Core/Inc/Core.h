@@ -547,6 +547,12 @@ public:
 	//   Month: as month of year (1 - 12)
 	//   Year: Full 4+ digits.
 	virtual UBOOL GetFileLastModTime( const TCHAR* FakeFilename, DWORD &Hours, DWORD &Minutes, DWORD &Secs, DWORD &Day, DWORD &Month, DWORD &Year ) { return 0; }
+
+	// ufront 2.37: where user files (log, User.ini, saves, cache) actually land, already resolved --
+	// and with no side effects, unlike CalcHomeDir, which mkdirs. A manager with no home-dir redirect
+	// writes next to the game, so the base dir is the honest answer. Deliberately LAST: appending a
+	// virtual leaves every existing vtable slot where it was.
+	virtual const TCHAR *GetUserDir(void) { return(appBaseDir()); }
 };
 
 //
