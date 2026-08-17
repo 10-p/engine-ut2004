@@ -99,6 +99,8 @@
       "toolchainFile": "${sourceDir}/cmake/toolchain-mingw-w64.cmake",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_C_FLAGS": "-fno-omit-frame-pointer",
+        "CMAKE_CXX_FLAGS": "-fno-omit-frame-pointer",
         "UT_GFX_BACKEND": "gl4es",
         "MINGW_TARGET_ARCH": "i686",
         "MINGW_THREAD_MODEL": "posix",

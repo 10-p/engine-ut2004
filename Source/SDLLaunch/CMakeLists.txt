@@ -425,3 +425,20 @@ endif()
 # (runtime-nokarma/, runtime-physics/) use symlinks to the correct binary.
 # This avoids builds overwriting each other's output.
 #-----------------------------------------------------------------------------
+
+#-----------------------------------------------------------------------------
+# Windows: ship the OpenAL Soft implementation DLL next to the exe (ufront 2.37).
+#
+# ALAudio is DYNAMIC_BIND -- it LoadLibrary's "OpenAL32.dll" at runtime, so this dependency is invisible
+# in the exe's import table. ⚠ That is exactly how the 2.37 drop shipped a silent game: the exe looked
+# self-contained, and the only symptom was "Missing function 'alEnable' for '_AL' support" followed by
+# "Audio initialization failed.". If the DLL is absent the game still runs, just without sound.
+#-----------------------------------------------------------------------------
+if(MINGW)
+  include(${CMAKE_SOURCE_DIR}/cmake/OpenALMingw.cmake)
+  add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${OPENAL_MINGW_RUNTIME_DLL}"
+            "$<TARGET_FILE_DIR:${PROJECT_NAME}>/${OPENAL_MINGW_RUNTIME_DLL_NAME}"
+    COMMENT "Copying ${OPENAL_MINGW_RUNTIME_DLL_NAME} (OpenAL Soft) next to the executable")
+endif()

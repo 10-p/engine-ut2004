@@ -146,6 +146,12 @@ CORE_API UBOOL appIsDebuggerPresent();
 -----------------------------------------------------------------------------*/
 
 CORE_API void* appGetDllHandle( const TCHAR* DllName );
+// ufront 2.37: load a genuine EXTERNAL library (OpenAL, a driver), as opposed to an engine package.
+// The distinction is not pedantic -- appGetDllHandle answers "is this package in the exe?", and on a
+// static Windows build that answer is always yes; pointing it at a real file name instead made it
+// LoadLibrary the retail 2004 DLLs that sit in every UT2004 System\ directory. Returns NULL when the
+// library is genuinely absent, which callers are expected to handle (ALAudio degrades to no sound).
+CORE_API void* appGetSystemDllHandle( const TCHAR* DllName );
 CORE_API void appFreeDllHandle( void* DllHandle );
 CORE_API void* appGetDllExport( void* DllHandle, const TCHAR* ExportName );
 CORE_API void appLaunchURL( const TCHAR* URL, const TCHAR* Parms=NULL, FString* Error=NULL );

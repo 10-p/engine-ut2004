@@ -310,7 +310,12 @@ UBOOL UOpenGLRenderDevice::Init()
 	// Init global GL.
 	if( NumDevices==0 )
 	{
-		// Find DLL's.
+		// Find DLL's. ⚠ Left on appGetDllHandle deliberately: on Windows that returns the "it is in the
+		// exe" sentinel and the GL entry points resolve out of the exe's own import thunks, which has
+		// worked since 2.33. Moving it to appGetSystemDllHandle (a real LoadLibrary of OpenGL32.dll) is
+		// arguably more correct and was tried in 2.37 -- but it is a change to a working renderer for no
+		// reported symptom, so it stays as it is. ALAudio is the one that genuinely needed the new
+		// entry point, because nothing statically links OpenAL.
 		hModuleGLMain = (HMODULE) appGetDllHandle( GL_DLL );
 		if( !hModuleGLMain )
 		{
@@ -1136,13 +1141,38 @@ void UOpenGLRenderDevice::Flush(UViewport* Viewport)
 
 
 //
+// ufront 2.37 — hardware gamma is OPT-IN now.
+//
+// This code does not set the GAME's gamma, it sets the DISPLAY's: SDL_SetWindowGammaRamp and
+// SetDeviceGammaRamp both reprogram the monitor's ramp for the whole desktop. Two things follow, and the
+// owner hit both on Windows:
+//   * the game's Brightness/Contrast/Gamma defaults are not the desktop's, so merely running the game
+//     changes how everything else on the machine looks;
+//   * ★ if the process dies without running RestoreGamma -- a crash, a kill, a driver reset -- the
+//     desktop is LEFT that way, and nothing puts it back. That is a game leaving the OS in a bad state.
+// So: the default is now to leave the display alone. `-USEGAMMA` opts back in for anyone who wants the
+// in-game brightness sliders to do something, and `-NOGAMMA` still parses (it is the default, so a no-op).
+//
+// When it IS opted into, RestoreGamma now puts back the ramp that was there at startup instead of forcing
+// a LINEAR one -- the old code overwrote a calibrated display profile even on a clean exit.
+//
+static UBOOL GUseHardwareGamma()
+{
+	return ParseParam( appCmdLine(), TEXT("USEGAMMA") );
+}
+
+// The desktop's ramp as it was before we touched anything, captured on first use.
+static _WORD GOriginalGammaRamp[3][256];
+static UBOOL GOriginalGammaSaved = 0;
+
+//
 // UOpenGLRenderDevice::UpdateGamma
 //
 void UOpenGLRenderDevice::UpdateGamma(UViewport* Viewport)
 {
 	guard(UOpenGLRenderDevice::UpdateGamma);
 
-	if( ParseParam(appCmdLine(),TEXT("NOGAMMA")) )
+	if( !GUseHardwareGamma() )
 		return;
 
 	FLOAT	Gamma		= Viewport->GetOuterUClient()->Gamma,
@@ -1161,15 +1191,21 @@ void UOpenGLRenderDevice::UpdateGamma(UViewport* Viewport)
 
 #if (defined USE_SDL)
 #if USE_SDL12
+	if( !GOriginalGammaSaved )
+		GOriginalGammaSaved = ( SDL_GetGammaRamp( GOriginalGammaRamp[0], GOriginalGammaRamp[1], GOriginalGammaRamp[2] ) == 0 );
 	SDL_SetGammaRamp( Ramp.red, Ramp.green, Ramp.blue );
 #else
+	if( !GOriginalGammaSaved )
+		GOriginalGammaSaved = ( SDL_GetWindowGammaRamp( (SDL_Window*)Viewport->GetWindow(), GOriginalGammaRamp[0], GOriginalGammaRamp[1], GOriginalGammaRamp[2] ) == 0 );
 	SDL_SetWindowGammaRamp( (SDL_Window*)Viewport->GetWindow(), Ramp.red, Ramp.green, Ramp.blue );
 #endif
 #elif (defined UT_OPENGLDRV_WGL)
+	if( !GOriginalGammaSaved )
+		GOriginalGammaSaved = GetDeviceGammaRamp( hDC, GOriginalGammaRamp );
 	SetDeviceGammaRamp( hDC, &Ramp );
 #else
 #   error Please handle this for your platform.
-#endif	    
+#endif
 
 	unguard;
 }
@@ -1182,32 +1218,23 @@ void UOpenGLRenderDevice::RestoreGamma()
 {
 	guard(UOpenGLRenderDevice::RestoreGamma);
 
-	if( ParseParam(appCmdLine(),TEXT("NOGAMMA")) )
+	// Nothing was changed unless gamma was opted into AND actually applied, so there is nothing to undo.
+	// ⚠ Do not "restore" unconditionally: writing a linear ramp to a display we never touched is itself
+	// a change, and it is the one that wipes a calibrated profile.
+	if( !GUseHardwareGamma() || !GOriginalGammaSaved )
 		return;
 
-	struct
-	{
-		_WORD red[256];
-		_WORD green[256];
-		_WORD blue[256];
-	} Ramp;
-
-	for(INT i=0; i<256; i++)
-		Ramp.red[i] = Ramp.green[i] = Ramp.blue[i] = i << 8;
-
 #if (defined USE_SDL)
-	// RestoreGamma: reset gamma on shutdown.
 #if USE_SDL12
-	SDL_SetGammaRamp( Ramp.red, Ramp.green, Ramp.blue );
+	SDL_SetGammaRamp( GOriginalGammaRamp[0], GOriginalGammaRamp[1], GOriginalGammaRamp[2] );
 #else
 	SDL_Window* GammaWindow = SDL_GetKeyboardFocus();
 	if( GammaWindow )
-		SDL_SetWindowGammaRamp( GammaWindow, Ramp.red, Ramp.green, Ramp.blue );
+		SDL_SetWindowGammaRamp( GammaWindow, GOriginalGammaRamp[0], GOriginalGammaRamp[1], GOriginalGammaRamp[2] );
 #endif
 #elif (defined UT_OPENGLDRV_WGL)
-//	SetDeviceGammaRamp( hDC, &Ramp );
 	HDC DesktopDC = GetDC( GetDesktopWindow() );
-	SetDeviceGammaRamp( DesktopDC, &Ramp );
+	SetDeviceGammaRamp( DesktopDC, GOriginalGammaRamp );
 	ReleaseDC( NULL, DesktopDC );
 #else
 #   error Please handle this for your platform.

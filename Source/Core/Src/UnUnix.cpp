@@ -28,6 +28,8 @@
 #ifdef _WIN32
 #include <winsock2.h>
 #include <windows.h>
+#include <exception>
+#include <signal.h>
 #include <process.h>	// _spawnv
 #include <unistd.h>
 #include <dirent.h>
@@ -1375,12 +1377,21 @@ void* appGetDllHandle( const TCHAR* Filename )
 #endif
 
 #ifdef _WIN32
-	// ufront 2.33 — same answer as Emscripten, for the same reason: BUILD_STATIC is ON by default in this
-	// engine, so every package IS the main binary and there is nothing to load. The generic static path
-	// below is `#if 0`'d, and native Linux instead leans on dlopen(NULL) returning a handle to the
-	// executable — a POSIX behaviour Windows has no equivalent of. The sentinel sidesteps it entirely, so
-	// no LoadLibrary and no Core.dll/Engine.dll question. (A future SHARED Windows build would need a real
-	// LoadLibrary path here plus exported symbols; it does not exist today.)
+	// The PACKAGE path -- UObject::BindPackage asking "is this native package available?". BUILD_STATIC
+	// is ON, so every package that exists IS the main binary, and the sentinel says so.
+	//
+	// ⚠ ufront 2.37 tried to make this HONEST -- probe for the registrant GLoaded<Package> and answer
+	// NULL for packages this build does not contain, which is exactly what the POSIX path below does and
+	// which looked strictly more correct. It CRASHED AT STARTUP, deterministically, 3/3, before the main
+	// menu finished building (a garbage UObject::GetFName). So something on this path depends on
+	// BindPackage binding unconditionally and calling ProcessRegistrants for names that are not really
+	// packages. It was reverted rather than shipped; if it is revisited, the A/B is three wine runs and
+	// the tell is `MatchViewportsToActors: GUI2K4.UT2K4MainMenu` being the last line before the fault.
+	//
+	// ⚠ And do NOT turn it into a LoadLibrary fallback either: a UT2004 asset tree ships all THIRTY
+	// retail 2004 DLLs (Core.dll, Engine.dll, D3DDrv.dll...), so that loads a 2004 binary into the
+	// process -- also tried, also an immediate crash. A genuine external library has its own entry
+	// point; see appGetSystemDllHandle.
 	return (void*)-1;
 #endif
 
@@ -1490,6 +1501,51 @@ void* appGetDllHandle( const TCHAR* Filename )
 }
 
 //
+// Load a genuine external library -- NOT an engine package. See the note in UnFile.h for why the two
+// cannot share an entry point on a static Windows build.
+//
+void* appGetSystemDllHandle( const TCHAR* Filename )
+{
+	guard(appGetSystemDllHandle);
+	check(Filename);
+
+#ifdef __EMSCRIPTEN__
+	// Statically linked, and FindProcs binds straight to the in-binary symbols; the sentinel just has to
+	// be non-NULL so ALAudio's Init() proceeds.
+	return (void*)-1;
+#elif defined(_WIN32)
+	// ★ This is what Windows was missing, and why it had no sound. ALAudio is DYNAMIC_BIND: it asks for
+	// "OpenAL32.dll" by name and resolves every AL entry point out of the handle. appGetDllHandle answered
+	// with the "it is in the exe" sentinel, so the very first lookup failed ("Missing function 'alEnable'
+	// for '_AL' support"), Init() bailed, and InitAudio logged "Audio initialization failed." -- with no
+	// line anywhere saying a DLL was missing, because none was ever looked for.
+	{
+		HMODULE Module = LoadLibraryA( appToAnsi(Filename) );
+		if( !Module )
+		{
+			TCHAR Temp[256];
+			appStrcpy( Temp, Filename );
+			appStrcat( Temp, DLLEXT );
+			Module = LoadLibraryA( appToAnsi(Temp) );
+		}
+		return (void*)Module;
+	}
+#else
+	void* Result = (void*)dlopen( appToAnsi(Filename), RTLD_NOW | RTLD_GLOBAL );
+	if( !Result )
+	{
+		TCHAR Temp[256];
+		appStrcpy( Temp, Filename );
+		appStrcat( Temp, DLLEXT );
+		Result = (void*)dlopen( appToAnsi(Temp), RTLD_NOW | RTLD_GLOBAL );
+	}
+	return Result;
+#endif
+
+	unguard;
+}
+
+//
 // Free a library.
 //
 void appFreeDllHandle( void* DllHandle )
@@ -1501,8 +1557,9 @@ void appFreeDllHandle( void* DllHandle )
 		return;
 
 #ifdef _WIN32
-	// ufront 2.33: appGetDllHandle only ever returns the sentinel here, so this is unreachable — but do
-	// not fall through to dlclose(), which does not exist on Windows.
+	// ufront 2.37: appGetDllHandle can hand back a real module now (it could only ever return the
+	// sentinel before, which is filtered out above), so release it properly.
+	FreeLibrary( (HMODULE)DllHandle );
 	return;
 #else
 	// remember that you can unload bundles,
@@ -1538,9 +1595,15 @@ void* appGetDllExport( void* DllHandle, const TCHAR* ProcName )
 	// Win32 spelling of dlsym(RTLD_DEFAULT), and it resolves only EXPORTED names — so the launcher links
 	// with --export-all-symbols (see CMakeLists.txt), which is what makes the package registrants
 	// (GLoaded<Package>) visible to this lookup.
+	// ufront 2.37 — appGetDllHandle can now return a REAL module (OpenAL32.dll), so honour it. The
+	// fall back to the exe keeps every pre-2.37 lookup answering exactly as it did: a library that
+	// loads but does not export the name behaves like the old sentinel rather than silently regressing.
 	{
-		HMODULE Module = GetModuleHandleA( NULL );
-		return (void*)GetProcAddress( Module, appToAnsi(ProcName) );
+		HMODULE Module = (DllHandle == (void*)-1) ? GetModuleHandleA( NULL ) : (HMODULE)DllHandle;
+		void* Result = (void*)GetProcAddress( Module, appToAnsi(ProcName) );
+		if( !Result && Module != GetModuleHandleA( NULL ) )
+			Result = (void*)GetProcAddress( GetModuleHandleA( NULL ), appToAnsi(ProcName) );
+		return Result;
 	}
 #endif
 
@@ -2532,6 +2595,201 @@ typedef struct
 #endif
 
 #define DESIRED_FILE_HANDLES 1024
+
+#ifdef _WIN32
+//
+// ufront 2.37 — last-resort crash reporter for the Windows build.
+//
+// Windows had NO fault handler at all: the POSIX sigaction block below is skipped, and the guard/unguard
+// chain that 2.33 relied on only reports THROWN errors. A segfault therefore killed the process with no
+// output, leaving a log that stops mid-stream and looks like a clean exit. This makes a fault say so.
+//
+// ⚠ It deliberately does NOT try to be a symbolising debugger. The exe carries DWARF, which dbghelp
+// cannot read (it wants PDBs), so printing names in-process would need a DWARF reader in the crash path —
+// the least safe place to run new code. Instead it prints the module base and the raw addresses, which
+// `addr2line -e ut2004.exe` turns into exact file:line on the machine that built it. ★ The base matters:
+// the image is ASLR'd, so a bare address is useless without it.
+//
+static LONG WINAPI appWinUnhandledException( EXCEPTION_POINTERS* Info )
+{
+	static UBOOL Reentered = 0;
+	if( Reentered )
+		return EXCEPTION_EXECUTE_HANDLER;	// a fault inside the reporter must not loop
+	Reentered = 1;
+
+	GIsCriticalError = 1;
+
+	const DWORD Code = Info && Info->ExceptionRecord ? Info->ExceptionRecord->ExceptionCode : 0;
+	const TCHAR* Name;
+	switch( Code )
+	{
+		case EXCEPTION_ACCESS_VIOLATION:      Name = TEXT("EXCEPTION_ACCESS_VIOLATION [segmentation fault]"); break;
+		case EXCEPTION_ILLEGAL_INSTRUCTION:   Name = TEXT("EXCEPTION_ILLEGAL_INSTRUCTION"); break;
+		case EXCEPTION_INT_DIVIDE_BY_ZERO:    Name = TEXT("EXCEPTION_INT_DIVIDE_BY_ZERO"); break;
+		case EXCEPTION_FLT_DIVIDE_BY_ZERO:    Name = TEXT("EXCEPTION_FLT_DIVIDE_BY_ZERO"); break;
+		case EXCEPTION_STACK_OVERFLOW:        Name = TEXT("EXCEPTION_STACK_OVERFLOW"); break;
+		case EXCEPTION_PRIV_INSTRUCTION:      Name = TEXT("EXCEPTION_PRIV_INSTRUCTION"); break;
+		case EXCEPTION_IN_PAGE_ERROR:         Name = TEXT("EXCEPTION_IN_PAGE_ERROR"); break;
+		default:                              Name = TEXT("EXCEPTION (see code)"); break;
+	}
+
+	const BYTE* Base = (const BYTE*)GetModuleHandleA( NULL );
+
+	debugf( NAME_Critical, TEXT("=== CRASH (unhandled exception) ===") );
+	debugf( NAME_Critical, TEXT("%s  code=0x%08x"), Name, (DWORD)Code );
+	debugf( NAME_Critical, TEXT("Image base: 0x%08x   (subtract this from the addresses below)"), (DWORD)(size_t)Base );
+
+	if( Info && Info->ExceptionRecord )
+	{
+		const BYTE* At = (const BYTE*)Info->ExceptionRecord->ExceptionAddress;
+		debugf( NAME_Critical, TEXT("Faulting address: 0x%08x   rva=0x%08x"), (DWORD)(size_t)At, (DWORD)(At - Base) );
+		// An access violation records what it was doing and to which address -- usually the whole story
+		// (a read of 0x00000000 is a null deref, and the offset says which field).
+		if( Code == EXCEPTION_ACCESS_VIOLATION && Info->ExceptionRecord->NumberParameters >= 2 )
+		{
+			const ULONG_PTR Op = Info->ExceptionRecord->ExceptionInformation[0];
+			debugf( NAME_Critical, TEXT("Tried to %s address 0x%08x"),
+				Op == 0 ? TEXT("READ") : Op == 1 ? TEXT("WRITE") : TEXT("EXECUTE"),
+				(DWORD)Info->ExceptionRecord->ExceptionInformation[1] );
+		}
+	}
+
+	// ⚠ Flush the header BEFORE attempting any call-path reconstruction. The first version of this
+	// reporter did the trace first and printed nothing but the header when the trace itself faulted --
+	// losing the one datum that always survives. Order the output by how reliably it can be produced.
+	if( GLog )
+		GLog->Flush();
+
+	// A raw scan of the stack for values that land inside this image. With -O2 there are no frame
+	// pointers on i686, so these ARE the return addresses, mixed with data -- noisy, but a noisy call
+	// path beats no call path, and addr2line discards the ones that do not resolve to a function.
+	// Cheapest and safest of the two techniques, so it goes first.
+	if( Info && Info->ContextRecord )
+	{
+		#ifdef _WIN64
+			const BYTE** Sp = (const BYTE**)Info->ContextRecord->Rsp;
+		#else
+			const BYTE** Sp = (const BYTE**)Info->ContextRecord->Esp;
+		#endif
+		// Image span straight out of the PE headers -- GetModuleInformation would drag in psapi for one
+		// field, and the headers are already mapped at Base.
+		SIZE_T Span = 0;
+		{
+			const IMAGE_DOS_HEADER* Dos = (const IMAGE_DOS_HEADER*)Base;
+			if( Dos->e_magic == IMAGE_DOS_SIGNATURE )
+			{
+				const IMAGE_NT_HEADERS* Nt = (const IMAGE_NT_HEADERS*)(Base + Dos->e_lfanew);
+				if( Nt->Signature == IMAGE_NT_SIGNATURE )
+					Span = Nt->OptionalHeader.SizeOfImage;
+			}
+		}
+		if( Span && Sp )
+		{
+			debugf( NAME_Critical, TEXT("Stack scan (candidate return addresses):") );
+			INT Printed = 0;
+			for( INT i = 0; i < 2048 && Printed < 48; i++ )
+			{
+				// IsBadReadPtr is deprecated but this is a crash path; a fault here would be worse.
+				if( IsBadReadPtr( Sp + i, sizeof(void*) ) )
+					break;
+				const BYTE* V = Sp[i];
+				if( V > Base && (SIZE_T)(V - Base) < Span )
+				{
+					debugf( NAME_Critical, TEXT("  0x%08x  rva=0x%08x"), (DWORD)(size_t)V, (DWORD)(V - Base) );
+					Printed++;
+				}
+			}
+		}
+	}
+
+	if( GLog )
+		GLog->Flush();
+
+	// The exact chain. The Windows preset builds with -fno-omit-frame-pointer precisely so this works:
+	// at plain -O2 on i686 GCC drops the frame pointer, RtlCaptureStackBackTrace returned ZERO frames,
+	// and all we had was the noisy scan above. A frame pointer costs one register and buys a real
+	// backtrace out of a machine we do not own -- an easy trade for a build whose job is to be tested by
+	// hand and reported on.
+	{
+		void* Frames[62];
+		USHORT Count = RtlCaptureStackBackTrace( 0, 62, Frames, NULL );
+		for( USHORT i = 0; i < Count; i++ )
+			debugf( NAME_Critical, TEXT("  frame[%02d] 0x%08x  rva=0x%08x"), (INT)i,
+				(DWORD)(size_t)Frames[i], (DWORD)((const BYTE*)Frames[i] - Base) );
+
+		// Walk the frame pointer by hand as well. RtlCaptureStackBackTrace unwinds from HERE (inside the
+		// handler); the fault's own frame chain hangs off the context record, which is the one we want.
+		if( !Count && Info && Info->ContextRecord )
+		{
+			#ifndef _WIN64
+			const DWORD** Fp = (const DWORD**)Info->ContextRecord->Ebp;
+			for( INT i = 0; i < 48 && Fp && !IsBadReadPtr( Fp, 2*sizeof(void*) ); i++ )
+			{
+				const BYTE* Ret = (const BYTE*)Fp[1];
+				if( !Ret )
+					break;
+				debugf( NAME_Critical, TEXT("  ebp[%02d] 0x%08x  rva=0x%08x"), i,
+					(DWORD)(size_t)Ret, (DWORD)(Ret - Base) );
+				const DWORD** Next = (const DWORD**)Fp[0];
+				if( Next <= Fp )		// the chain must climb, or it is not a chain
+					break;
+				Fp = Next;
+			}
+			#endif
+		}
+	}
+
+	if( GErrorHist[0] )
+		debugf( NAME_Critical, TEXT("Last engine error: %s"), GErrorHist );
+
+	debugf( NAME_Critical, TEXT("Symbolise with: addr2line -f -C -e ut2004.exe <rva + 0x400000>") );
+	debugf( NAME_Critical, TEXT("=== END CRASH ===") );
+
+	if( GLog )
+		GLog->Flush();
+
+	return EXCEPTION_EXECUTE_HANDLER;
+}
+
+// An uncaught C++ exception. The engine's own errors travel this way (appThrowf), so when one escapes
+// every catch the log must say so rather than just stopping.
+static void appWinTerminate()
+{
+	GIsCriticalError = 1;
+	debugf( NAME_Critical, TEXT("=== CRASH (std::terminate -- an exception escaped every handler) ===") );
+	if( GErrorHist[0] )
+		debugf( NAME_Critical, TEXT("Last engine error: %s"), GErrorHist );
+	if( GLog )
+		GLog->Flush();
+	abort();	// -> appWinAbort, which prints the call path
+}
+
+static void appWinAbort( int )
+{
+	static UBOOL Reentered = 0;
+	if( !Reentered )
+	{
+		Reentered = 1;
+		GIsCriticalError = 1;
+		debugf( NAME_Critical, TEXT("=== CRASH (abort) ===") );
+		debugf( NAME_Critical, TEXT("Image base: 0x%08x"), (DWORD)(size_t)GetModuleHandleA( NULL ) );
+		if( GErrorHist[0] )
+			debugf( NAME_Critical, TEXT("Last engine error: %s"), GErrorHist );
+		{
+			const BYTE* Base = (const BYTE*)GetModuleHandleA( NULL );
+			void* Frames[62];
+			USHORT Count = RtlCaptureStackBackTrace( 0, 62, Frames, NULL );
+			for( USHORT i = 0; i < Count; i++ )
+				debugf( NAME_Critical, TEXT("  frame[%02d] 0x%08x  rva=0x%08x"), (INT)i,
+					(DWORD)(size_t)Frames[i], (DWORD)((const BYTE*)Frames[i] - Base) );
+		}
+		if( GLog )
+			GLog->Flush();
+	}
+	_exit( 3 );
+}
+#endif // _WIN32
+
 void appPlatformInit()
 {
 	guard(appPlatformInit);
@@ -2805,14 +3063,25 @@ void appPlatformInit()
 	unguard;
 
 #ifdef _WIN32
-	// ufront 2.33 — the rest of appPlatformInit is POSIX process plumbing with no Windows equivalent:
-	//   * sigaction() crash/interrupt handlers — Windows uses SetUnhandledExceptionFilter, and the engine
-	//     already survives without them (the launcher's guard/unguard chain still reports the call site).
+	// ufront 2.33 skipped the POSIX process plumbing here:
 	//   * setrlimit(RLIMIT_NOFILE) — Windows has no per-process descriptor limit to raise; the CRT's
 	//     _setmaxstdio ceiling only applies to stdio streams, which the engine does not use for packages.
-	// Both are best-effort on Linux too (failures are logged, not fatal), so omitting them changes no
-	// behaviour the engine depends on.
-#else
+	//     Still true, still skipped.
+	//   * sigaction() crash handlers — skipped with the note that "the guard/unguard chain still reports
+	//     the call site". ★ ufront 2.37: that is only true for a THROWN error. A hardware fault does not
+	//     unwind, so on Windows a segfault killed the process with NO output whatsoever — the log simply
+	//     stopped mid-line, which reads exactly like a hang or a clean exit and is undiagnosable. That is
+	//     how the first Settings-menu crash report arrived: a truncated log ending in an unrelated
+	//     warning. Install the Win32 equivalent so a fault at least says so.
+	SetUnhandledExceptionFilter( appWinUnhandledException );
+	// ⚠ SetUnhandledExceptionFilter covers HARDWARE faults only. The other two ways this process can die
+	// are an uncaught C++ throw (std::terminate) and abort(), and BOTH bypass it entirely -- observed
+	// for real: a crash that reported nothing at all while the segfault path reported fine. The engine
+	// throws for a living (appThrowf is how a failed load unwinds), so an escaped throw is not exotic.
+	std::set_terminate( appWinTerminate );
+	signal( SIGABRT, appWinAbort );
+#endif
+#ifndef _WIN32
 	struct sigaction SigAction;
 
 	// Only try once.

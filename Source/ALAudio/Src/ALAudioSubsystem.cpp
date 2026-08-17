@@ -266,13 +266,17 @@ UBOOL UALAudioSubsystem::Init()
 	DLLHandle = NULL;
 	if( !UseDefaultDriver )
 	{
-		DLLHandle = appGetDllHandle( AL_DLL );
+		// ufront 2.37: appGetSystemDllHandle, not appGetDllHandle. The latter answers "is this PACKAGE
+		// already in the exe?", which on the static Windows build is a sentinel that made every AL
+		// lookup miss -- see UnFile.h. OpenAL is an external library, so it needs the loader that
+		// actually loads.
+		DLLHandle = appGetSystemDllHandle( AL_DLL );
 		if( !DLLHandle )
 			debugf( NAME_Init, TEXT("Couldn't locate %s - trying default next."), AL_DLL );
 	}
 	if( !DLLHandle )
 	{
-		DLLHandle = appGetDllHandle( AL_DEFAULT_DLL );
+		DLLHandle = appGetSystemDllHandle( AL_DEFAULT_DLL );
 		if( !DLLHandle )
 		{
 			debugf( NAME_Init, TEXT("Couldn't locate %s - giving up."), AL_DEFAULT_DLL );
