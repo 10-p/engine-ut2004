@@ -76,7 +76,12 @@ AL_PROC(_AL,ALvoid,alDopplerVelocity,( ALfloat value ))
 AL_PROC(_AL,ALubyte*,alcGetString,(ALCdevice *device,ALenum param))
 AL_PROC(_AL,ALvoid,alcGetIntegerv,(ALCdevice *device,ALenum param,ALsizei size,ALint *data))
 AL_PROC(_AL,ALCdevice*,alcOpenDevice,(ALubyte *deviceName))
-AL_PROC(_AL,ALvoid,alcCloseDevice,(ALCdevice *device))
+// ★ ufront 2.36b: alcCloseDevice returns ALCboolean, not void. Declaring it void makes the
+// call_indirect through this table say (i32)->void while the real function is (i32)->i32 — harmless
+// native UB (the return is simply ignored), but wasm TYPE-CHECKS indirect calls, so it trapped with
+// "function signature mismatch" inside UALAudioSubsystem::Shutdown(). That is the error-shutdown
+// path, so EVERY engine fatal on the web died here instead of reporting itself.
+AL_PROC(_AL,ALboolean,alcCloseDevice,(ALCdevice *device))
 AL_PROC(_AL,ALCcontext*,alcCreateContext,(ALCdevice *device,ALint *attrList))
 AL_PROC(_AL,ALboolean,alcMakeContextCurrent,(ALCcontext *context))
 AL_PROC(_AL,ALvoid,alcProcessContext,(ALCcontext *context))
@@ -97,7 +102,8 @@ ALC_PROC(_ALC,ALenum,alcGetEnumValue,(ALCdevice *device,ALubyte *enumName))
 
 ALC_EXT(_ALC_EXT_capture)
 ALC_PROC(_ALC_EXT_capture,ALCdevice*,alcCaptureOpenDevice,(const ALubyte *deviceName,ALuint freq, ALenum fmt,ALsizei bufsize))
-ALC_PROC(_ALC_EXT_capture,ALvoid,alcCaptureCloseDevice,(ALCdevice *device))
+// Same mismatch as alcCloseDevice above (capture extension).
+ALC_PROC(_ALC_EXT_capture,ALboolean,alcCaptureCloseDevice,(ALCdevice *device))
 ALC_PROC(_ALC_EXT_capture,ALvoid,alcCaptureStart,(ALCdevice *device))
 ALC_PROC(_ALC_EXT_capture,ALvoid,alcCaptureStop,(ALCdevice *device))
 ALC_PROC(_ALC_EXT_capture,ALvoid,alcCaptureSamples,(ALCdevice *device, ALvoid *buf, ALsizei samps))
