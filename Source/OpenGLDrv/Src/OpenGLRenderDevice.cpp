@@ -100,9 +100,21 @@ void UOpenGLRenderDevice::StaticConstructor()
 	new(GetClass(),TEXT("LevelOfAnisotropy"),	RF_Public)UFloatProperty( CPP_PROPERTY(LevelOfAnisotropy   ), TEXT("Options"), CPF_Config );
 	new(GetClass(),TEXT("UseRenderTargets"),	RF_Public)UBoolProperty	( CPP_PROPERTY(UseRenderTargets    ), TEXT("Options"), CPF_Config );
 	new(GetClass(),TEXT("UsePixelShaders"),		RF_Public)UBoolProperty ( CPP_PROPERTY(UsePixelShaders     ), TEXT("Options"), CPF_Config );
+	// ufront 2.37b: an ini option rather than a switch, because it belongs to the DRIVER and because a
+	// user should not have to remember a command line to keep the game out of their desktop's colours.
+	// ★ ASSIGNED below, not merely registered -- that is 2.35's lesson: ~30 client options were declared
+	// CPF_Config and given no value, so every one of them silently fell to a zero-initialised default.
+	// Here zero happens to be the value we want, which is exactly the case where forgetting is invisible.
+	new(GetClass(),TEXT("UseHardwareGamma"),	RF_Public)UBoolProperty ( CPP_PROPERTY(UseHardwareGamma    ), TEXT("Options"), CPF_Config );
 
 	GIsOpenGL						= 1;
 	GIsPixomatic					= 0;
+
+	// OFF by default. UpdateGamma reprograms the DISPLAY's ramp, not the game's, so leaving this on
+	// meant running the game recoloured the whole desktop -- and a process that died before
+	// RestoreGamma left it that way with nothing to put it back. Set UseHardwareGamma=True in
+	// [OpenGLDrv.OpenGLRenderDevice] to get the in-game Brightness/Gamma/Contrast sliders working.
+	UseHardwareGamma				= 0;
 
 	SupportsCubemaps				= 1;
 	SupportsZBIAS					= 1;
@@ -668,6 +680,13 @@ UBOOL UOpenGLRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Fu
 		glGetFloatv( GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &MaxAnisotropy );
 		LevelOfAnisotropy = Max<FLOAT>( 1.0f, Min<FLOAT>( MaxAnisotropy, LevelOfAnisotropy ) );
 		debugf( TEXT("OpenGL: Level of anisotropy is %f (max %f)."), (float) LevelOfAnisotropy, (float) MaxAnisotropy );
+		// ufront 2.37b: say which path won. An option whose whole point is "the game did NOT touch your
+		// desktop" is invisible when it works, and an invisible setting is how 2.35's client defaults
+		// went unnoticed for a decade.
+		debugf( TEXT("OpenGL: UseHardwareGamma=%s (%s) -- the display's gamma ramp is %s"),
+			UseHardwareGamma ? TEXT("True") : TEXT("False"),
+			ParseParam(appCmdLine(),TEXT("NOGAMMA")) ? TEXT("-NOGAMMA forces off") : TEXT("[OpenGLDrv.OpenGLRenderDevice]"),
+			(UseHardwareGamma && !ParseParam(appCmdLine(),TEXT("NOGAMMA"))) ? TEXT("OURS to set and restore") : TEXT("left alone") );
 	}
 
 #ifndef UT_OPENGLDRV_WGL
@@ -1141,7 +1160,7 @@ void UOpenGLRenderDevice::Flush(UViewport* Viewport)
 
 
 //
-// ufront 2.37 — hardware gamma is OPT-IN now.
+// ufront 2.37 — hardware gamma is OPT-IN now, via the driver's own UseHardwareGamma ini option.
 //
 // This code does not set the GAME's gamma, it sets the DISPLAY's: SDL_SetWindowGammaRamp and
 // SetDeviceGammaRamp both reprogram the monitor's ramp for the whole desktop. Two things follow, and the
@@ -1150,16 +1169,17 @@ void UOpenGLRenderDevice::Flush(UViewport* Viewport)
 //     changes how everything else on the machine looks;
 //   * ★ if the process dies without running RestoreGamma -- a crash, a kill, a driver reset -- the
 //     desktop is LEFT that way, and nothing puts it back. That is a game leaving the OS in a bad state.
-// So: the default is now to leave the display alone. `-USEGAMMA` opts back in for anyone who wants the
-// in-game brightness sliders to do something, and `-NOGAMMA` still parses (it is the default, so a no-op).
 //
-// When it IS opted into, RestoreGamma now puts back the ramp that was there at startup instead of forcing
-// a LINEAR one -- the old code overwrote a calibrated display profile even on a clean exit.
+// So the default is to leave the display alone; set UseHardwareGamma=True in
+// [OpenGLDrv.OpenGLRenderDevice] to get the in-game sliders back. ⚠ It is deliberately NOT a new command
+// line switch (2.37b, owner): it is a property of this render device, it belongs in the device's ini
+// section next to UseVSync and UseTrilinear, and one more flag nobody can remember is not an option.
+// The stock -NOGAMMA switch is still honoured as a force-off, since it costs one clause and some old
+// script or shortcut may still pass it.
 //
-static UBOOL GUseHardwareGamma()
-{
-	return ParseParam( appCmdLine(), TEXT("USEGAMMA") );
-}
+// When it IS enabled, RestoreGamma puts back the ramp that was there at startup instead of forcing a
+// LINEAR one -- the old code overwrote a calibrated display profile even on a clean exit.
+//
 
 // The desktop's ramp as it was before we touched anything, captured on first use.
 static _WORD GOriginalGammaRamp[3][256];
@@ -1172,7 +1192,7 @@ void UOpenGLRenderDevice::UpdateGamma(UViewport* Viewport)
 {
 	guard(UOpenGLRenderDevice::UpdateGamma);
 
-	if( !GUseHardwareGamma() )
+	if( !UseHardwareGamma || ParseParam(appCmdLine(),TEXT("NOGAMMA")) )
 		return;
 
 	FLOAT	Gamma		= Viewport->GetOuterUClient()->Gamma,
@@ -1221,7 +1241,7 @@ void UOpenGLRenderDevice::RestoreGamma()
 	// Nothing was changed unless gamma was opted into AND actually applied, so there is nothing to undo.
 	// ⚠ Do not "restore" unconditionally: writing a linear ramp to a display we never touched is itself
 	// a change, and it is the one that wipes a calibrated profile.
-	if( !GUseHardwareGamma() || !GOriginalGammaSaved )
+	if( !UseHardwareGamma || !GOriginalGammaSaved )
 		return;
 
 #if (defined USE_SDL)

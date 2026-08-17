@@ -60,7 +60,8 @@ public:
 									UseVBO,
 									UseVSync,
 									UseRenderTargets,
-									UsePixelShaders;
+									UsePixelShaders,
+									UseHardwareGamma;
 	INT								MaxTextureUnits,
 									AppleVA,
 									MultisampleBuffers,
