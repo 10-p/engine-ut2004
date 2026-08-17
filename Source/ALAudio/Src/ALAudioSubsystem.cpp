@@ -260,29 +260,43 @@ UBOOL UALAudioSubsystem::Init()
 	if( USound::Audio )
 		return 1;
 
+	// Which OpenAL actually got loaded -- reported in the failure messages below, because
+	// "audio failed" without naming the driver is what made this take three rounds to find.
+	UBOOL UsingDefaultDriverDLL = 0;
+
 #if DYNAMIC_BIND
 	guard(DynamicBinding);
 	// Find DLL's.
 	DLLHandle = NULL;
-	if( !UseDefaultDriver )
-	{
-		// ufront 2.37: appGetSystemDllHandle, not appGetDllHandle. The latter answers "is this PACKAGE
-		// already in the exe?", which on the static Windows build is a sentinel that made every AL
-		// lookup miss -- see UnFile.h. OpenAL is an external library, so it needs the loader that
-		// actually loads.
-		DLLHandle = appGetSystemDllHandle( AL_DLL );
-		if( !DLLHandle )
-			debugf( NAME_Init, TEXT("Couldn't locate %s - trying default next."), AL_DLL );
-	}
+	// ufront 2.37: appGetSystemDllHandle, not appGetDllHandle. The latter answers "is this PACKAGE
+	// already in the exe?", which on the static Windows build is a sentinel that made every AL lookup
+	// miss -- see UnFile.h. OpenAL is an external library, so it needs the loader that actually loads.
+	//
+	// ★ ufront 2.37b: AL_DLL is tried FIRST now, whatever UseDefaultDriver says. That flag meant
+	// something in 2004 -- "prefer the copy we shipped (DefOpenAL32.dll) over whatever OpenAL32.dll the
+	// system has" -- and today it means the opposite of what anyone wants: OpenAL32.dll is the modern
+	// OpenAL Soft this build ships beside the exe, while DefOpenAL32.dll is a 2004 binary sitting in the
+	// asset tree that binds fine and then cannot open a device on a current OS. ⚠ Every retail ini has
+	// UseDefaultDriver=True, so the shipped DLL was never even tried: the owner's second log bound
+	// OpenAL successfully (no "Missing function") and still ended in "Audio initialization failed.".
+	// UseDefaultDriver now only decides whether the 2004 DLL is an acceptable FALLBACK.
+	DLLHandle = appGetSystemDllHandle( AL_DLL );
+	UsingDefaultDriverDLL = 0;
 	if( !DLLHandle )
 	{
+		debugf( NAME_Warning, TEXT("ALAudio: couldn't load %s - trying %s next."), AL_DLL, AL_DEFAULT_DLL );
 		DLLHandle = appGetSystemDllHandle( AL_DEFAULT_DLL );
+		UsingDefaultDriverDLL = 1;
 		if( !DLLHandle )
 		{
-			debugf( NAME_Init, TEXT("Couldn't locate %s - giving up."), AL_DEFAULT_DLL );
+			debugf( NAME_Warning, TEXT("ALAudio: couldn't load %s either - giving up, there will be no sound."), AL_DEFAULT_DLL );
 			return 0;
 		}
 	}
+	// ⚠ NOT NAME_Init: a stock UT2004.ini carries `Suppress=Init`, which silently hides every
+	// diagnostic this subsystem emits -- which is why two crash reports in a row contained no clue at
+	// all about what audio was doing. Say which DLL won, at a level nobody suppresses.
+	debugf( TEXT("ALAudio: bound to %s"), UsingDefaultDriverDLL ? AL_DEFAULT_DLL : AL_DLL );
 	
 	// Find functions.
 	SUPPORTS_AL = 1;
@@ -304,7 +318,7 @@ UBOOL UALAudioSubsystem::Init()
 	unguard;
 	if( !SoundDevice )
 	{
-		debugf(NAME_Init,TEXT("ALAudio: no OpenAL devices found."));
+		debugf(NAME_Warning,TEXT("ALAudio: no OpenAL devices found -- %s loaded but opened no device."), UsingDefaultDriverDLL ? AL_DEFAULT_DLL : AL_DLL);
 		return 0;
 	}
 
@@ -314,7 +328,7 @@ UBOOL UALAudioSubsystem::Init()
 	unguard;
 	if( !SoundContext )
 	{
-		debugf(NAME_Init, TEXT("ALAudio: context creation failed."));
+		debugf(NAME_Warning, TEXT("ALAudio: context creation failed."));
 		return 0;
 	}
 
@@ -328,7 +342,7 @@ UBOOL UALAudioSubsystem::Init()
 	
 	if ( alError(TEXT("Init")) )
 	{
-		debugf(NAME_Init,TEXT("ALAudio: makecurrent failed."));
+		debugf(NAME_Warning,TEXT("ALAudio: makecurrent failed."));
 		return 0;
 	}
 
@@ -343,7 +357,11 @@ UBOOL UALAudioSubsystem::Init()
 
 	// No channels, no sound.
 	if ( MaxChannels <= 4 )
+	{
+		// This used to return 0 with NO log line whatsoever -- a completely silent audio failure.
+		debugf( NAME_Warning, TEXT("ALAudio: only %i channels available (need >4) -- no sound."), MaxChannels );
 		return 0;
+	}
 
 	// Adjust global rolloff factor.
 	if( RollOff <= 0.0f )
