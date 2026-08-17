@@ -2455,15 +2455,48 @@ CORE_API const TCHAR* appFromUnicode( const UNICHAR* UCh, TCHAR* Ch, INT maxlen 
 //
 CORE_API void VARARGS appUnwindf( const TCHAR* Fmt, ... )
 {
-	GIsCriticalError = 1;
+	// ★★ ufront 2.37c — this used to begin `GIsCriticalError = 1;`, unconditionally, and NOTHING in the
+	// engine ever cleared it again.
+	//
+	// unguard calls this for EVERY exception that passes through a guarded scope, and most of them are
+	// not fatal: `appThrowf` is how a failed load unwinds, and StaticLoadObject / GetPackageLinker /
+	// ULinkerLoad::Create all CATCH it and carry on (that is what "Failed to load 'X'" is -- a handled,
+	// recoverable miss). So the first missing texture in a session latched the engine into
+	// permanent-critical-error mode.
+	//
+	// ⚠ What that costs is not a stray flag. UObject::~UObject reads it:
+	//     if( Index!=INDEX_NONE && GObjInitialized && !GIsCriticalError ) { ... GObjObjects(Index)=NULL;
+	//                                                                       GObjAvailable.AddItem(Index); }
+	// so from the first recovered load error onwards, EVERY destroyed object skips its own cleanup: it
+	// stays in the object table as a dangling pointer, and its index never returns to the free list.
+	// Both halves then bite:
+	//   * StaticAllocateObject's next replace hits `check(GObjAvailable.Last()==Index)` -- the assertion
+	//     storm the owner saw on map thumbnails, and why a package that loaded fine before visiting a
+	//     menu fails after;
+	//   * anything that WALKS the object table reads a freed object -- which is the Settings-menu
+	//     segfault (2.37b §7.4), whose real cause was this, not the walk.
+	// ★ One latched flag, and the engine quietly corrupts its object system for the rest of the run.
+	//
+	// A genuinely fatal error does NOT rely on this: FOutputDeviceAnsiError::Serialize sets
+	// GIsCriticalError itself, before it throws, so the flag is already 1 by the time the unwind starts.
+	// Setting it here only ever mislabelled the recoverable case.
+	//
+	// ⚠ NOT Windows-specific. The same latch happens on Linux and on the web build; there the dangling
+	// entries simply do not fault, so the corruption is silent.
 
 	TCHAR TempStr[4096];
 	GET_VARARGS( TempStr, ARRAY_COUNT(TempStr), Fmt, Fmt );
 
-	static INT Count=0;
-	if( Count++ )
-		appStrncat( GErrorHist, TEXT(" <- "), ARRAY_COUNT(GErrorHist) );
-	appStrncat( GErrorHist, TempStr, ARRAY_COUNT(GErrorHist) );
+	// Accumulate the History: chain only for a REAL error -- otherwise every recovered load failure in the
+	// session appends to GErrorHist forever, which is how one crash report arrived carrying a kilobyte of
+	// unrelated history from menu textures that had loaded fine.
+	if( GIsCriticalError )
+	{
+		static INT Count=0;
+		if( Count++ )
+			appStrncat( GErrorHist, TEXT(" <- "), ARRAY_COUNT(GErrorHist) );
+		appStrncat( GErrorHist, TempStr, ARRAY_COUNT(GErrorHist) );
+	}
 
 	debugf( NAME_Critical, TempStr );
 }
