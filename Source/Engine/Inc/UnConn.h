@@ -121,7 +121,7 @@ class ENGINE_API UNetConnection : public UPlayer
 	// loss/lag seen, so a spike still shows up instead of being averaged away. Zero-initialised by
 	// UObject allocation; the window opens lazily on first use.
 	DOUBLE			UfrontLogWinStart;
-	INT				UfrontLogSamples;
+	INT				UfrontLogSamples, UfrontLogNonzeroIn;
 	FLOAT			UfrontLogInRate, UfrontLogOutRate, UfrontLogInPkts, UfrontLogOutPkts;
 	FLOAT			UfrontLogPeakIn, UfrontLogPeakOut, UfrontLogWorstLoss;
 	FLOAT			UfrontLogLagSum, UfrontLogLagPeak;

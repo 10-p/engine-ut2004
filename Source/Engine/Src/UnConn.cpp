@@ -870,14 +870,25 @@ void UNetConnection::Tick()
 
 		// Init counters.
 		// ufront 2.36b — WINDOWED, not once a second. Same 10s window as the WebRTC driver's receive
-		// accumulator. Averages alone would hide a spike, so the peaks and the worst loss/lag in the
-		// window are carried too; `samples` says how many one-second stat intervals it covers.
+		// accumulator.
+		//
+		// ★ THE LEGACY PREFIX AND FIELD ORDER ARE LOAD-BEARING. The E2E measures network health by
+		// SCRAPING this line (`Client: In=(\d+)B/s`, and a REPLICATING milestone on the sibling line in
+		// UnLevTic.cpp), so reformatting it silently broke five net tests — the traffic never changed.
+		// Keep `In=`/`Out=` first and in the old shape; the window detail is appended.
+		//
+		// The leading In=/Out= carry the window's PEAK, because the assertion reading them asks whether a
+		// bulk transfer ever happened — an average over 10s would bury a burst. `samples`/`nonzero` are
+		// the engine's own per-STAT-INTERVAL counts, so a consumer keeps the per-second resolution it had
+		// when this printed once a second, out of one line.
 		if( InRate > 0 || OutRate > 0 )
 		{
 			DOUBLE LogNow = appSeconds();
 			if( UfrontLogWinStart == 0.0 )
 				UfrontLogWinStart = LogNow;
 			UfrontLogSamples++;
+			if( InRate > 0 )
+				UfrontLogNonzeroIn++;
 			UfrontLogInRate  += InRate;      UfrontLogOutRate += OutRate;
 			UfrontLogInPkts  += InPackets;   UfrontLogOutPkts += OutPackets;
 			UfrontLogPeakIn   = ::Max( UfrontLogPeakIn,  InRate );
@@ -889,17 +900,20 @@ void UNetConnection::Tick()
 			DOUBLE LogElapsed = LogNow - UfrontLogWinStart;
 			if( LogElapsed >= 10.0 && UfrontLogSamples > 0 )
 			{
-				printf("[NET-TRAFFIC] %s: %.0fs avg — In=%.0fB/s/%.0fpkt/s Out=%.0fB/s/%.0fpkt/s (peak In=%.0f Out=%.0f) Loss(worst)=%.0f%% Channels=%d Lag avg=%.0fms peak=%.0fms over %d samples\n",
+				printf("[NET-TRAFFIC] %s: In=%.0fB/s/%.0fpkt/s Out=%.0fB/s/%.0fpkt/s Loss=%.0f%%/%.0f%% Channels=%d Lag=%.0fms  [%.0fs window: peak, avg In=%.0f Out=%.0f, lag avg=%.0fms peak=%.0fms, samples=%d nonzero=%d]\n",
 					Driver->ServerConnection ? "Client" : "Server",
-					LogElapsed,
-					UfrontLogInRate/UfrontLogSamples,  UfrontLogInPkts/UfrontLogSamples,
-					UfrontLogOutRate/UfrontLogSamples, UfrontLogOutPkts/UfrontLogSamples,
-					UfrontLogPeakIn, UfrontLogPeakOut, UfrontLogWorstLoss,
+					UfrontLogPeakIn, UfrontLogInPkts/UfrontLogSamples,
+					UfrontLogPeakOut, UfrontLogOutPkts/UfrontLogSamples,
+					UfrontLogWorstLoss, UfrontLogWorstLoss,
 					OpenChannels.Num(),
+					UfrontLogLagPeak,
+					LogElapsed,
+					UfrontLogInRate/UfrontLogSamples, UfrontLogOutRate/UfrontLogSamples,
 					UfrontLogLagSum/UfrontLogSamples, UfrontLogLagPeak,
-					UfrontLogSamples);
+					UfrontLogSamples, UfrontLogNonzeroIn);
 				UfrontLogWinStart = LogNow;
 				UfrontLogSamples = 0;
+				UfrontLogNonzeroIn = 0;
 				UfrontLogInRate = UfrontLogOutRate = UfrontLogInPkts = UfrontLogOutPkts = 0.f;
 				UfrontLogPeakIn = UfrontLogPeakOut = UfrontLogWorstLoss = 0.f;
 				UfrontLogLagSum = UfrontLogLagPeak = 0.f;
