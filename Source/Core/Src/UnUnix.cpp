@@ -2705,42 +2705,48 @@ static LONG WINAPI appWinUnhandledException( EXCEPTION_POINTERS* Info )
 	if( GLog )
 		GLog->Flush();
 
-	// The exact chain. The Windows preset builds with -fno-omit-frame-pointer precisely so this works:
-	// at plain -O2 on i686 GCC drops the frame pointer, RtlCaptureStackBackTrace returned ZERO frames,
-	// and all we had was the noisy scan above. A frame pointer costs one register and buys a real
-	// backtrace out of a machine we do not own -- an easy trade for a build whose job is to be tested by
-	// hand and reported on.
+	// ★ The frame-pointer walk comes FIRST and RtlCaptureStackBackTrace LAST, which is the opposite of
+	// the obvious order, for two measured reasons:
+	//   * on real Windows RtlCaptureStackBackTrace unwinds from HERE, inside the handler, and returns
+	//     `appWinUnhandledException <- ntdll <- ntdll` -- four exact frames, none of them the crash;
+	//   * under wine it FAULTS, and a fault in the reporter costs everything printed after it (observed:
+	//     the report stopped dead at the last stack-scan line).
+	// The walk needs no API and, with -fno-omit-frame-pointer, is the accurate one anyway.
+	if( Info && Info->ContextRecord )
+	{
+		#ifndef _WIN64
+		const DWORD** Fp = (const DWORD**)Info->ContextRecord->Ebp;
+		for( INT i = 0; i < 48 && Fp && !IsBadReadPtr( Fp, 2*sizeof(void*) ); i++ )
+		{
+			const BYTE* Ret = (const BYTE*)Fp[1];
+			if( !Ret )
+				break;
+			debugf( NAME_Critical, TEXT("  ebp[%02d] 0x%08x  rva=0x%08x"), i,
+				(DWORD)(size_t)Ret, (DWORD)(Ret - Base) );
+			const DWORD** Next = (const DWORD**)Fp[0];
+			if( Next <= Fp )		// the chain must climb, or it is not a chain
+				break;
+			Fp = Next;
+		}
+		#endif
+	}
+
+	if( GLog )
+		GLog->Flush();
+
 	{
 		void* Frames[62];
 		USHORT Count = RtlCaptureStackBackTrace( 0, 62, Frames, NULL );
 		for( USHORT i = 0; i < Count; i++ )
 			debugf( NAME_Critical, TEXT("  frame[%02d] 0x%08x  rva=0x%08x"), (INT)i,
 				(DWORD)(size_t)Frames[i], (DWORD)((const BYTE*)Frames[i] - Base) );
-
-		// Walk the frame pointer by hand as well. RtlCaptureStackBackTrace unwinds from HERE (inside the
-		// handler); the fault's own frame chain hangs off the context record, which is the one we want.
-		if( !Count && Info && Info->ContextRecord )
-		{
-			#ifndef _WIN64
-			const DWORD** Fp = (const DWORD**)Info->ContextRecord->Ebp;
-			for( INT i = 0; i < 48 && Fp && !IsBadReadPtr( Fp, 2*sizeof(void*) ); i++ )
-			{
-				const BYTE* Ret = (const BYTE*)Fp[1];
-				if( !Ret )
-					break;
-				debugf( NAME_Critical, TEXT("  ebp[%02d] 0x%08x  rva=0x%08x"), i,
-					(DWORD)(size_t)Ret, (DWORD)(Ret - Base) );
-				const DWORD** Next = (const DWORD**)Fp[0];
-				if( Next <= Fp )		// the chain must climb, or it is not a chain
-					break;
-				Fp = Next;
-			}
-			#endif
-		}
 	}
 
+	// ⚠ Label this honestly: appInit SEEDS GErrorHist with "General protection fault!" and the guard
+	// chain appends to it, so a non-empty buffer does NOT mean an error just happened -- it is whatever
+	// the last unwind left there, possibly long ago and already handled.
 	if( GErrorHist[0] )
-		debugf( NAME_Critical, TEXT("Last engine error: %s"), GErrorHist );
+		debugf( NAME_Critical, TEXT("Guard history (may be stale, not necessarily this crash): %s"), GErrorHist );
 
 	debugf( NAME_Critical, TEXT("Symbolise with: addr2line -f -C -e ut2004.exe <rva + 0x400000>") );
 	debugf( NAME_Critical, TEXT("=== END CRASH ===") );

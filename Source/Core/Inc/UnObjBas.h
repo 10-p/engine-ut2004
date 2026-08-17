@@ -617,6 +617,7 @@ private:
 	static UBOOL			GObjInitialized;	// Whether initialized.
 	static UBOOL            GObjNoRegister;		// Registration disable.
 	static INT				GObjBeginLoadCount;	// Count for BeginLoad multiple loads.
+	static UBOOL			GObjPreloading;		// Inside EndLoad's Preload pass (ufront 2.37b).
 	static INT				GObjRegisterCount;  // ProcessRegistrants entry counter.
 	static INT				GImportCount;		// Imports for EndLoad optimization.
 	static UObject*			GObjHash[4096];		// Object hash.
@@ -720,6 +721,13 @@ public:
 	static UBOOL AttemptDelete( UObject*& Res, DWORD KeepFlags, UBOOL IgnoreReference );
 	static void BeginLoad();
 	static void EndLoad();
+	// ufront 2.37b: is the object table mid-load, i.e. does it hold entries that exist but are not yet
+	// serialized? Anything that WALKS the whole table has to stay out (see UExporter::FindExporter,
+	// where doing it anyway was a crash on Windows).
+	// ⚠ GObjBeginLoadCount alone is NOT enough, and assuming it was cost a build: EndLoad decrements it
+	// to zero BEFORE running the Preload pass, and the Preload pass is exactly when the table is at its
+	// most inconsistent. GObjPreloading covers that window.
+	static UBOOL IsLoadInProgress() { return GObjBeginLoadCount != 0 || GObjPreloading; }
 	static void InitProperties( BYTE* Data, INT DataCount, UClass* DefaultsClass, BYTE* Defaults, INT DefaultsCount, UObject* DestObject=NULL, UObject* SuperObject=NULL, UBOOL InstanceSubobjects=1 );
 	static void ExitProperties( BYTE* Data, UClass* Class );
 	static void ResetLoaders( UObject* InOuter, UBOOL DynamicOnly, UBOOL ForceLazyLoad );

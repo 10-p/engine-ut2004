@@ -17,6 +17,7 @@
 UBOOL						UObject::GObjInitialized		= 0;
 UBOOL						UObject::GObjNoRegister			= 0;
 INT							UObject::GObjBeginLoadCount		= 0;
+UBOOL						UObject::GObjPreloading			= 0;
 INT							UObject::GObjRegisterCount		= 0;
 INT							UObject::GImportCount			= 0;
 UObject*					UObject::GAutoRegister			= NULL;
@@ -4039,6 +4040,12 @@ void UObject::EndLoad()
 				//warning: Array may expand during iteration.
 				guard(PreLoadObjects);
 				debugfSlow( NAME_DevLoad, TEXT("Loading objects...") );
+				// ufront 2.37b: from here until the loop ends, ObjLoaded holds objects that EXIST in the
+				// object table and have not been serialized. GObjBeginLoadCount is already 0 by now, so it
+				// cannot be the signal -- this is. Saved/restored rather than assigned, because EndLoad
+				// loops (`if(GObjLoaded.Num()) continue;`) and can re-enter.
+				const UBOOL WasPreloading = GObjPreloading;
+				GObjPreloading = 1;
 #if __PSX2_EE__ // add the cool endLoad printout
 			for( INT i=0,n=0; i<ObjLoaded.Num(); i++ )
 			{
@@ -4071,6 +4078,7 @@ void UObject::EndLoad()
 			}
 			}
 #endif
+			GObjPreloading = WasPreloading;
 			unguard;
 
 			if(GObjLoaded.Num())
