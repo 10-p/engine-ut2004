@@ -1229,6 +1229,25 @@ CORE_API void ParseNext( const TCHAR** Stream )
 // Grab the next space-delimited string from the input stream.
 // If quoted, gets entire quoted string.
 //
+//
+// Is this command-line token a global option (Key=Value) rather than a URL? See UnFile.h.
+//
+CORE_API UBOOL appIsGlobalOptionToken( const TCHAR* Token )
+{
+	guard(appIsGlobalOptionToken);
+	if( !Token || !*Token )
+		return 0;
+	for( const TCHAR* P=Token; *P; P++ )
+	{
+		if( *P == '?' )
+			return 0;   // a URL's own options start here — the token is a URL
+		if( *P == '=' )
+			return P != Token;   // Key=Value, and Key is not empty
+	}
+	return 0;
+	unguard;
+}
+
 CORE_API UBOOL ParseToken( const TCHAR*& Str, TCHAR* Result, INT MaxLen, UBOOL UseEscape )
 {
 	guard(ParseToken);

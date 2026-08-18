@@ -253,7 +253,10 @@ void UGameEngine::Init()
 	if
 	(	!ParseToken( Tmp, Parm, ARRAY_COUNT(Parm), 0 )
 	||	(appStricmp(Parm,TEXT("SERVER"))==0 && !ParseToken( Tmp, Parm, ARRAY_COUNT(Parm), 0 ))
-	||	Parm[0]=='-' )
+	||	Parm[0]=='-'
+	// ufront 2.38: …and a global option is not a map either. See appIsGlobalOptionToken — one launcher
+	// dropping its leading flag turned `CPUSPEED=3000` into "the map" and cost the main menu entirely.
+	||	appIsGlobalOptionToken(Parm) )
 	{
 		appStrcpy( Parm, *FURL::DefaultLocalMap );
 		SkippedEntry = 0;
