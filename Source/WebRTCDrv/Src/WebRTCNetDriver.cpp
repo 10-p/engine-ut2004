@@ -11,6 +11,9 @@ Revision history:
 #include "UnNet.h"
 #include "WebRTCDrv.h"
 
+// ufront 2.38 — room lookup for a join that came from the server browser (WebRTCDiscovery.cpp).
+extern FString WebRTCDiscovery_RoomForHost( const TCHAR* Host );
+
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 // Engine pointer (set in SDLLaunch.cpp after InitEngine). Used to reach the
@@ -64,6 +67,20 @@ UBOOL UWebRTCNetDriver::InitConnect( FNetworkNotify* InNotify, FURL& ConnectURL,
 	// D-06: FURL.Host carries the room name.
 	RoomName = ConnectURL.Host;
 	bIsListenServer = 0;
+
+	// ★ ufront 2.38 — …unless the join came from the SERVER BROWSER, in which case Host is the synthetic
+	// address the discovery rows carry (10.199.0.N) rather than the room. It has to be an address: the
+	// stock join builds `unreal://<IP>:<Port>` and FURL only sees a host in a dotted token, so a bare room
+	// name was parsed as a MAP and the engine tried to load it from disk. See WebRTCDiscovery.cpp.
+	if( RoomName.Len() )
+	{
+		FString FromBrowser = WebRTCDiscovery_RoomForHost( *RoomName );
+		if( FromBrowser.Len() )
+		{
+			debugf( NAME_DevNet, TEXT("[WebRTC] InitConnect: browser address %s -> room '%s'"), *RoomName, *FromBrowser );
+			RoomName = FromBrowser;
+		}
+	}
 	if( !RoomName.Len() )
 	{
 		debugf( NAME_DevNet, TEXT("[WebRTC] WARNING: Empty room name in ConnectURL, using 'default'") );

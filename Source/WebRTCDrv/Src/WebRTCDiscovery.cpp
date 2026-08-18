@@ -33,6 +33,88 @@ extern "C"
 	int  webrtc_get_server_ping(int index);
 }
 
+
+/*-----------------------------------------------------------------------------
+	Room <-> synthetic address.
+
+	★ ufront 2.38 — THIS IS WHY "JOIN" DID NOTHING.
+
+	The row used to carry the ROOM NAME in FServerResponseLine::IP, which reads fine and travels
+	straight into the stock join: Browser_ServersList.Connect() builds
+	    unreal://<IP>:<Port>
+	and hands it to ClientTravel. But FURL only recognises a HOST in a token that contains a '.'
+	(UnURL.cpp's "Parse optional host name and port" branch) — and a room name is a bare token like
+	`joinrepro-msy0x0sj`. So the room landed in URL.Map with URL.Host EMPTY, Browse took the
+	IsLocalInternal path, and the engine tried to LOAD THE ROOM NAME AS A MAP FILE:
+
+	    Browse: PRE-REDIRECT Map='joinrepro-msy0x0sj:7777' Host='' IsLocalInternal=1
+	    Package file not found: joinrepro-msy0x0sj:7777 (returning NULL, not throwing)
+
+	…and the fail-soft loader then made that silent. From the player's chair: the server is listed,
+	JOIN does nothing. Exactly what the owner reported.
+
+	So hand the browser something that IS a host. 10.199.0.0/16, low 16 bits indexing an append-only
+	table, translated back in UWebRTCNetDriver::InitConnect. ⚠ The table must be append-only: a player
+	can click JOIN minutes after the row was drawn, and the address has to still mean the same room.
+	(engine-ut99 / engine-unreal1 use the same scheme in WebRTCLan.cpp — there it also has to survive a
+	round trip through IpAddrToString, which can only render an IPv4.)
+-----------------------------------------------------------------------------*/
+
+#define WEBRTC_LAN_ADDR_BASE  0x0AC70000u
+#define WEBRTC_LAN_ADDR_MASK  0xFFFF0000u
+
+static TArray<FString> GDiscoveredRooms;
+
+static INT WebRTCRoomIndex( const FString& Room )
+{
+	for( INT i=0; i<GDiscoveredRooms.Num(); i++ )
+		if( appStricmp( *GDiscoveredRooms(i), *Room )==0 )
+			return i;
+	return GDiscoveredRooms.AddItem( Room );
+}
+
+// The dotted address that stands for this room, stable for the session.
+static FString WebRTCHostForRoom( const FString& Room )
+{
+	const DWORD A = WEBRTC_LAN_ADDR_BASE | (DWORD)(WebRTCRoomIndex(Room) & 0xFFFF);
+	return FString::Printf( TEXT("%i.%i.%i.%i"), (A>>24)&0xFF, (A>>16)&0xFF, (A>>8)&0xFF, A&0xFF );
+}
+
+// Reverse, for InitConnect. Returns "" when the host is not one of ours (a real address, or a room
+// name that arrived some other way — the ?connect= path still passes the room directly).
+FString WebRTCDiscovery_RoomForHost( const TCHAR* Host )
+{
+	if( !Host )
+		return FString(TEXT(""));
+	INT Oct[4] = {0,0,0,0}, N = 0;
+	const TCHAR* P = Host;
+	while( N < 4 )
+	{
+		if( *P < '0' || *P > '9' )
+			return FString(TEXT(""));
+		INT V = 0;
+		while( *P >= '0' && *P <= '9' )
+			V = V*10 + (*P++ - '0');
+		if( V > 255 )
+			return FString(TEXT(""));
+		Oct[N++] = V;
+		if( N < 4 )
+		{
+			if( *P != '.' )
+				return FString(TEXT(""));
+			P++;
+		}
+	}
+	if( *P != 0 )
+		return FString(TEXT(""));
+	const DWORD Addr = ((DWORD)Oct[0]<<24) | ((DWORD)Oct[1]<<16) | ((DWORD)Oct[2]<<8) | (DWORD)Oct[3];
+	if( (Addr & WEBRTC_LAN_ADDR_MASK) != WEBRTC_LAN_ADDR_BASE )
+		return FString(TEXT(""));
+	const INT Index = (INT)(Addr & 0xFFFF);
+	if( Index < 0 || Index >= GDiscoveredRooms.Num() )
+		return FString(TEXT(""));
+	return GDiscoveredRooms( Index );
+}
 // Kick a PeerJS peer-list query + per-server status pings ("" = all rooms).
 void WebRTCDiscovery_Begin( const char* room )
 {
@@ -71,7 +153,9 @@ INT WebRTCDiscovery_Drain( TArray<FServerResponseLine>& Out )
 		// profile matches the original inline path the delegate expects.
 		FServerResponseLine& Server = Out( Out.AddZeroed() );
 		Server.ServerName     = ANSI_TO_TCHAR(nameBuf);
-		Server.IP             = ANSI_TO_TCHAR(joinBuf);    // join key -> unreal://<room>
+		Server.IP             = WebRTCHostForRoom( ANSI_TO_TCHAR(joinBuf) ); // ★ a HOST, not the room —
+		                                                     // see the note above; the room name has no
+		                                                     // dot, so FURL would read it as a MAP.
 		Server.Port           = 7777;
 		Server.QueryPort      = 7777;
 		Server.MapName        = (mapBuf[0] != 0) ? FString(ANSI_TO_TCHAR(mapBuf)) : FString(TEXT("?"));
