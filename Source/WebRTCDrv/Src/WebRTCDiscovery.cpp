@@ -70,7 +70,16 @@ static INT WebRTCRoomIndex( const FString& Room )
 	for( INT i=0; i<GDiscoveredRooms.Num(); i++ )
 		if( appStricmp( *GDiscoveredRooms(i), *Room )==0 )
 			return i;
-	return GDiscoveredRooms.AddItem( Room );
+	// ⚠ PLACEMENT NEW, NOT AddItem. `TArray<T>` is a POD container:
+	//     INT AddItem( const T& Item ) { INT Index=Add(); (*this)(Index)=Item; }
+	// and `FArray::Add` neither zeroes nor constructs the slot, so assigning an FString into it runs
+	//     ArrayNum=ArrayMax=Other.Num(); Realloc(...);   // -> appRealloc( <garbage Data>, … )
+	// on whatever the allocator left behind. It survives only when that memory happens to be zeroed,
+	// which fresh dlmalloc pages are — so it looks fine until the heap is busy.
+	// ★ Measured on the UE1 siblings (2.38): identical code, ut99 died 3 runs of 3 with `memory access
+	// out of bounds` while unreal1 drained 4 of 4. `TArray::operator=` itself uses placement new.
+	new( GDiscoveredRooms )FString( Room );
+	return GDiscoveredRooms.Num() - 1;
 }
 
 // The dotted address that stands for this room, stable for the session.
