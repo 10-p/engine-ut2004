@@ -327,7 +327,12 @@ void UWebRTCNetDriver::TickDispatch( FLOAT DeltaTime )
 			INT JSState = webrtc_get_connection_state( Conn->WebRTCConnId );
 			if( JSState == WEBRTC_STATE_CLOSED && Conn->State != USOCK_Closed )
 			{
-				debugf( NAME_DevNet, TEXT("[WebRTC] TickDispatch: Client connId=%d connection CLOSED by remote"), Conn->WebRTCConnId );
+				// ⚠ printf, like its ACCEPTED/REJECTED siblings above, NOT debugf. NAME_DevNet does not
+				// reach the browser console on this target, so the debugf this used to be was invisible:
+				// a departed guest was reaped correctly and the only trace of it anywhere was the glue's
+				// own watchdog line, which proves the TRANSPORT gave up rather than that the engine acted.
+				// Measured 2.38 while writing the disconnect test — the milestone simply never fired.
+				printf("[WebRTC] TickDispatch: Client connId=%d connection CLOSED by remote\n", Conn->WebRTCConnId);
 				Conn->State = USOCK_Closed;
 			}
 		}

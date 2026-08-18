@@ -533,6 +533,14 @@ CORE_API UBOOL ParseLine( const TCHAR** Stream, FString& Resultd, UBOOL Exact=0 
 // A `Key=Value` token is an option wherever it sits; a URL that carries options spells them after a
 // '?' (`DM-Rankin?Game=X`), which is exactly what tells the two apart.
 CORE_API UBOOL appIsGlobalOptionToken( const TCHAR* Token );
+// ufront 2.38 — apply every `-ini:<File>:[<Section>]:<Key>=<Value>` token on the command line.
+//
+// ★ The shipped launcher emits `-ini:User:[DefaultPlayer]:Name=<player>` for the Network panel's Player
+// Name box, and until 2.38 NOTHING in any of the four engines read it: the name only ever took effect via
+// a travel URL's `?Name=`, so hosting or joining from the game's OWN menus always logged you in as
+// "Player". `User` / `System` are the config cache's generic file names — no ini path is hardcoded.
+// Call once, right after GConfig->Init.
+CORE_API void appApplyIniOverrides();
 CORE_API UBOOL ParseToken( const TCHAR*& Str, TCHAR* Result, INT MaxLen, UBOOL UseEscape );
 CORE_API UBOOL ParseToken( const TCHAR*& Str, FString& Arg, UBOOL UseEscape );
 CORE_API FString ParseToken( const TCHAR*& Str, UBOOL UseEscape );

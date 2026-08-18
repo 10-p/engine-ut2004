@@ -1248,6 +1248,63 @@ CORE_API UBOOL appIsGlobalOptionToken( const TCHAR* Token )
 	unguard;
 }
 
+//
+// Apply every `-ini:<File>:[<Section>]:<Key>=<Value>` token on the command line. See UnFile.h.
+//
+// ★★ ufront 2.38 — THIS SWITCH HAD NO IMPLEMENTATION ANYWHERE, in any of the four engines, and the
+// shipped launcher has been emitting it since the config UI was written:
+//
+//     packages/frontend/src/config/controller.ts
+//         opts.push('-ini:User:[DefaultPlayer]:Name=' + net.name);
+//
+// So the "Player Name" box in the Network panel did nothing unless the SAME launch also carried a travel
+// URL with `?Name=…` in it — i.e. it worked when you hosted or joined from the launcher form, and was
+// silently ignored when you booted to the menu and then hosted or joined from the game's OWN multiplayer
+// menus. Measured 2.38 on the ut99 sibling: argv contained `-ini:User:[DefaultPlayer]:Name=GuestPlayer`
+// and the engine logged `ScriptLog: Login: Player`.
+//
+// ⚠ Found by a TEST that needed two distinguishable players, not by anyone reading the code — an
+// unrecognised switch is silence. There is even a frontend unit test asserting the token is EMITTED
+// (packages/frontend/test/config-controller.test.ts); nothing asserted anything ever READ it.
+//
+// The file part uses the config cache's own generic names, so `User` and `System` resolve to whatever
+// this platform's inis actually are (FConfigCacheIni translates them) — no path is hardcoded here.
+// Applied straight after GConfig->Init, i.e. before any class loads its config properties.
+//
+CORE_API void appApplyIniOverrides()
+{
+	guard(appApplyIniOverrides);
+	if( !GConfig )
+		return;
+	const TCHAR* Stream = appCmdLine();
+	TCHAR Token[1024];
+	while( ParseToken( Stream, Token, ARRAY_COUNT(Token), 0 ) )
+	{
+		if( appStrnicmp( Token, TEXT("-ini:"), 5 )!=0 )
+			continue;
+		// -ini:<File>:[<Section>]:<Key>=<Value>
+		TCHAR* File = Token + 5;
+		TCHAR* Open = appStrstr( File, TEXT(":[") );
+		if( !Open )
+			continue;
+		TCHAR* Section = Open + 2;
+		TCHAR* Close = appStrstr( Section, TEXT("]:") );
+		if( !Close )
+			continue;
+		TCHAR* Key = Close + 2;
+		TCHAR* Eq = appStrstr( Key, TEXT("=") );
+		if( !Eq || Eq==Key )
+			continue;
+		TCHAR* Value = Eq + 1;
+		*Open = 0; *Close = 0; *Eq = 0;
+		if( !*File || !*Section )
+			continue;
+		GConfig->SetString( Section, Key, Value, File );
+		debugf( NAME_Init, TEXT("Ini override: [%s] %s=%s (%s)"), Section, Key, Value, File );
+	}
+	unguard;
+}
+
 CORE_API UBOOL ParseToken( const TCHAR*& Str, TCHAR* Result, INT MaxLen, UBOOL UseEscape )
 {
 	guard(ParseToken);
@@ -2277,6 +2334,7 @@ CORE_API void appInit( const TCHAR* InPackage, const TCHAR* InCmdLine, FMalloc* 
 	// Init config.
 	GConfig = ConfigFactory();
 	GConfig->Init( GIni, GUserIni, RequireConfig );
+	appApplyIniOverrides();
 
 	// Language.
 	TCHAR Temp[256];
