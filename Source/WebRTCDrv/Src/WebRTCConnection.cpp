@@ -74,7 +74,11 @@ void UWebRTCConnection::LowLevelSend( void* Data, INT Count )
 	}
 
 	clock(Driver->SendCycles);
-	webrtc_send( WebRTCConnId, Data, Count );
+	// WebRTCConnId < 0 means this connection has been DETACHED from the transport (a newer client driver
+	// took the one client slot — see UWebRTCNetDriver::InitConnect). Drop its traffic rather than posting
+	// it into somebody else's session.
+	if( WebRTCConnId >= 0 )
+		webrtc_send( WebRTCConnId, Data, Count );
 	unclock(Driver->SendCycles);
 	unguard;
 }

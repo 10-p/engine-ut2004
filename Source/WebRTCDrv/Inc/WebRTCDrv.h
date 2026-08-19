@@ -94,6 +94,8 @@ class UWebRTCNetDriver : public UNetDriver
 	FString RoomName;
 	FString ServerName;       // Listen server: display name for browser discovery (?ServerName=).
 	UBOOL   bIsListenServer;  // 1 on a listen server — pushes status each tick for discovery.
+	// Set when a NEWER client driver has taken the one client transport slot from us.
+	UBOOL   bDetached;
 	// Pipes the level told us to IGNORE (not refuse) — re-offered on a later tick. See TickDispatch().
 	TArray<INT> ParkedAccepts;
 
