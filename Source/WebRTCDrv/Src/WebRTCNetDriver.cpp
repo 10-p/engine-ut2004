@@ -275,26 +275,50 @@ void UWebRTCNetDriver::TickDispatch( FLOAT DeltaTime )
 	Super::TickDispatch( DeltaTime );
 
 	// Accept new incoming connections (server-side).
+	//
+	// ★ ACCEPTC_Ignore IS NOT A REFUSAL. ULevel::NotifyAcceptingConnection returns it for every incoming
+	// connection while a server travel is pending (`NextURL` set) — i.e. for the whole travel window. On
+	// UDP that means "drop this connect packet on the floor": nothing is torn down, the client keeps
+	// retrying and gets in once the new level is listening.
+	//
+	// Our transport is a PIPE, and closing it is a loud, visible event: the client's glue sees the data
+	// channel die, tears the peer down, reconnects, is ignored again, and the two sides livelock.
+	// Measured on the sibling UE1 engine during a coop travel: 306 connect/close rounds inside a ~6s
+	// pause, after which the guest never rejoined at all.
+	//
+	// So park the pipe and re-offer it on a later tick, leaving the transport untouched — the
+	// pipe-oriented equivalent of dropping the packet. ⚠ Parked ids are re-offered BEFORE new arrivals,
+	// or a client that has been waiting loses its place to a newer one.
+	TArray<INT> Incoming = ParkedAccepts;
+	ParkedAccepts.Empty();
 	INT NewConnId;
 	while( (NewConnId = webrtc_accept_connection()) > 0 )
+		Incoming.AddItem( NewConnId );
+
+	for( INT i=0; i<Incoming.Num(); i++ )
 	{
-		printf("[WebRTC] TickDispatch: Accept loop got connId=%d\n", NewConnId);
-		debugf( NAME_DevNet, TEXT("[WebRTC] TickDispatch: New connection available connId=%d, checking accept policy..."), NewConnId );
+		INT ConnId = Incoming(i);
+		// The client may have given up (or the page closed) while we were ignoring it.
+		if( webrtc_get_connection_state( ConnId ) == WEBRTC_STATE_CLOSED )
+			continue;
+		debugf( NAME_DevNet, TEXT("[WebRTC] TickDispatch: New connection available connId=%d, checking accept policy..."), ConnId );
 		EAcceptConnection AcceptResult = Notify->NotifyAcceptingConnection();
-		printf("[WebRTC] TickDispatch: AcceptResult=%d (Accept=%d, Reject=%d, Ignore=%d)\n",
-			(int)AcceptResult, (int)ACCEPTC_Accept, (int)ACCEPTC_Reject, (int)ACCEPTC_Ignore);
 		if( AcceptResult == ACCEPTC_Accept )
 		{
-			UWebRTCConnection* NewConn = new UWebRTCConnection( NewConnId, this, USOCK_Open, 0, FURL() );
-			NewConn->URL.Host = FString::Printf( TEXT("webrtc:%d"), NewConnId );
+			UWebRTCConnection* NewConn = new UWebRTCConnection( ConnId, this, USOCK_Open, 0, FURL() );
+			NewConn->URL.Host = FString::Printf( TEXT("webrtc:%d"), ConnId );
 			Notify->NotifyAcceptedConnection( NewConn );
 			ClientConnections.AddItem( NewConn );
-			printf("[WebRTC] TickDispatch: ACCEPTED connection %d (total clients: %d)\n", NewConnId, ClientConnections.Num());
+			debugf( NAME_DevNet, TEXT("[WebRTC] TickDispatch: ACCEPTED connection %d (total clients: %d)"), ConnId, ClientConnections.Num() );
+		}
+		else if( AcceptResult == ACCEPTC_Ignore )
+		{
+			ParkedAccepts.AddItem( ConnId );
 		}
 		else
 		{
-			printf("[WebRTC] TickDispatch: REJECTED connection %d (policy=%d)\n", NewConnId, (INT)AcceptResult);
-			webrtc_close( NewConnId );
+			debugf( NAME_DevNet, TEXT("[WebRTC] TickDispatch: REFUSED connection %d (policy=%d)"), ConnId, (INT)AcceptResult );
+			webrtc_close( ConnId );
 		}
 	}
 
@@ -456,6 +480,8 @@ void UWebRTCNetDriver::LowLevelDestroy()
 {
 	guard(UWebRTCNetDriver::LowLevelDestroy);
 	debugf( NAME_Exit, TEXT("[WebRTC] LowLevelDestroy: Shutting down, room='%s', clients=%d"), *RoomName, ClientConnections.Num() );
+	// The parked pipes are about to be closed wholesale by webrtc_destroy(); just drop our list.
+	ParkedAccepts.Empty();
 	webrtc_destroy();
 	debugf( NAME_Exit, TEXT("[WebRTC] LowLevelDestroy: Complete") );
 	unguard;
