@@ -50,51 +50,19 @@ static EM_BOOL on_visibility_change(int eventType,
 // EM_ASYNC_JS names its import __asyncjs__ufront_yield_frame_mode, and link.py's DEFAULT_ASYNCIFY_IMPORTS
 // is ['__asyncjs__*'], so this is registered with Asyncify automatically — no ASYNCIFY_IMPORTS edit.
 //
-// ★ ufront 2.43 — AND "SAME TASK BOUNDARY THE COMPOSITOR NEEDS" IS THE BUG. It was reasoned, never
-// measured, and it is false. THE YIELD IS THE PRESENT POINT, AND NOT EVERY MACROTASK PRESENTS: Chromium
-// runs a chain of MessagePort tasks without ever giving the compositor a rendering opportunity, so the
-// frame sitting in the OffscreenCanvas is overwritten by the next one before it is picked up. A TIMER task
-// interleaves with rendering; a MessagePort task does not.
-//
-// Measured on engine-ut99 (same code, RTX 3090) — engine fps -> DISTINCT IMAGES PRESENTED, switching only
-// this primitive: 1024x768 port 62.08 -> 37.26 (40% lost) vs timer 59.64 -> 59.61 (0%); 2560x1440 port
-// 30.36 -> 15.67 (48%) vs timer 25.36 -> 25.43 (0%); 3840x2160 port 18.42 -> 9.40 (49%) vs timer
-// 16.24 -> 16.19 (0%). Judder (intervals over 2x the median) 8-30% -> under 1%. Full case in the
-// monorepo's steps/2.43-frame-pacing.md.
-//
-// ★ UT2004 IS THE MOST EXPOSED OF THE FOUR: the limiter below only calls appSleep for a NET client, so
-// the menu and every offline match took this path on EVERY frame.
-//
-// `-YIELDMODE=port|timer|raf` keeps the alternatives measurable; timer is the DEFAULT. ⚠ The benchmark fps
-// goes DOWN with this and that is the point — 2.13.7's gain was frames the engine COUNTED, not frames
-// anyone saw (the 100 ms experiment above is the same lesson, one order of magnitude out). Do not restore.
-EM_ASYNC_JS(void, ufront_yield_frame_mode, (int Mode), {
-    if (Mode === 2) {
-        if (typeof requestAnimationFrame === 'function') {
-            await new Promise((resolve) => { requestAnimationFrame(resolve); });
-            return;
-        }
-        if (!globalThis.__ufrontRafWarned) {
-            globalThis.__ufrontRafWarned = 1;
-            console.warn('[ufront] YIELDMODE=raf requested but requestAnimationFrame is absent here — using timer');
-        }
-        Mode = 1;
-    }
-    if (Mode === 1) {
-        await new Promise((resolve) => { setTimeout(resolve, 0); });
-        return;
-    }
-    let y = globalThis.__ufrontYield;
-    if (!y) {
-        // One channel for the process; resolvers queue in FIFO order, so a message always wakes the
-        // caller that posted it. Created lazily because this runs on the engine's pthread.
-        const ch = new MessageChannel();
-        const q = [];
-        ch.port1.onmessage = () => { const r = q.shift(); if (r) r(); };
-        ch.port1.start();
-        y = globalThis.__ufrontYield = { ch, q };
-    }
-    await new Promise((resolve) => { y.q.push(resolve); y.ch.port2.postMessage(0); });
+// ★ ufront 2.43 — AND THAT LAST CLAIM WAS WRONG, WHICH IS WHY THIS RESUMES FROM A TIMER.
+// "A MessagePort message is the same task boundary the compositor needs" was reasoned, never measured.
+// Chromium will run a chain of MessagePort tasks without giving the compositor a rendering opportunity,
+// so the frame in the OffscreenCanvas is overwritten by the next one before it is picked up. A timer task
+// interleaves with rendering; a MessagePort task does not. Measured on engine-ut99 with the present path
+// fixed (engine fps -> distinct images presented): MessagePort 49.00 -> 27.41 (44% never seen, judder
+// 30-35%); setTimeout 40.81 -> 40.87 (0% lost, judder 0%); worker rAF 44.18 -> 44.20 (0% lost). rAF ties
+// the engine to the display refresh, so it is not adopted without real-display evidence.
+// ⚠ A -YIELDMODE switch briefly existed to compare the three. Deleted on purpose: the comparison is DONE
+// and a switch nobody would know to set is the dangling scaffolding that let a stubbed present call sit
+// in the build for months.
+EM_ASYNC_JS(void, ufront_yield_frame, (void), {
+    await new Promise((resolve) => { setTimeout(resolve, 0); });
 });
 #endif
 #endif
@@ -135,27 +103,6 @@ static void AndroidRedirectStdioToLogcat()
 
 #include "SDLLaunchPrivate.h"
 
-#if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
-// ufront 2.43 — which primitive resumes the per-frame yield (see ufront_yield_frame_mode above; that half
-// is pure JS and sits with the other Emscripten shims, this half needs the engine's TEXT/Parse/debugf).
-// 0 = port (2.13.7), 1 = timer (default), 2 = raf. Resolved once, on first use, from -YIELDMODE=.
-static INT GUfrontYieldMode = -1;
-static INT UfrontYieldMode()
-{
-	if( GUfrontYieldMode < 0 )
-	{
-		TCHAR Buf[32];
-		GUfrontYieldMode = 1;
-		if( Parse( appCmdLine(), TEXT("YIELDMODE="), Buf, ARRAY_COUNT(Buf) ) )
-		{
-			if     ( appStricmp(Buf,TEXT("port"))==0 ) GUfrontYieldMode = 0;
-			else if( appStricmp(Buf,TEXT("raf" ))==0 ) GUfrontYieldMode = 2;
-		}
-		debugf( NAME_Init, TEXT("ufront: frame yield mode %s"), GUfrontYieldMode==2 ? TEXT("raf") : GUfrontYieldMode==1 ? TEXT("timer") : TEXT("port") );
-	}
-	return GUfrontYieldMode;
-}
-#endif
 
 #if __STATIC_LINK
 #include "Engine.h"
@@ -522,7 +469,7 @@ inline void	CMainLoop::RunLoop(void)
 		// scheduled differently. Frequency is deliberately unchanged: the yield is the frame's present
 		// point. ufront 2.43: WHICH primitive resumes it decides whether the frame is presented at all —
 		// see ufront_yield_frame_mode above. Default is `timer`; 2.13.7's MessagePort is -YIELDMODE=port.
-		ufront_yield_frame_mode( UfrontYieldMode() );
+		ufront_yield_frame();
 	unguard;
 #endif
 
