@@ -248,6 +248,23 @@ if(EMSCRIPTEN)
     # QUOTED: CMake treats an unquoted '#' as a comment, which silently truncates this to
     # "OFFSCREENCANVASES_TO_PTHREAD=" and fails the link with "string index out of range".
     "-sOFFSCREENCANVASES_TO_PTHREAD=#canvas"
+    # ★ ufront 2.43d — WITHOUT THIS, THE PER-FRAME PRESENT CALL IS A STUB.
+    #
+    # The viewport creates the WebGL context with explicitSwapControl=1 + renderViaOffscreenBackBuffer=1
+    # and presents each frame with emscripten_webgl_commit_frame(). Emscripten implements BOTH of those
+    # attributes ONLY under -sOFFSCREEN_FRAMEBUFFER, so without it the shipped loader reads:
+    #
+    #   var _emscripten_webgl_do_commit_frame = () => { ...checks...; return 0 };   // that is all of it
+    #
+    # with blitOffscreenFramebuffer / defaultFbo occurring ZERO times. The engine calls a no-op every
+    # frame and presentation falls back entirely to Chromium's implicit "the worker's task ended"
+    # propagation for a transferred OffscreenCanvas — which works on Linux and manages ~1 FRAME PER SECOND
+    # on Windows/D3D11. Root-caused on engine-ut99; owner-confirmed hands-on. Verify after building:
+    # blitOffscreenFramebuffer must occur in SDLLaunch.js (0 -> 2), defaultFbo (0 -> 7).
+    #
+    # ⚠ 2.17 §C found this exact fact and mis-read it, concluding the flag would only ACQUIRE a wasteful
+    # per-frame blit. That assumed the implicit path worked. The trade is "blit vs showing 1 frame in 80".
+    -sOFFSCREEN_FRAMEBUFFER
     # main() itself is one of these. The engine spawns no other threads on the web (IpDrv's host-resolve
     # pthread_create is __EMSCRIPTEN__-guarded off, see UnIpDrv.h), so a small pool avoids paying for
     # workers nothing will use.
