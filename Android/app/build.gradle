@@ -11,10 +11,29 @@ android {
         targetSdk 34
         versionCode 1
         versionName '0.1'
-        ndk { abiFilters 'x86_64', 'arm64-v8a', 'armeabi-v7a' }
+        // ★ THE SHIPPED ABI SET, PLUS AN OPT-IN 32-BIT x86 FOR ONE EXPERIMENT.
+        //
+        // `-Px86abi` adds x86 (32-bit). It is NOT for shipping — no phone has been x86 for years
+        // — it exists to answer the question the Karma block below could not: is the Android
+        // Karma SIGSEGV an LP64 defect or an Android-integration one?
+        //
+        // Karma has never been enabled on Android at ANY pointer width, so there was nothing to
+        // compare against. Of the three shipped ABIs, two are 64-bit and the third (armeabi-v7a)
+        // cannot execute on an x86_64 emulator. That left "attach the OnePlus 6", and the note
+        // below recorded the question as blocked.
+        //
+        // It is not blocked. `system-images;android-24;google_apis_playstore;x86` is a 32-bit
+        // image at exactly this minSdk, so x86 vs x86_64 is the SAME emulator family, the same
+        // APK build, the same map — differing in pointer width and nothing else. That is the
+        // control the attribution needs. API 34 itself has no 32-bit ABI at all
+        // (`ro.product.cpu.abilist32` is empty), which is what "ABI x86 not supported on this
+        // device" was really saying.
+        def utAbis = ['x86_64', 'arm64-v8a', 'armeabi-v7a']
+        if (project.hasProperty('x86abi')) { utAbis += 'x86' }
+        ndk { abiFilters(*utAbis) }
         externalNativeBuild {
             cmake {
-                abiFilters 'x86_64', 'arm64-v8a', 'armeabi-v7a'
+                abiFilters(*utAbis)
                 // ufront 2.34 — the SDL2 source directory is OPT-IN, not baked in. This used to be a hard
                 // '-DFETCHCONTENT_SOURCE_DIR_SDL2=/home/ion/engines/.cache-sdl2-2.32', an absolute path on
                 // one machine; anywhere else FetchContent stops with "Manually specified source directory

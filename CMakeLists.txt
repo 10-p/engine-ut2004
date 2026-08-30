@@ -317,7 +317,7 @@ if(NOT BUILD_KARMA_REF AND NOT USE_KARMA_DECOMP)
 else()
   # ★ THE KARMA SDK AND THE RECOVERED LIBRARY ARE FETCHED, NOT VENDORED (ufront 2.44).
   #
-  # Both used to live in this repository — the fetched `metoolkit/` (96 MB of MathEngine binaries) and
+  # Both used to live in this repository — Thirdparty/metoolkit (96 MB of MathEngine binaries) and
   # karma-decomp/ (292 commits of a decompilation project). Neither was engine code. They are now
   # https://github.com/10-p/metoolkit-karma-decomp, which carries the SDK, the recovered sources,
   # the toolchain that produces them and the gates that judge them.
@@ -327,6 +327,17 @@ else()
   # set GIT_TAG on the command line, or point FETCHCONTENT_SOURCE_DIR_METOOLKITKARMADECOMP at a
   # local checkout — which is also how you build offline, and how you test a change to the
   # recovered sources without pushing it.
+  #
+  # ⚠ DECLARED HERE, MADE AVAILABLE MUCH LATER, AND THE SPLIT IS LOAD-BEARING.
+  # The -pthread block below says it in as many words: "every object in a
+  # shared-memory link must carry the atomics/bulk-memory features, and that
+  # includes the FetchContent'd gl4es and the Thirdparty C libraries. Hence it is
+  # set HERE, ahead of FetchContent_MakeAvailable(GL4ES) and every
+  # add_subdirectory below". The recovered Karma is one more such library, and
+  # populating it at THIS point put its objects outside every global
+  # add_compile_options that follows — measured: the wasm-perf build linked and
+  # passed its whole suite with the Karma objects missing -pthread, which is the
+  # kind of mismatch that works until it does not.
   include(FetchContent)
   FetchContent_Declare(
     MetoolkitKarmaDecomp
@@ -334,7 +345,6 @@ else()
     GIT_TAG        main
     GIT_SHALLOW    TRUE
   )
-  FetchContent_MakeAvailable(MetoolkitKarmaDecomp)
 
   # ufront 2.12 Part B (native): define WITH_KARMA GLOBALLY for ALL modules + add the metoolkit include path
   # globally, exactly as the ORIGINAL v3369 build did. The Epic makefile-header sets
@@ -347,8 +357,7 @@ else()
   # never touches Karma actors). The prebuilt metoolkit libs are byte-identical to the v3369 original drop, so
   # the crash was purely this build inconsistency. (Linked at the Engine target below; the group is on the
   # final exe link line, after the game modules, so their Karma refs resolve.)
-  set(METOOLKIT_DIR "${metoolkitkarmadecomp_SOURCE_DIR}/metoolkit" CACHE PATH "metoolkit (Karma SDK) root: include/ + lib.{chk,rel}/")
-  set(METOOLKIT_LIB_SUBDIR "lib.rel/linux_single_gcc3.2" CACHE STRING "metoolkit lib variant (rel/chk + toolchain)")
+  # METOOLKIT_DIR and the include paths are set with the MakeAvailable, further down.
   add_definitions(-DWITH_KARMA=1)
   # ★ ME_FORCE_CDECL — GLOBAL, and for the same reason WITH_KARMA is global: it changes the
   # CALLING CONVENTION of every metoolkit declaration, so a module that misses it disagrees with
@@ -357,7 +366,7 @@ else()
   # MinGW-w64 predefines WIN32, so MeCall.h would otherwise declare the whole API __stdcall on
   # the `windows` preset. The recovered sources are cdecl — they were decompiled from the Linux
   # i386 build — and MathEngine's Windows archives are not linkable here in any case (they are
-  # 32-bit Linux ELF). See the note in the fetched `metoolkit/include`/MeCall.h.
+  # 32-bit Linux ELF). See the note in the fetched metoolkit/include/MeCall.h.
   #
   # Only for USE_KARMA_DECOMP. BUILD_KARMA_REF is Linux-only by construction — the shipped
   # members are 32-bit Linux ELF — so WIN32 is never defined on that path and MEAPI is already
@@ -365,17 +374,6 @@ else()
   if(USE_KARMA_DECOMP)
     add_definitions(-DME_FORCE_CDECL=1)
   endif()
-  include_directories(
-    ${METOOLKIT_DIR}/include
-    ${METOOLKIT_DIR}/include/MdtBcl
-    ${METOOLKIT_DIR}/include/MdtKea
-    ${METOOLKIT_DIR}/include/McdCommon
-    ${METOOLKIT_DIR}/include/McdPrimitives
-    ${METOOLKIT_DIR}/include/McdFrame
-    ${METOOLKIT_DIR}/include/Mst
-    ${METOOLKIT_DIR}/include/MeGlobals
-    ${METOOLKIT_DIR}/include/MeApp
-  )
 endif()
 
 # ufront 2.12 Part B: optional Pixomatic software renderer (the -SOFTWARERENDERER device). The open driver
@@ -726,6 +724,40 @@ endif()
 #-----------------------------------------------------------------------------
 # Vendored C Libraries
 #-----------------------------------------------------------------------------
+
+#-----------------------------------------------------------------------------
+# Karma: populate the fetched SDK + recovered library.
+#
+# ★ THIS IS DELIBERATELY THE LAST THING BEFORE add_subdirectory(), so the
+# recovered Karma is compiled with exactly the same global options as every
+# other module — most importantly -pthread on the threaded web build, where an
+# object without the atomics/bulk-memory features is a shared-memory link
+# mismatch that does not announce itself.
+#
+# It was populated up in the option block once (ufront 2.44) and the wasm build
+# linked, ran, and passed its whole browser suite with the Karma objects missing
+# -pthread. That is not evidence it was fine; it is what this class of bug looks
+# like before it bites.
+#-----------------------------------------------------------------------------
+if(BUILD_KARMA_REF OR USE_KARMA_DECOMP)
+  FetchContent_MakeAvailable(MetoolkitKarmaDecomp)
+  set(METOOLKIT_DIR "${metoolkitkarmadecomp_SOURCE_DIR}/metoolkit" CACHE PATH "metoolkit (Karma SDK) root: include/ + lib.{chk,rel}/")
+  set(METOOLKIT_LIB_SUBDIR "lib.rel/linux_single_gcc3.2" CACHE STRING "metoolkit lib variant (rel/chk + toolchain)")
+  # Global, exactly as the ORIGINAL v3369 build did: the Epic makefile-header applies
+  # -I$(METOOLKIT_INC) to EVERY module's compile, and a module that misses it while another has it
+  # disagrees about AActor/ULevel/ASVehicle's Karma members -- which is an in-game vtable crash.
+  include_directories(
+    ${METOOLKIT_DIR}/include
+    ${METOOLKIT_DIR}/include/MdtBcl
+    ${METOOLKIT_DIR}/include/MdtKea
+    ${METOOLKIT_DIR}/include/McdCommon
+    ${METOOLKIT_DIR}/include/McdPrimitives
+    ${METOOLKIT_DIR}/include/McdFrame
+    ${METOOLKIT_DIR}/include/Mst
+    ${METOOLKIT_DIR}/include/MeGlobals
+    ${METOOLKIT_DIR}/include/MeApp
+  )
+endif()
 
 add_subdirectory(Thirdparty/zlib)
 add_subdirectory(Thirdparty/Vorbis/ogg)
