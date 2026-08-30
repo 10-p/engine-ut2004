@@ -23,6 +23,41 @@ android {
                 // guarantee C/Java SDL parity; with neither, FetchContent clones the pinned SDL2 itself.
                 def sdl2Dir = project.findProperty('sdl2Dir') ?: System.getenv('SDL2_SOURCE_DIR')
                 def cmakeArgs = ['-DANDROID_STL=c++_shared', '-DUT_GFX_BACKEND=gl4es']
+                // ★ KARMA IS STILL OFF ON ANDROID, AND THE REASON CHANGED ON 2026-08-29.
+                //
+                // It used to be the LP64 layout defect: two of the three ABIs here are 64-bit and
+                // the recovered sources encoded i386 struct LAYOUTS, so `trilistgeom[3].mRefCtAndID`
+                // read byte 96 where the original meant byte 48 — width-correct, silent, and
+                // somebody else's memory. THAT IS FIXED: ``metoolkit_decomp/src`` now carries the
+                // LP64 post-passes and `metoolkit-karma-decomp `decomp/test/standalone/lp64_pipeline.sh`` ends `-> PASS` — all
+                // three offline scenes clean at 64-bit, every trajectory first differing at the
+                // float floor, and all 145 objects still byte-identical at -m32.
+                //
+                // ⚠ AND TURNING IT ON HERE STILL CRASHES, WHICH IS WHY THIS LINE SURVIVES.
+                // Measured on the API-34 x86_64 emulator, both arms verified by symbol count in
+                // libUT2004.so rather than by which flag was passed:
+                //
+                //   Karma ON  : SIGSEGV on the engine thread immediately after
+                //               "Initializing GL4ESDrv..." returns, 243 lines of log
+                //   Karma OFF : same APK, same ini, same map — reaches UT2k4MainMenu.Opened(),
+                //               1713 lines of log
+                //
+                // The `Package not found: SDL2Drv/GL4ESDrv` warnings are in BOTH logs and are not
+                // the cause. The engine installs its own SIGSEGV handler, so there is no tombstone
+                // and no backtrace yet.
+                //
+                // ⚠ IT IS NOT KNOWN WHETHER THIS IS AN LP64 DEFECT OR AN ANDROID-INTEGRATION ONE,
+                // and that distinction is the next thing to settle. Karma has never been enabled
+                // on Android at ANY pointer width, so a 32-bit ABI would separate the two — but
+                // the API-34 system image is 64-bit only ("ABI x86 not supported on this device")
+                // and the x86_64 emulator cannot execute ARM, so armeabi-v7a needs the real
+                // OnePlus 6. That device was not attached for this run.
+                //
+                // Build with `-PwithKarma` to reproduce it; the default stays a NO_KARMA APK that
+                // starts, because an APK without vehicles beats an APK that does not run.
+                if (!project.hasProperty('withKarma')) {
+                    cmakeArgs += '-DUSE_KARMA_DECOMP=OFF'
+                }
                 if (sdl2Dir && file(sdl2Dir).isDirectory()) {
                     cmakeArgs += "-DFETCHCONTENT_SOURCE_DIR_SDL2=${sdl2Dir}".toString()
                 } else if (sdl2Dir) {

@@ -409,8 +409,18 @@ if(ANDROID)
   set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME UT2004 PREFIX "lib" SUFFIX ".so")
 elseif(NOT EMSCRIPTEN)
   set(UT_BIN_NAME "ut2004")
+  # ★ THE NAME HAS TO SAY WHICH PHYSICS, because since 2026-08-27 there are THREE variants and
+  # two of them used to collide. `-karma` marked BUILD_KARMA_REF and nothing else, so when the
+  # recovered Karma became the default the `native` and `native-nokarma` presets BOTH produced
+  # `ut2004-pixo.bin` — same filename, opposite physics, and the A/B that proved a red E2E test
+  # was Karma's fault rather than the harness's depends on telling those two apart.
+  #
+  # So: the default (recovered Karma) stays unsuffixed because it is what ships, and each
+  # deviation names itself.
   if(BUILD_KARMA_REF)
-    set(UT_BIN_NAME "${UT_BIN_NAME}-karma")
+    set(UT_BIN_NAME "${UT_BIN_NAME}-legacykarma")
+  elseif(NOT USE_KARMA_DECOMP)
+    set(UT_BIN_NAME "${UT_BIN_NAME}-nokarma")
   endif()
   if(UT_HAS_PIXODRV)
     set(UT_BIN_NAME "${UT_BIN_NAME}-pixo")

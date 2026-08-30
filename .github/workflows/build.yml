@@ -40,13 +40,25 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # The Karma on/off pair. Both carry SDL2 + OpenGLDrv + GL4ESDrv + PixoDrv in ONE binary; the
-          # only difference is the physics, and the pair exists so the web/Android ports' Karma-less
-          # behaviour can be reproduced somewhere a debugger can reach it.
+          # THREE physics variants of one binary (SDL2 + OpenGLDrv + GL4ESDrv + PixoDrv), and since
+          # 2026-08-27 the DEFAULT is the recovered Karma rather than NO_KARMA. The other two are not
+          # spares: `legacy-karma` links MathEngine's shipped archives and is the A/B reference the
+          # recovered code is judged against, and `native-nokarma` is the control that says whether a
+          # failure is Karma's fault or the harness's. Both earned their place the day they were added
+          # — the legacy arm played a 300 s ONS match that the recovered arm crashed 25 s into, which
+          # is how McdGjkPenetrationDepth was localised.
+          #
+          # ⚠ The output NAMES encode the physics, deliberately. Before that, `native` and
+          # `native-nokarma` both produced `ut2004-pixo.bin` — same filename, opposite physics.
           - preset: native
             bin: ut2004-pixo.bin
-          - preset: native-karma
-            bin: ut2004-karma-pixo.bin
+            karma: recovered
+          - preset: legacy-karma
+            bin: ut2004-legacykarma-pixo.bin
+            karma: legacy
+          - preset: native-nokarma
+            bin: ut2004-nokarma-pixo.bin
+            karma: none
     steps:
       # The image is bare: even git has to be installed before checkout can use it.
       - name: Base tools
@@ -87,6 +99,28 @@ jobs:
           test -x build-${{ matrix.preset }}/Source/SDLLaunch/${{ matrix.bin }}
           test -x build-${{ matrix.preset }}/Source/UCC/ucc-bin.bin
 
+      # ★ ASSERT THE PHYSICS THAT WAS ASKED FOR IS ACTUALLY IN THERE. `option()` reads an existing
+      # cache before its default, so a build directory configured before the 2026-08-27 flip keeps
+      # NO_KARMA silently and the only symptom is a game with no vehicles. A cached CI `_deps` dir
+      # can do the same. The symbol count is the cheapest thing that cannot be fooled by either.
+      - name: Assert the binary carries the physics this preset asked for
+        run: |
+          set -euo pipefail
+          bin=build-${{ matrix.preset }}/Source/SDLLaunch/${{ matrix.bin }}
+          n=$(nm "$bin" | grep -cE ' [TD] (McdBoxBoxIntersect|MdtBSJointCreate|McdGjkCgIntersect)$' || true)
+          echo "${{ matrix.preset }}: $n of 3 Karma entry points present"
+          if [ "${{ matrix.karma }}" = "none" ]; then
+            [ "$n" -eq 0 ] || { echo "::error::NO_KARMA build contains Karma symbols"; exit 1; }
+          else
+            [ "$n" -eq 3 ] || { echo "::error::Karma build is missing Karma symbols — stale cache?"; exit 1; }
+          fi
+
+      # ⚠ RETENTION IS LOAD-BEARING, not tidiness. Every job here built and passed its own
+      # assertions on 2026-08-27 and the run was still RED, because `upload-artifact` failed with
+      # "Artifact storage quota has been hit". The default retention is 90 days and nothing here
+      # ever set it, so three engine repos had accumulated 145 artifacts / 2.13 GB that would
+      # never expire. 7 days is ~13x less standing storage at the same commit rate, and the
+      # artifact of a push older than a week has never once been the one anybody wanted.
       - uses: actions/upload-artifact@v4
         with:
           name: ut2004-linux-${{ matrix.preset }}
@@ -94,6 +128,7 @@ jobs:
             build-${{ matrix.preset }}/Source/SDLLaunch/${{ matrix.bin }}
             build-${{ matrix.preset }}/Source/UCC/ucc-bin.bin
           if-no-files-found: error
+          retention-days: 7
 
   windows:
     name: windows (MinGW-w64 cross, one self-contained .exe)
@@ -122,6 +157,19 @@ jobs:
       # -static-libstdc++ the exe imports libgcc_s_dw2-1.dll and libstdc++-6.dll and runs ONLY on the
       # machine that built it — and nothing else in the build fails when that happens. Retiring SDL 1.2
       # in 2.34 is what removed the last non-system import (SDL.dll) from this target.
+      # The Windows target gained the recovered Karma on 2026-08-27, which took three portability
+      # fixes nothing else could surface: alloca.h vs malloc.h, MEAPI declaring the API __stdcall
+      # against cdecl recovered code, and asm labels missing i686-PE's leading underscore. All three
+      # produced a CLEAN COMPILE and a broken link or a wrong ABI, so assert the result rather than
+      # the exit code.
+      - name: Assert the exe carries the recovered Karma
+        run: |
+          set -euo pipefail
+          n=$(i686-w64-mingw32-nm build-windows/Source/SDLLaunch/ut2004.exe \
+              | grep -cE ' [TD] _(McdBoxBoxIntersect|MdtBSJointCreate|McdGjkCgIntersect)$' || true)
+          echo "windows: $n of 3 Karma entry points present"
+          [ "$n" -eq 3 ] || { echo "::error::windows exe is missing Karma symbols"; exit 1; }
+
       - name: Assert the exe imports nothing but system DLLs
         run: |
           set -euo pipefail
@@ -131,11 +179,18 @@ jobs:
           bad=$(echo "$imports" | grep -viE '^(ADVAPI32|GDI32|IMM32|KERNEL32|msvcrt|ole32|OLEAUT32|OPENGL32|SETUPAPI|SHELL32|USER32|VERSION|WINMM|WS2_32)\.dll$' || true)
           if [ -n "$bad" ]; then echo "::error::non-system DLL imports: $bad"; exit 1; fi
 
+      # ⚠ RETENTION IS LOAD-BEARING, not tidiness. Every job here built and passed its own
+      # assertions on 2026-08-27 and the run was still RED, because `upload-artifact` failed with
+      # "Artifact storage quota has been hit". The default retention is 90 days and nothing here
+      # ever set it, so three engine repos had accumulated 145 artifacts / 2.13 GB that would
+      # never expire. 7 days is ~13x less standing storage at the same commit rate, and the
+      # artifact of a push older than a week has never once been the one anybody wanted.
       - uses: actions/upload-artifact@v4
         with:
           name: ut2004-windows
           path: build-windows/Source/SDLLaunch/ut2004.exe
           if-no-files-found: error
+          retention-days: 7
 
   android:
     name: android (x86_64 + arm64 + armv7 APK)
@@ -172,8 +227,15 @@ jobs:
             unzip -l "$apk" | grep -q "lib/$abi/libUT2004.so" || { echo "::error::missing $abi"; exit 1; }
           done
 
+      # ⚠ RETENTION IS LOAD-BEARING, not tidiness. Every job here built and passed its own
+      # assertions on 2026-08-27 and the run was still RED, because `upload-artifact` failed with
+      # "Artifact storage quota has been hit". The default retention is 90 days and nothing here
+      # ever set it, so three engine repos had accumulated 145 artifacts / 2.13 GB that would
+      # never expire. 7 days is ~13x less standing storage at the same commit rate, and the
+      # artifact of a push older than a week has never once been the one anybody wanted.
       - uses: actions/upload-artifact@v4
         with:
           name: ut2004-android
           path: Android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+          retention-days: 7

@@ -1602,6 +1602,209 @@ void MEAPI KTermLevelKarma(ULevel* level)
 
 
 
+/*============================================================================
+	KARMA STATE TRACE — one CSV row per simulated body per frame.
+	ufront 2026-08-28, karma/decompile behavioural work.
+
+	WHY IT EXISTS. karma-decomp's gate set compares CALLS: shadow-harness
+	divergences, per-pair difftests, substituted-scene trajectories. Every one
+	runs on i386 and every one is blind to the class of defect the owner is
+	reporting — a physics behaviour that is wrong in the TRAJECTORY the calls
+	add up to, and wrong on wasm32 while native looks fine. Nothing in this
+	project could answer "does it reproduce off wasm", so this exists to be the
+	one instrument that can: identical engine code on both targets, emitting
+	the same rows, diffable line by line.
+
+	★ IT REFUSES TO RUN WITHOUT -FIXEDFPS, AND THAT IS THE WHOLE POINT.
+	KTickLevelKarma derives FullTimestep, SubTimestep AND NumSubSteps from
+	DeltaSeconds. A browser at 60 fps and a headless native run at whatever
+	xvfb manages are therefore integrating DIFFERENT EQUATIONS, and two traces
+	taken that way would diverge for a reason that has nothing to do with the
+	recovery. Emitting them anyway would have produced a confident wrong answer
+	on the first run, so the refusal is a hard error rather than a warning.
+
+	THE KEY IS THE ENGINE'S ACTOR ARRAY, not MdtWorld's bodyDict. The dict is
+	keyed on pointers; its iteration order is an allocation artefact and need
+	not agree between two builds, let alone two targets. level->Actors is the
+	map's own order and is identical everywhere, so (actor index, name, bone)
+	is a key that means the same thing on both sides of a diff.
+
+	  -FIXEDFPS=<n>        REQUIRED. 30 is what the trace runs use.
+	  -KTRACE=<path>       enable; CSV written here (relative = engine cwd)
+	  -KTRACEEVERY=<n>     log every n-th frame (default 1)
+	  -KTRACEFRAMES=<n>    stop after n logged frames (default 0 = unlimited)
+	  -KTRACEBONES         also log ragdoll bone bodies (off by default: they
+	                       respawn, so their actor indices churn and swamp the
+	                       diff with rows that have no counterpart)
+============================================================================*/
+
+static FILE*	GKTraceFile		= NULL;
+/* ⚠ MEMFS IS NOT A RELIABLE CHANNEL OFF A THREADED WASM BUILD, and two runs were lost to
+   finding that out: the engine runs on a pthread and the MAIN thread's `FS` is not the same
+   filesystem the worker wrote to, so a trace that works natively reads as an empty or
+   truncated file in the browser with no error anywhere. -KTRACECONSOLE routes every row
+   through stdout instead, which Emscripten proxies to the main thread and Playwright
+   captures verbatim. Same format, same parser, one channel that exists on every target. */
+static UBOOL	GKTraceToConsole = 0;
+#define KTOUT(...)	do { if(GKTraceToConsole) printf(__VA_ARGS__); \
+						 else if(GKTraceFile) fprintf(GKTraceFile, __VA_ARGS__); } while(0)
+static INT		GKTraceEvery	= 1;
+static INT		GKTraceLimit	= 0;
+static INT		GKTraceFrame	= 0;
+static INT		GKTraceWritten	= 0;
+static UBOOL	GKTraceBones	= 0;
+static UBOOL	GKTraceTried	= 0;
+
+/* One body. %.9g round-trips a float exactly, so a diff that shows nothing is
+   evidence of bit-identity rather than of a narrow print format. */
+static void KTraceRow(INT ActorIndex, const TCHAR* Name, INT BoneIndex, McdModelID model)
+{
+	if(!model)
+		return;
+
+	MdtBodyID body = McdModelGetBody(model);
+	if(!body)
+		return;	/* static world geometry — a model with no body has no state to trace */
+
+	MeVector3 p, v, w;
+	MeVector4 q;
+	MdtBodyGetPosition(body, p);
+	MdtBodyGetQuaternion(body, q);
+	MdtBodyGetLinearVelocity(body, v);
+	MdtBodyGetAngularVelocity(body, w);
+
+	/* `enabled` is not decoration. Karma auto-disables a body that has come to
+	   rest, so "sits still" and "sinks slowly" differ in this column before
+	   they differ visibly in position. */
+	KTOUT(
+		"B,%d,%d,%s,%d,%d,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g\n",
+		GKTraceFrame, ActorIndex, appToAnsi(Name), BoneIndex,
+		(INT)MdtBodyIsEnabled(body),
+		(double)p[0], (double)p[1], (double)p[2],
+		(double)q[0], (double)q[1], (double)q[2], (double)q[3],
+		(double)v[0], (double)v[1], (double)v[2],
+		(double)w[0], (double)w[1], (double)w[2]);
+}
+
+static void KTraceLevel(ULevel* level, FLOAT FullTimestep, FLOAT SubTimestep, INT NumSubSteps)
+{
+	if(!GKTraceTried)
+	{
+		GKTraceTried = 1;
+
+		TCHAR Path[1024];
+		if(!Parse(appCmdLine(), TEXT("KTRACE="), Path, ARRAY_COUNT(Path)))
+			return;
+
+		if(!GUseFixedTimeStep)
+		{
+			/* Loud, and on the fatal path, because a trace taken at a variable
+			   timestep is not merely noisy — it is a different simulation, and
+			   it would be diffed against another one in good faith. */
+			appErrorf(TEXT("(Karma): -KTRACE requires -FIXEDFPS=<n>. KTickLevelKarma derives its ")
+			          TEXT("timestep AND its substep count from DeltaSeconds, so two traces taken ")
+			          TEXT("at different frame rates integrate different equations and cannot be ")
+			          TEXT("compared."));
+			return;
+		}
+
+		Parse(appCmdLine(), TEXT("KTRACEEVERY="), GKTraceEvery);
+		Parse(appCmdLine(), TEXT("KTRACEFRAMES="), GKTraceLimit);
+		GKTraceBones = ParseParam(appCmdLine(), TEXT("KTRACEBONES"));
+		if(GKTraceEvery < 1)
+			GKTraceEvery = 1;
+
+		GKTraceToConsole = ParseParam(appCmdLine(), TEXT("KTRACECONSOLE"));
+		if(!GKTraceToConsole)
+			GKTraceFile = fopen(appToAnsi(Path), "w");
+		if(!GKTraceToConsole && !GKTraceFile)
+		{
+			debugf(NAME_DevKarma, TEXT("(Karma): -KTRACE could not open '%s'."), Path);
+			return;
+		}
+		KTOUT("# ktrace v1  fixedstep=%.9g every=%d limit=%d bones=%d\n",
+			(double)GFixedTimeStep, GKTraceEvery, GKTraceLimit, (INT)GKTraceBones);
+		KTOUT("# F,frame,fullstep,substep,numsubsteps\n");
+		KTOUT("# B,frame,actor,name,bone,enabled,px,py,pz,qx,qy,qz,qw,vx,vy,vz,wx,wy,wz\n");
+	KTOUT("# A,actor,name,class,physics,hasmodel,hasbody,bstatic\n");
+		debugf(NAME_DevKarma, TEXT("(Karma): KTRACE -> %s (every %d, limit %d, bones %d)"),
+			Path, GKTraceEvery, GKTraceLimit, (INT)GKTraceBones);
+	}
+
+	if(!GKTraceFile && !GKTraceToConsole)
+		return;
+
+	GKTraceFrame++;
+	if((GKTraceFrame % GKTraceEvery) != 0)
+		return;
+	if(GKTraceLimit > 0 && GKTraceWritten >= GKTraceLimit)
+	{
+		/* Ask to quit as soon as the trace is complete. A bisect runs this dozens of times and
+		   the alternative is every run costing its full `timeout` regardless of how few frames
+		   it needed — which is most of the wall clock of the whole search. */
+		if(GKTraceFile || GKTraceToConsole)
+		{
+			if(GKTraceFile) fclose(GKTraceFile);
+			GKTraceFile = NULL;
+			GKTraceToConsole = 0;
+			debugf(NAME_DevKarma, TEXT("(Karma): KTRACE complete (%d frames) — requesting exit."), GKTraceWritten);
+			appRequestExit(0);
+		}
+		return;
+	}
+	GKTraceWritten++;
+
+	/* The step the frame actually used, so a trace carries the evidence that
+	   the two runs stepped identically instead of asking the reader to trust it. */
+	KTOUT("F,%d,%.9g,%.9g,%d\n",
+		GKTraceFrame, (double)FullTimestep, (double)SubTimestep, NumSubSteps);
+
+	/* ONE-SHOT INVENTORY, first traced frame only. "The body is not in the trace" has two very
+	   different causes — Karma never gave the actor a model, or the actor is not in the level at
+	   all — and a trace that simply omits the row cannot tell them apart. The first run of this
+	   hook showed 8 bodies where the map defines 18 physics actors, and without these rows the
+	   obvious reading (the recovery is dropping bodies) would have been wrong: they are map and
+	   gametype facts. Emitted for every actor carrying KParams, model or not. */
+	if(GKTraceWritten == 1)
+	{
+		for(INT i=0; i<level->Actors.Num(); i++)
+		{
+			AActor* Actor = level->Actors(i);
+			if(!Actor || !Actor->KParams)
+				continue;
+			McdModelID m = Actor->getKModel();
+			KTOUT("A,%d,%s,%s,%d,%d,%d,%d\n",
+				i, appToAnsi(Actor->GetName()), appToAnsi(Actor->GetClass()->GetName()),
+				(INT)Actor->Physics, m ? 1 : 0,
+				(m && McdModelGetBody(m)) ? 1 : 0,
+				(INT)Actor->bStatic);
+		}
+	}
+
+	for(INT i=0; i<level->Actors.Num(); i++)
+	{
+		AActor* Actor = level->Actors(i);
+		if(!Actor)
+			continue;
+
+		if(GKTraceBones &&
+		   Actor->Physics == PHYS_KarmaRagDoll &&
+		   Actor->Mesh && Actor->Mesh->IsA(USkeletalMesh::StaticClass()))
+		{
+			USkeletalMesh* skelMesh = Cast<USkeletalMesh>(Actor->Mesh);
+			USkeletalMeshInstance* inst = Cast<USkeletalMeshInstance>(skelMesh->MeshGetInstance(Actor));
+			if(inst)
+				for(INT b=0; b<inst->KSkelModels.Num(); b++)
+					KTraceRow(i, Actor->GetName(), b, inst->KSkelModels(b));
+			continue;
+		}
+
+		KTraceRow(i, Actor->GetName(), -1, Actor->getKModel());
+	}
+
+	if(GKTraceFile) fflush(GKTraceFile);	/* a run that is killed by `timeout` must still leave a usable file */
+}
+
 void MEAPI KTickLevelKarma(ULevel* level, FLOAT DeltaSeconds)
 {
     guard(KTickLevelKarma);
@@ -1696,6 +1899,8 @@ void MEAPI KTickLevelKarma(ULevel* level, FLOAT DeltaSeconds)
 			KSetSecName(TEXT("KARMA: POST WORLDSTEP"));
 		}
 	}
+
+	KTraceLevel(level, FullTimestep, SubTimestep, NumSubSteps);
 
     unguard;
 }

@@ -1,145 +1,226 @@
 {
-  "version": 3,
-  "cmakeMinimumRequired": {
-    "major": 3,
-    "minor": 21,
-    "patch": 0
-  },
-  "configurePresets": [
-    {
-      "name": "native-base",
-      "hidden": true,
-      "generator": "Unix Makefiles",
-      "cacheVariables": {
-        "CMAKE_C_COMPILER": "gcc-13",
-        "CMAKE_CXX_COMPILER": "g++-13",
-        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
-      }
+    "version": 3,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 21,
+        "patch": 0
     },
-    {
-      "name": "native",
-      "displayName": "Native Linux x86 -- SDL2, both GL devices + Pixomatic, one binary",
-      "description": "32-bit native build. SDL2Drv + OpenGLDrv (desktop GL) + GL4ESDrv (GL->GLES2 translation) + PixoDrv (Michael Abrash's software rasterizer, -SOFTWARERENDERER) all in ONE binary; pick at startup with -OPENGLRENDERER / -GL4ESRENDERER / -SOFTWARERENDERER. No Karma -- that is `native-karma`, and the pair is the A/B that reproduces the web and Android ports' physics behaviour on a debuggable desktop. Builds in build-native/ -> ut2004-pixo.bin. [ufront 2.34]",
-      "inherits": "native-base",
-      "binaryDir": "${sourceDir}/build-native",
-      "cacheVariables": {
-        "UT_GFX_BACKEND": "gl4es",
-        "USE_PIXOMATIC": "ON"
-      }
-    },
-    {
-      "name": "native-karma",
-      "displayName": "Native Linux x86 -- as `native`, plus Karma reference physics",
-      "description": "`native` + BUILD_KARMA_REF: Karma (metoolkit) reference physics, i.e. Onslaught vehicles and ragdolls. Exists as the other half of the Karma on/off A/B -- the web and Android builds ship WITHOUT Karma, and this pair is how that behaviour is reproduced somewhere a debugger can reach it. Windows has no Karma variant on purpose: metoolkit ships MSVC-mangled C++ prebuilts only (ufront 2.34 section 2.1). Builds in build-native-karma/ -> ut2004-karma-pixo.bin.",
-      "inherits": "native",
-      "binaryDir": "${sourceDir}/build-native-karma",
-      "cacheVariables": {
-        "BUILD_KARMA_REF": "ON"
-      }
-    },
-    {
-      "name": "karma-ref",
-      "displayName": "GL4ES + Karma reference",
-      "description": "Karma reference physics WITHOUT Pixomatic. Kept as the narrower A/B of the Karma change itself; `native-karma` is what the 2.34 matrix builds.",
-      "inherits": "native",
-      "binaryDir": "${sourceDir}/build-karma-ref",
-      "cacheVariables": {
-        "BUILD_KARMA_REF": "ON"
-      }
-    },
-    {
-      "name": "physics",
-      "displayName": "GL4ES + Jolt physics",
-      "description": "gl4es stack with WITH_PHYSICS=ON. Builds in build-physics/.",
-      "inherits": "native",
-      "binaryDir": "${sourceDir}/build-physics",
-      "cacheVariables": {
-        "WITH_PHYSICS": "ON"
-      }
-    },
-    {
-      "name": "wasm",
-      "displayName": "Web (Emscripten/WASM) -- dev default",
-      "description": "Emscripten gl4es web build: -O2 + DWARF + assertions + exception catching. The everyday dev build \u2014 named stacks and readable errors while the engine still runs at a playable speed. NOT the small one: DWARF plus un-cleaned-up inlining makes it the largest of the three. Builds in build-wasm/. Run `source ~/emsdk/emsdk_env.sh` first (sets EMSDK).",
-      "generator": "Unix Makefiles",
-      "binaryDir": "${sourceDir}/build-wasm",
-      "toolchainFile": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
-      "cacheVariables": {
-        "UT_WEB_PERF": "OFF",
-        "UT_WEB_DEBUG": "OFF"
-      }
-    },
-    {
-      "name": "wasm-debug",
-      "displayName": "Web (Emscripten/WASM) -- -O0, last resort",
-      "description": "Emscripten gl4es web build: -O0, nothing inlined, every local live. Reach for it when the OPTIMISER is the suspect \u2014 a bug that shows at one -O level and not another is almost always undefined behaviour. ~5x the wasm and a much slower boot. Builds in build-wasm-debug/.",
-      "inherits": "wasm",
-      "binaryDir": "${sourceDir}/build-wasm-debug",
-      "cacheVariables": {
-        "UT_WEB_DEBUG": "ON"
-      }
-    },
-    {
-      "name": "wasm-perf",
-      "displayName": "Web (Emscripten/WASM) -- max performance",
-      "description": "Emscripten gl4es web build: -O3, assertions off, no debug info -> smaller/faster. Builds in build-wasm-perf/. Run `source ~/emsdk/emsdk_env.sh` first.",
-      "inherits": "wasm",
-      "binaryDir": "${sourceDir}/build-wasm-perf",
-      "cacheVariables": {
-        "UT_WEB_PERF": "ON",
-        "CMAKE_BUILD_TYPE": "Release"
-      }
-    },
-    {
-      "name": "windows",
-      "displayName": "Windows x86 (MinGW-w64) -- SDL2, both GL devices",
-      "description": "32-bit Windows build (MinGW-w64 cross from Linux). SDL2 + BOTH GL render devices (OpenGLDrv desktop GL and GL4ESDrv) in one static exe, picked at startup with -OPENGLRENDERER / -GL4ESRENDERER. TWO things are deliberately absent, both for the same reason -- the drop ships a Windows binary we cannot use: (1) Karma, whose metoolkit libs are MSVC-mangled C++ that MinGW cannot link (2.34 section 2.1); (2) Pixomatic, whose Thirdparty/Pixomatic/Lib/pixomatic.lib turns out to be a pure IMPORT library -- all 240 members are `pixomatic.dll`, and that DLL is not in the drop, so the exe would fail at load. Everything needed to build it IS in place (the header now compiles under MinGW and the lib is selected per-platform); supply pixomatic.dll and flip USE_PIXOMATIC back on. Do not re-derive this. Builds in build-windows/. [ufront 2.33, SDL2 2.34]",
-      "generator": "Unix Makefiles",
-      "binaryDir": "${sourceDir}/build-windows",
-      "toolchainFile": "${sourceDir}/cmake/toolchain-mingw-w64.cmake",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
-        "CMAKE_C_FLAGS": "-fno-omit-frame-pointer",
-        "CMAKE_CXX_FLAGS": "-fno-omit-frame-pointer",
-        "UT_GFX_BACKEND": "gl4es",
-        "MINGW_TARGET_ARCH": "i686",
-        "MINGW_THREAD_MODEL": "posix",
-        "USE_PIXOMATIC": "OFF"
-      }
-    }
-  ],
-  "buildPresets": [
-    {
-      "name": "native",
-      "configurePreset": "native"
-    },
-    {
-      "name": "native-karma",
-      "configurePreset": "native-karma"
-    },
-    {
-      "name": "karma-ref",
-      "configurePreset": "karma-ref"
-    },
-    {
-      "name": "physics",
-      "configurePreset": "physics"
-    },
-    {
-      "name": "wasm",
-      "configurePreset": "wasm"
-    },
-    {
-      "name": "wasm-debug",
-      "configurePreset": "wasm-debug"
-    },
-    {
-      "name": "wasm-perf",
-      "configurePreset": "wasm-perf"
-    },
-    {
-      "name": "windows",
-      "configurePreset": "windows"
-    }
-  ]
+    "configurePresets": [
+        {
+            "name": "native-base",
+            "hidden": true,
+            "generator": "Unix Makefiles",
+            "cacheVariables": {
+                "CMAKE_C_COMPILER": "gcc-13",
+                "CMAKE_CXX_COMPILER": "g++-13",
+                "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+            }
+        },
+        {
+            "name": "native",
+            "displayName": "Native Linux x86 -- SDL2, both GL devices + Pixomatic, one binary",
+            "description": "32-bit native build. SDL2Drv + OpenGLDrv (desktop GL) + GL4ESDrv (GL->GLES2 translation) + PixoDrv (Michael Abrash's software rasterizer, -SOFTWARERENDERER) all in ONE binary; pick at startup with -OPENGLRENDERER / -GL4ESRENDERER / -SOFTWARERENDERER. No Karma -- that is `native-karma`, and the pair is the A/B that reproduces the web and Android ports' physics behaviour on a debuggable desktop. Builds in build-native/ -> ut2004-pixo.bin. [ufront 2.34]",
+            "inherits": "native-base",
+            "binaryDir": "${sourceDir}/build-native",
+            "cacheVariables": {
+                "UT_GFX_BACKEND": "gl4es",
+                "USE_PIXOMATIC": "ON"
+            }
+        },
+        {
+            "name": "native-karma",
+            "displayName": "Native Linux x86 -- LEGACY Karma (the shipped MathEngine archives)",
+            "description": "`native` + BUILD_KARMA_REF: Karma (metoolkit) reference physics, i.e. Onslaught vehicles and ragdolls. Exists as the other half of the Karma on/off A/B -- the web and Android builds ship WITHOUT Karma, and this pair is how that behaviour is reproduced somewhere a debugger can reach it. Windows has no Karma variant on purpose: metoolkit ships MSVC-mangled C++ prebuilts only (ufront 2.34 section 2.1). Builds in build-native-karma/ -> ut2004-karma-pixo.bin.",
+            "inherits": "native",
+            "binaryDir": "${sourceDir}/build-native-karma",
+            "cacheVariables": {
+                "BUILD_KARMA_REF": "ON",
+                "USE_KARMA_DECOMP": "OFF"
+            }
+        },
+        {
+            "name": "karma-ref",
+            "displayName": "GL4ES + LEGACY Karma (the shipped MathEngine archives)",
+            "description": "Karma reference physics, kept as the narrower A/B of the Karma change itself; `native-karma` is what the 2.34 matrix builds. NOTE: it inherits `native`, so Pixomatic is ON here too -- this is the SAME configuration as `native-karma` in a second build directory, which is the point (A/B without disturbing the matrix build). It used to be described as 'without Pixomatic'; that was never true of the config.",
+            "inherits": "native",
+            "binaryDir": "${sourceDir}/build-karma-ref",
+            "cacheVariables": {
+                "BUILD_KARMA_REF": "ON",
+                "USE_KARMA_DECOMP": "OFF"
+            }
+        },
+        {
+            "name": "physics",
+            "displayName": "GL4ES + Jolt physics",
+            "description": "gl4es stack with WITH_PHYSICS=ON. Builds in build-physics/.",
+            "inherits": "native",
+            "binaryDir": "${sourceDir}/build-physics",
+            "cacheVariables": {
+                "WITH_PHYSICS": "ON"
+            }
+        },
+        {
+            "name": "wasm",
+            "displayName": "Web (Emscripten/WASM) -- dev default",
+            "description": "Emscripten gl4es web build: -O2 + DWARF + assertions + exception catching. The everyday dev build \u2014 named stacks and readable errors while the engine still runs at a playable speed. NOT the small one: DWARF plus un-cleaned-up inlining makes it the largest of the three. Builds in build-wasm/. Run `source ~/emsdk/emsdk_env.sh` first (sets EMSDK).",
+            "generator": "Unix Makefiles",
+            "binaryDir": "${sourceDir}/build-wasm",
+            "toolchainFile": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
+            "cacheVariables": {
+                "UT_WEB_PERF": "OFF",
+                "UT_WEB_DEBUG": "OFF"
+            }
+        },
+        {
+            "name": "wasm-debug",
+            "displayName": "Web (Emscripten/WASM) -- -O0, last resort",
+            "description": "Emscripten gl4es web build: -O0, nothing inlined, every local live. Reach for it when the OPTIMISER is the suspect \u2014 a bug that shows at one -O level and not another is almost always undefined behaviour. ~5x the wasm and a much slower boot. Builds in build-wasm-debug/.",
+            "inherits": "wasm",
+            "binaryDir": "${sourceDir}/build-wasm-debug",
+            "cacheVariables": {
+                "UT_WEB_DEBUG": "ON"
+            }
+        },
+        {
+            "name": "wasm-perf",
+            "displayName": "Web (Emscripten/WASM) -- max performance",
+            "description": "Emscripten gl4es web build: -O3, assertions off, no debug info -> smaller/faster. Builds in build-wasm-perf/. Run `source ~/emsdk/emsdk_env.sh` first.",
+            "inherits": "wasm",
+            "binaryDir": "${sourceDir}/build-wasm-perf",
+            "cacheVariables": {
+                "UT_WEB_PERF": "ON",
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        },
+        {
+            "name": "windows",
+            "displayName": "Windows x86 (MinGW-w64) -- SDL2, both GL devices",
+            "description": "32-bit Windows build (MinGW-w64 cross from Linux). SDL2 + BOTH GL render devices (OpenGLDrv desktop GL and GL4ESDrv) in one static exe, picked at startup with -OPENGLRENDERER / -GL4ESRENDERER. TWO things are deliberately absent, both for the same reason -- the drop ships a Windows binary we cannot use: (1) Karma, whose metoolkit libs are MSVC-mangled C++ that MinGW cannot link (2.34 section 2.1); (2) Pixomatic, whose Thirdparty/Pixomatic/Lib/pixomatic.lib turns out to be a pure IMPORT library -- all 240 members are `pixomatic.dll`, and that DLL is not in the drop, so the exe would fail at load. Everything needed to build it IS in place (the header now compiles under MinGW and the lib is selected per-platform); supply pixomatic.dll and flip USE_PIXOMATIC back on. Do not re-derive this. Builds in build-windows/. [ufront 2.33, SDL2 2.34]",
+            "generator": "Unix Makefiles",
+            "binaryDir": "${sourceDir}/build-windows",
+            "toolchainFile": "${sourceDir}/cmake/toolchain-mingw-w64.cmake",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+                "CMAKE_C_FLAGS": "-fno-omit-frame-pointer",
+                "CMAKE_CXX_FLAGS": "-fno-omit-frame-pointer",
+                "UT_GFX_BACKEND": "gl4es",
+                "MINGW_TARGET_ARCH": "i686",
+                "MINGW_THREAD_MODEL": "posix",
+                "USE_PIXOMATIC": "OFF"
+            }
+        },
+        {
+            "name": "wasm-karmadecomp-debug",
+            "displayName": "DEPRECATED alias of `wasm-debug` (Karma is the default since 2026-08-27)",
+            "inherits": "wasm-debug",
+            "binaryDir": "${sourceDir}/build-wasm-karmadecomp-debug",
+            "cacheVariables": {
+                "USE_KARMA_DECOMP": "ON"
+            }
+        },
+        {
+            "name": "wasm-karmadecomp-perf",
+            "displayName": "DEPRECATED alias of `wasm-perf` (Karma is the default since 2026-08-27)",
+            "inherits": "wasm-perf",
+            "binaryDir": "${sourceDir}/build-wasm-karmadecomp-perf",
+            "cacheVariables": {
+                "USE_KARMA_DECOMP": "ON"
+            }
+        },
+        {
+            "name": "legacy-karma",
+            "inherits": "native",
+            "displayName": "Native Linux x86 -- LEGACY Karma: the shipped MathEngine archives (A/B reference)",
+            "binaryDir": "${sourceDir}/build-legacy-karma",
+            "cacheVariables": {
+                "BUILD_KARMA_REF": "ON",
+                "USE_KARMA_DECOMP": "OFF"
+            }
+        },
+        {
+            "name": "native-nokarma",
+            "inherits": "native",
+            "displayName": "Native Linux x86 -- NO_KARMA (A/B control)",
+            "binaryDir": "${sourceDir}/build-native-nokarma",
+            "cacheVariables": {
+                "USE_KARMA_DECOMP": "OFF"
+            }
+        },
+        {
+            "name": "wasm-nokarma",
+            "inherits": "wasm-perf",
+            "displayName": "Web -- NO_KARMA (A/B control for the browser suite)",
+            "binaryDir": "${sourceDir}/build-wasm-nokarma",
+            "cacheVariables": {
+                "USE_KARMA_DECOMP": "OFF"
+            }
+        },
+        {
+            "name": "windows-nokarma",
+            "inherits": "windows",
+            "displayName": "Windows x86 -- NO_KARMA (A/B control)",
+            "binaryDir": "${sourceDir}/build-windows-nokarma",
+            "cacheVariables": {
+                "USE_KARMA_DECOMP": "OFF"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "native",
+            "configurePreset": "native"
+        },
+        {
+            "name": "native-karma",
+            "configurePreset": "native-karma"
+        },
+        {
+            "name": "karma-ref",
+            "configurePreset": "karma-ref"
+        },
+        {
+            "name": "physics",
+            "configurePreset": "physics"
+        },
+        {
+            "name": "wasm",
+            "configurePreset": "wasm"
+        },
+        {
+            "name": "wasm-debug",
+            "configurePreset": "wasm-debug"
+        },
+        {
+            "name": "wasm-perf",
+            "configurePreset": "wasm-perf"
+        },
+        {
+            "name": "windows",
+            "configurePreset": "windows"
+        },
+        {
+            "name": "wasm-karmadecomp-debug",
+            "configurePreset": "wasm-karmadecomp-debug"
+        },
+        {
+            "name": "wasm-karmadecomp-perf",
+            "configurePreset": "wasm-karmadecomp-perf"
+        },
+        {
+            "name": "legacy-karma",
+            "configurePreset": "legacy-karma"
+        },
+        {
+            "name": "native-nokarma",
+            "configurePreset": "native-nokarma"
+        },
+        {
+            "name": "wasm-nokarma",
+            "configurePreset": "wasm-nokarma"
+        },
+        {
+            "name": "windows-nokarma",
+            "configurePreset": "windows-nokarma"
+        }
+    ]
 }

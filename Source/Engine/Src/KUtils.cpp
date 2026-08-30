@@ -1340,19 +1340,29 @@ void MEAPI KCreateAssetDB(MeAssetDB** db, McdGeomMan** gm)
 					FString Temp = FString::Printf(TEXT("%s"),*Path) *= Found(i);
 					debugf(NAME_DevKarma,TEXT("(Karma): Loading: %s"), (TCHAR*)Temp.GetCharArray().GetData());
 
-					/* Now we convert the name in Temp to an ASCII char array with ..\Karma\ prefixed
-					There has to be a better way. Perhaps the toolkit should use Unicode :)
-					This is a nasty little hack.
-					*/
-					TArray<TCHAR> chararray = Temp.GetCharArray();
-					char *data = (char*)chararray.GetData();
-					char *out = (char*)MeMemoryAPI.create(512);
+					/* ufront 2026-08-28 — the original here was a TArray<TCHAR> copy taken through a
+					   char* and back, which its own author called "a nasty little hack". It WORKED;
+					   the round trip is the identity whatever TCHAR is. It is replaced because it is
+					   pointless, not because it was the defect.
 
-					#if WIN32 // !!! FIXME: this conflicts on Linux. --ryan.
-						wcstombs(out, (unsigned short*)data, 512);
-					#else
-						strncpy(out, appToAnsi((TCHAR *) data), 512);
-					#endif
+					   ⚠ THE DEFECT WAS THE #if, AND IT WAS MINE. The tenth session changed the guard
+					   below from `#if WIN32` to `#if defined(_UNICODE)` on the belief that this tree is
+					   ANSI everywhere. It is not: CMakeLists defines _UNICODE on every target except the
+					   two setting NO_UNICODE_OS_SUPPORT (web, MinGW). So LINUX started taking the
+					   wcstombs branch, where glibc's 4-byte wchar_t cannot read the engine's 2-byte
+					   UNICHAR, and every .ka filename became garbage:
+
+					     Temp='../KarmaData/Alien.ka'  ->  filename='0\xc9\xfa\xec0\xc9\xfa\xec'
+
+					   MeStreamOpen failed on all six assets and `if(stream)` was simply not taken —
+					   silently, because a NULL stream is a skip here and not an error. Confirmed by
+					   building the PRE-tenth-session file and re-running: 0 failures, ragdolls fine.
+
+					   appToAnsi is the engine's own TCHAR->ANSI conversion and is correct on every
+					   target whatever TCHAR is, so there is no platform question left to get wrong. */
+					char *out = (char*)MeMemoryAPI.create(512);
+					strncpy(out, appToAnsi(*Temp), 512);
+					out[511] = 0;
 
 					char *filename = (char*)MeMemoryAPI.create(strlen(out)+32);
 					filename[0] = 0;

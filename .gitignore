@@ -52,3 +52,7 @@ System/Shot*.bmp
 # Claude Code per-machine local override — never commit.
 .claude/settings.local.json
 /build-windows/
+
+# Python bytecode (nothing in this repo generates it any more, but harmless).
+__pycache__/
+*.pyc

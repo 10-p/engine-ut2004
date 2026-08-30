@@ -23,25 +23,67 @@ The heavy browser glue is **extracted** to the public monorepo (`@ufront/glue`) 
 the WASM build bakes only the thin `webrtc_*` shim (`vendor/glue/webrtc-shim.js`) — steps 1.3/1.4. As of
 **step 1.6a** the host page is **un-baked**: the link drops `--shell-file` and uses `SUFFIX .js`, so the
 build emits a **bare loader** (`SDLLaunch.{js,wasm,data}`, `loaderStyle=global-module`, **no
-`SDLLaunch.html`**); the host page lives in `ufront/packages/frontend/index.html`. The now-dead
-`web/shell.html` + `web/{fetchfs,webrtc-net,idb-*}.js` (+ their tests) await the ufront **1.9** cleanup.
+`SDLLaunch.html`**); the host page lives in `ufront/packages/frontend/index.html`. The `web/` directory
+(`shell.html`, `fetchfs`/`webrtc-net`/`idb-*`, and their Node tests) is **gone** — the ufront 1.9 cleanup
+has happened.
 
 ## Build (full details: `BUILD.md`)
 ```bash
-cmake --preset gl4es && cmake --build --preset gl4es -j"$(nproc)"          # native twin
+cmake --preset native && cmake --build --preset native -j"$(nproc)"        # native twin
 source ~/emsdk/emsdk_env.sh
-cmake --preset wasm  && cmake --build --preset wasm  -j"$(nproc)"          # the web build
+cmake --preset wasm   && cmake --build --preset wasm   -j"$(nproc)"        # the web build
 ```
-- **Green checkpoint for this repo:** both `gl4es` (native) and `wasm` build cleanly, producing
-  `build-gl4es/SDLLaunch/ut2004-gl4es.bin` and `build-wasm/SDLLaunch/SDLLaunch.{js,wasm,data,html}`.
+- **Green checkpoint for this repo:** both `native` and `wasm` build cleanly, producing
+  `build-native/Source/SDLLaunch/ut2004-pixo.bin` and
+  `build-wasm/Source/SDLLaunch/SDLLaunch.{js,wasm,data}`.
+- **`cmake --list-presets` is the authority.** There is no `gl4es` preset and no `legacy` preset —
+  both were retired with SDL 1.2 in ufront 2.34. The ten that exist are `native`, `native-karma`,
+  `karma-ref`, `physics`, `wasm`, `wasm-debug`, `wasm-perf`, `windows`, and the two
+  `wasm-karmadecomp-{debug,perf}`.
+- **`wasm` is `-O2 -g`** (the dev default — named stacks and assertions at a playable speed);
+  `wasm-debug` is the `-O0` last resort; `wasm-perf` is `-O3 -g0` shipping.
+- Prerequisites for a from-scratch host (gcc-13, the i386 multiarch sysroot, emsdk 5.0.x) are in
+  `BUILD.md` — a default install cannot build the 32-bit native presets.
 - Assets path is `UT_ASSETS_DIR` (default `/home/ion/ut2004-assets`); only 4 INIs are preloaded.
+  **They live on a mount that does not survive a reboot** — `ls /home/ion/ut2004-assets` before
+  blaming the engine.
 - GL4ES is fetched from our **fork by default** (`10-p/gl4es@fix/cubemap-bind-active-unit`). First
   configure of a fresh build dir needs network (FetchContent clone of GL4ES + SDL2/OpenAL ports).
-- Unit tests (glue, ride-along): `node --test web/test/*.test.js` → 168/168.
+
+## Karma — and it lives in ANOTHER repository now
+Karma (MathEngine `metoolkit`) is UT2004's physics: Onslaught vehicles and ragdolls. It shipped as
+**binary-only 32-bit x86 archives**, so the web and Android builds were always `NO_KARMA`.
+
+**The SDK and its source-level recovery are
+[`10-p/metoolkit-karma-decomp`](https://github.com/10-p/metoolkit-karma-decomp)** (ufront 2.44).
+That repository holds the v3369 `metoolkit/` drop, the 145 recovered objects as
+`metoolkit_decomp/`, the toolchain that produces them, and the gates that judge them. This
+repository holds **only the engine-side bridge**: `Source/Engine/Src/K*.cpp`, `KarmaSupport.cpp`,
+`KarmaGlibcCompat.c`, and the CMake that links it. Nothing of the recovery is vendored here —
+the top-level `CMakeLists.txt` FetchContents it at `main`, unpinned.
+
+**Before changing anything about the recovered physics, work in that repository, not this one**
+— read its `CLAUDE.md`, then `decomp/docs/STATE.md` and `decomp/proven.txt` (the evidence ledger:
+a non-comment line in it releases an object, and nothing is released without evidence).
+
+Three mutually exclusive states, not two:
+| | what links | presets |
+|---|---|---|
+| default | nothing; `NO_KARMA=1` | `native`, `wasm`, `wasm-perf`, `wasm-debug`, `windows` |
+| `BUILD_KARMA_REF=ON` | MathEngine's prebuilt i386 archives, from the fetched SDK | `native-karma`, `karma-ref` |
+| `USE_KARMA_DECOMP=ON` | `metoolkit_decomp::all`, the recovered sources | `wasm-karmadecomp-{debug,perf}` |
+
+Setting both of the latter is a hard CMake error — they define the same symbols.
+
+⚠ **A Karma build needs the network on first configure**, like GL4ES and SDL2. To build offline
+or to test an unpushed change to the recovered sources, point
+`FETCHCONTENT_SOURCE_DIR_METOOLKITKARMADECOMP` at a local checkout.
 
 ## Conventions / load-bearing facts
-- **Hard backend split:** SDL1.2+OpenGLDrv (`legacy`) vs SDL2+GL4ESDrv (`gl4es`/wasm) never share a
-  binary or build dir. Each build dir locks to its backend.
+- **One native stack** (ufront 2.34). SDL 1.2 is retired; SDL2 + `OpenGLDrv` + `GL4ESDrv` + Pixomatic
+  all live in **one** binary and the render device is picked at startup with
+  `-GL4ESRENDERER` / `-OPENGLRENDERER` / `-SOFTWARERENDERER` / `-NULLRENDERER`. The old "hard backend
+  split, one binary per build dir" rule is gone with the presets that implemented it.
 - **Drivers are selected by `.ini`, not compiled in** (`ViewportManager`/`GameRenderDevice`/
   `AudioDevice`/`NetworkDevice`). The web build's one engine-specific addition is `WebRTCDrv`.
 - **Engine differences are DATA, not code** (the project-wide rule for the multi-engine future).
@@ -51,7 +93,10 @@ cmake --preset wasm  && cmake --build --preset wasm  -j"$(nproc)"          # the
   `../ut2004-assets`). They were native-runtime conveniences in the old repo and are intentionally
   absent here; content is reached via `UT_ASSETS_DIR` (wasm) or a runtime dir (native).
 - **Do NOT** commit build trees (`build-*/`) or game assets — both are gitignored.
-- **Do NOT** add a blanket `*.a`/`*.lib`/`*.dll` ignore — vendored Karma/flex/DirectX blobs are
+- **Do NOT** add a blanket `*.a`/`*.lib`/`*.dll` ignore — vendored flex/DirectX/Pixomatic blobs are
   intentionally tracked (see `.gitignore`).
+- **Do NOT** try to fix the recovered Karma sources here. They are not in this repository; the
+  change belongs in `10-p/metoolkit-karma-decomp`, where the generator and its gates live, and
+  every fix there goes into the GENERATOR rather than into generated output.
 - **Do NOT** make engine source changes for the relocation beyond the `UT_ASSETS_DIR`
   parameterization — that would be re-architecture, not Phase 0. Stop and re-scope.
