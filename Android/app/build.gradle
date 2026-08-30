@@ -42,38 +42,58 @@ android {
                 // guarantee C/Java SDL parity; with neither, FetchContent clones the pinned SDL2 itself.
                 def sdl2Dir = project.findProperty('sdl2Dir') ?: System.getenv('SDL2_SOURCE_DIR')
                 def cmakeArgs = ['-DANDROID_STL=c++_shared', '-DUT_GFX_BACKEND=gl4es']
-                // ★ KARMA IS STILL OFF ON ANDROID, AND THE REASON CHANGED ON 2026-08-29.
+                // The recovered Karma is FetchContent'd from its own repository at `main`, and
+                // the root CMakeLists says how to override that: point
+                // FETCHCONTENT_SOURCE_DIR_METOOLKITKARMADECOMP at a local checkout. This is the
+                // way to pass it from here — `-PkarmaDir=/abs/path` — which is how a change to
+                // the recovered sources gets tested on a device BEFORE it is pushed. Same shape
+                // as `sdl2Dir` above, and the same reason: no absolute path is baked in.
+                def karmaDir = project.findProperty('karmaDir') ?: System.getenv('KARMA_DECOMP_DIR')
+                if (karmaDir) {
+                    if (file(karmaDir).isDirectory()) {
+                        cmakeArgs += "-DFETCHCONTENT_SOURCE_DIR_METOOLKITKARMADECOMP=${karmaDir}".toString()
+                    } else {
+                        logger.warn("karmaDir=${karmaDir} does not exist — letting FetchContent clone it")
+                    }
+                }
+                // ★ KARMA IS STILL OFF ON ANDROID, AND THE REASON CHANGED AGAIN ON 2026-08-30.
                 //
-                // It used to be the LP64 layout defect: two of the three ABIs here are 64-bit and
-                // the recovered sources encoded i386 struct LAYOUTS, so `trilistgeom[3].mRefCtAndID`
-                // read byte 96 where the original meant byte 48 — width-correct, silent, and
-                // somebody else's memory. THAT IS FIXED: ``metoolkit_decomp/src`` now carries the
-                // LP64 post-passes and `metoolkit-karma-decomp `decomp/test/standalone/lp64_pipeline.sh`` ends `-> PASS` — all
-                // three offline scenes clean at 64-bit, every trajectory first differing at the
-                // float floor, and all 145 objects still byte-identical at -m32.
+                // IT WAS the LP64 layout defect, and the note here used to say that was fixed.
+                // ⚠ IT WAS NOT — `metoolkit-karma-decomp` proved on 2026-08-30 that its own gate
+                // was reporting PASS over a build whose ragdoll scene gave a different answer on
+                // every run (proven.txt LP64-ADDRESS-DEPENDENT). That IS now fixed and MEASURED:
+                // with the arithmetic held fixed (-ffloat-store) two of the three offline scenes
+                // are BYTE-IDENTICAL at i386 and LP64 over all 901 rows, and 100 runs of the
+                // plain -m64 ragdoll give one answer. proven.txt LP64-CLOSED.
                 //
-                // ⚠ AND TURNING IT ON HERE STILL CRASHES, WHICH IS WHY THIS LINE SURVIVES.
-                // Measured on the API-34 x86_64 emulator, both arms verified by symbol count in
-                // libUT2004.so rather than by which flag was passed:
+                // ⚠ AND TURNING IT ON HERE STILL CRASHES. Re-measured 2026-08-30 on the API-34
+                // x86_64 emulator with the repaired sources, same APK, same 11 GB tree:
                 //
                 //   Karma ON  : SIGSEGV on the engine thread immediately after
-                //               "Initializing GL4ESDrv..." returns, 243 lines of log
-                //   Karma OFF : same APK, same ini, same map — reaches UT2k4MainMenu.Opened(),
-                //               1713 lines of log
+                //               "[GL4ES-DBG] Init: complete, returning 1", 501 lines of log
+                //   Karma OFF : same APK, same ini, same tree — reaches UT2k4MainMenu.Opened(),
+                //               2153 lines
                 //
-                // The `Package not found: SDL2Drv/GL4ESDrv` warnings are in BOTH logs and are not
-                // the cause. The engine installs its own SIGSEGV handler, so there is no tombstone
-                // and no backtrace yet.
+                // The repairs moved it: 243 lines before, 501 now. They did not remove it. So
+                // the Android SIGSEGV is NOT the layout defect that was located and closed, and
+                // treating it as such would be the second time this note was wrong.
                 //
-                // ⚠ IT IS NOT KNOWN WHETHER THIS IS AN LP64 DEFECT OR AN ANDROID-INTEGRATION ONE,
-                // and that distinction is the next thing to settle. Karma has never been enabled
-                // on Android at ANY pointer width, so a 32-bit ABI would separate the two — but
-                // the API-34 system image is 64-bit only ("ABI x86 not supported on this device")
-                // and the x86_64 emulator cannot execute ARM, so armeabi-v7a needs the real
-                // OnePlus 6. That device was not attached for this run.
+                // ★ THE 32-BIT CONTROL EXISTS NOW, and it is what `-Px86abi` is for.
+                // `system-images;android-24;google_apis_playstore;x86` is a 32-bit image, so the
+                // same APK runs the same engine at the shipped pointer width. Measured the same
+                // day: Karma ON at x86 boots the engine, loads UnrealScript and is still running
+                // at 902 log lines. ⚠ READ THAT AS PARTIAL: that emulator holds 5.8 GB and the
+                // tree is 11 GB, so it was run against System + Animations + KarmaData and had
+                // NOT yet reached the renderer init where the 64-bit build dies. It is evidence
+                // that 32-bit Karma starts, not yet evidence that it passes the same point.
                 //
-                // Build with `-PwithKarma` to reproduce it; the default stays a NO_KARMA APK that
-                // starts, because an APK without vehicles beats an APK that does not run.
+                // NEXT: a backtrace. The engine installs its own SIGSEGV handler (UnUnix.cpp,
+                // SA_RESETHAND) so there is no tombstone; attach the NDK's lldb-server, or build
+                // one APK with that handler skipped, and name the frame.
+                //
+                // Build with `-PwithKarma` to reproduce it — add `-PkarmaDir=/path` to test a
+                // local metoolkit-karma-decomp checkout — and the default stays a NO_KARMA APK
+                // that starts, because an APK without vehicles beats an APK that does not run.
                 if (!project.hasProperty('withKarma')) {
                     cmakeArgs += '-DUSE_KARMA_DECOMP=OFF'
                 }

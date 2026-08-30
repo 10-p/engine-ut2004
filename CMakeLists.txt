@@ -282,21 +282,39 @@ endif()
 # original meant byte 48. NOTHING WAS TRUNCATED, the cast was width-correct, and clang was silent.
 #
 # ``metoolkit_decomp/src`/` now carries the LP64 post-passes (see its README), and
-# `metoolkit-karma-decomp `decomp/test/standalone/lp64_pipeline.sh`` ends `-> PASS`: all three scenes run clean at 64-bit
-# pointer width and every trajectory first differs at the float floor — 9.0e-10, 1.9e-09 and
-# 2.2e-07 against a plain i386 control, where the defects it was built to catch first differed at
-# 1.5e-03 and 1.5e-01. The post-passes are no-ops at 32-bit BY MEASUREMENT: all 145 objects
-# compile byte-identical at -m32, which is what keeps wasm32, i686 and armeabi-v7a exactly as
-# they were.
+# `metoolkit-karma-decomp `decomp/test/standalone/lp64_pipeline.sh`` ends `-> PASS`.
+#
+# ⚠ THAT SENTENCE USED TO REST ON A FLOOR, AND THE FLOOR WAS MEASURING ARITHMETIC. It read
+# "every trajectory first differs at the float floor — 9.0e-10, 1.9e-09 and 2.2e-07" while the
+# 64-bit ragdoll was giving a DIFFERENT ANSWER ON EVERY RUN (proven.txt LP64-ADDRESS-DEPENDENT),
+# because -mfpmath=387 equalises the format and not the excess precision. Since 2026-08-30 the
+# gate is a bit comparison with the arithmetic held fixed: with -ffloat-store, scene_chain and
+# scene_ragdoll are BYTE-IDENTICAL at i386 and LP64 over all 901 rows, and 100 runs of the plain
+# -m64 ragdoll give one answer. scene_boxes_on_plane still differs from step 94 — a contact
+# ORDER, not a value, and it predates the post-passes (proven.txt LP64-CONTACT-ORDER).
+#
+# The post-passes remain no-ops at 32-bit BY MEASUREMENT: all 145 objects compile byte-identical
+# at -m32, and all 146 shipped sources compile BYTE-IDENTICALLY for wasm32 before and after —
+# which is what keeps wasm32, i686 and armeabi-v7a exactly as they were, measured rather than
+# argued.
 #
 # ⚠ NECESSARY, NOT SUFFICIENT, AND THE DIFFERENCE MATTERS ON THIS TARGET. x86-64 is the same DATA
 # MODEL as arm64, not the same machine: it tolerates unaligned access where arm64 FAULTS, and the
 # recovered code casts freely. The scenes are also OFFLINE — nothing at 64-bit has yet exercised a
 # real match, the drop-in link or the .ka asset path, and `census_report.py` puts the whole
-# recovery at about a quarter of its functions ever executed. `ptrwidth_check.sh` still counts 181
-# truncation diagnostics across 37 objects at aarch64 (down from 7,714 across 95); none is on a
-# path the scenes reach, and the scenes DO run with a heap above 4 GB, so a live one there would
-# fault rather than hide. Treat the first arm64 run as a measurement, not a formality.
+# recovery at about a quarter of its functions ever executed. `ptrwidth_check.sh` still counts 134
+# truncation diagnostics across 32 objects at aarch64 (down from 7,714 across 95).
+#
+# ⚠ "NONE IS ON A PATH THE SCENES REACH" USED TO BE WRITTEN HERE AND IT WAS REFUTED. One of them
+# was McdSphylPlaneIntersect reading a capsule's radius out of the low half of a pointer, 7,298
+# times a run, in the ragdoll scene. What is true now is narrower and worth keeping narrow: none
+# of the 134 that REMAIN moves any of the three scenes, which is a measurement over three scenes
+# and not a proof over the corpus.
+#
+# ⚠ AND ANDROID AT 64-BIT STILL CRASHES WITH KARMA ON — re-measured 2026-08-30 with these
+# repairs in place: SIGSEGV right after the render device init, 501 log lines against 2153 for
+# the same APK with Karma off. It is NOT the layout defect that was closed. See the Karma block
+# in Android/app/build.gradle. Treat the first arm64 run as a measurement, not a formality.
 if(USE_KARMA_DECOMP AND UT_PTR_BYTES GREATER 4 AND NOT KD_LP64_OK)
   message(STATUS
     "USE_KARMA_DECOMP on a ${UT_PTR_BYTES}-byte-pointer target (arch "
