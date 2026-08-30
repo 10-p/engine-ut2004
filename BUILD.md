@@ -267,6 +267,54 @@ So a complete recovered physics engine costs **756 KB** of shipping wasm, about 
 
 ---
 
+## `UT_ALLOW_64BIT` — the x86-64 Linux debugging vehicle
+
+**NOT a shipping target.** D-05 stands: the shipped Linux binary is 32-bit. This option exists
+for one job — debugging the LP64 defects that only appear at 8-byte pointers.
+
+Android already runs this engine at 64-bit, and with Karma **off** it reaches
+`UT2k4MainMenu.Opened()`; with Karma **on** it dies with SIGSEGV. But on Android the engine
+installs its own `SA_RESETHAND` fault handler (`Source/Core/Src/UnUnix.cpp`), so there is no
+tombstone and no backtrace, and there is no gdb, no ASan and no valgrind. An x86-64 **Linux**
+build is the same data model with all of those.
+
+```bash
+rm -rf /tmp/kd_b64          # SDL caches its failed X11 probes in SDL_config.h
+cmake -S . -B /tmp/kd_b64 -G "Unix Makefiles" \
+  -DCMAKE_C_COMPILER=gcc-13 -DCMAKE_CXX_COMPILER=g++-13 -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+  -DUT_GFX_BACKEND=gl4es -DUSE_PIXOMATIC=OFF -DUT_ALLOW_64BIT=ON -DUSE_KARMA_DECOMP=ON
+cmake --build /tmp/kd_b64 -j 24
+file /tmp/kd_b64/Source/SDLLaunch/ut2004.bin    # MUST say ELF 64-bit ... x86-64
+```
+
+⚠ **CHECK `file`, NOT THE CONFIGURE MESSAGE.** As first committed this option skipped the
+`-m32` demotion block and **four other places put `-m32` straight back** — a bare
+`add_compile_options(-m32)`, the exe link options in `SDLLaunch` and `UCC`, and a
+`set(CMAKE_C_FLAGS "... -m32" CACHE STRING "" FORCE)` for gl4es that rewrote the flags for the
+*whole project*, taking zlib, ogg, vorbis and Speex with it. The build printed
+`Pointer width: 8 bytes` and emitted `ELF 32-bit LSB relocatable, Intel i386`. All four are now
+gated on `UT_PTR_BYTES`, the variable that already existed to be the width the build actually
+produces — but the one-line `file` check is what makes the claim true.
+
+Two things this configuration cannot have:
+
+- **`USE_PIXOMATIC=ON` is impossible at 64-bit** and now fails at configure time with that
+  message. `Thirdparty/Pixomatic/Lib/pixomatic_linux.a` is a prebuilt i386 archive with no
+  source — the same shape of problem Karma itself was. It used to fail at the last link step,
+  after a full 200-TU build.
+- **`-lsamplerate` needs the amd64 dev package.** Most boxes here have only
+  `libsamplerate0-dev:i386`, which provides no `libsamplerate.so` for x86-64:
+  `sudo apt-get install libsamplerate0-dev:amd64`. (The amd64 X11 `-dev` packages are needed
+  too; without them SDL2's probes fail silently, `SDL_VIDEO_DRIVER_X11_SUPPORTS_GENERIC_EVENTS`
+  goes undefined, and SDL emits a fallback `XGenericEventCookie` that collides with the real
+  Xlib one.)
+
+Run it out of a tree that is **not** `ut2004-assets` — a native run writes `UT2004.ini`,
+`User.ini` and logs next to itself, and polluting the asset store has cost a session before.
+Symlink the content directories in and keep a real, writable `System/`.
+
+---
+
 ## Why there is one native stack (ufront 2.34)
 
 BUILD.md used to describe a "hard backend split" between a `legacy` preset (SDL 1.2 + `OpenGLDrv`)

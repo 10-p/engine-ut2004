@@ -45,4 +45,9 @@ target_link_libraries(${PROJECT_NAME}
 
 # -m32 (32-bit i386, like the rest of the native build), -export-dynamic for the engine's reflection /
 # class-loading, -rpath,. so any vendored .so next to the binary resolves at runtime.
-target_link_options(${PROJECT_NAME} PRIVATE -m32 -Wl,-export-dynamic -Wl,-rpath,.)
+# The -m32 is gated on UT_PTR_BYTES: at UT_ALLOW_64BIT every object is x86-64 and forcing a 32-bit
+# link here fails with "architecture of input file ... is incompatible with i386 output".
+if(UT_PTR_BYTES EQUAL 4)
+  target_link_options(${PROJECT_NAME} PRIVATE -m32)
+endif()
+target_link_options(${PROJECT_NAME} PRIVATE -Wl,-export-dynamic -Wl,-rpath,.)

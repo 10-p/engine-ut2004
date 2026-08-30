@@ -392,8 +392,13 @@ else()
 
   # -export-dynamic: needed for the engine's reflection/class-loading system.
   # -rpath,.: allows finding vendored .so files in the same directory at runtime.
+  # -m32 is gated on UT_PTR_BYTES — at UT_ALLOW_64BIT the objects are x86-64 and a forced 32-bit
+  # link fails on every one of them plus "libX11.so: file in wrong format".
   if(NOT MINGW)
-    target_link_options(${PROJECT_NAME} PRIVATE -m32 -Wl,-export-dynamic -Wl,-rpath,.)
+    if(UT_PTR_BYTES EQUAL 4)
+      target_link_options(${PROJECT_NAME} PRIVATE -m32)
+    endif()
+    target_link_options(${PROJECT_NAME} PRIVATE -Wl,-export-dynamic -Wl,-rpath,.)
   endif()
 endif()
 

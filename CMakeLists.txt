@@ -420,6 +420,18 @@ endif()
 # CMakeLists.txt). Native only; builds in either backend (SDL2/gl4es or SDL 1.2/legacy).
 option(USE_PIXOMATIC "Build the Pixomatic software render device (PixoDrv, -SOFTWARERENDERER)" OFF)
 
+# ⚠ Pixomatic is a PREBUILT i386 ARCHIVE with no source — the same shape of problem Karma was,
+# and the one thing in this tree that cannot follow a pointer-width change. At UT_ALLOW_64BIT it
+# fails at the very last step with "pixomatic_linux.a ... incompatible with i386 output", after a
+# full 200-TU build. Say so at configure time instead. The 64-bit vehicle uses gl4es, which is
+# built from source; the software renderer is not needed to debug Karma.
+if(USE_PIXOMATIC AND UT_PTR_BYTES EQUAL 8 AND NOT ANDROID AND NOT EMSCRIPTEN)
+  message(FATAL_ERROR
+    "USE_PIXOMATIC=ON is impossible at 64-bit: Thirdparty/Pixomatic/Lib/pixomatic_linux.a is a "
+    "prebuilt 32-bit i386 archive and there is no source to rebuild. Configure with "
+    "-DUSE_PIXOMATIC=OFF for the UT_ALLOW_64BIT vehicle.")
+endif()
+
 # Emscripten: disable x86 SSE intrinsics (WASM has no x86 instruction sets)
 if(EMSCRIPTEN)
   add_definitions(-DNO_SSE_SUPPORT=1)
@@ -472,7 +484,13 @@ if(NOT EMSCRIPTEN AND NOT ANDROID)
   add_compile_options(-fshort-wchar)
 endif()
 # -m32 on every native build EXCEPT 64-bit Android.
-if(NOT EMSCRIPTEN AND NOT ANDROID)
+#
+# ⚠ THIS LINE IS WHY UT_ALLOW_64BIT DID NOTHING. The demotion block above honours the option,
+# then this one re-applied -m32 unconditionally and the "64-bit vehicle" emitted `ELF 32-bit
+# LSB relocatable, Intel i386` while announcing "Pointer width: 8 bytes". It even passed
+# `-m32 -march=x86-64` together. Gate on UT_PTR_BYTES — the variable that already exists to be
+# the width this build ACTUALLY produces — so the message and the objects cannot disagree.
+if(NOT EMSCRIPTEN AND NOT ANDROID AND UT_PTR_BYTES EQUAL 4)
   add_compile_options(-m32)
 endif()
 
@@ -542,7 +560,7 @@ endif()
 # Linker Flags
 #-----------------------------------------------------------------------------
 
-if(NOT EMSCRIPTEN AND NOT ANDROID)
+if(NOT EMSCRIPTEN AND NOT ANDROID AND UT_PTR_BYTES EQUAL 4)
   add_link_options(-m32)
 endif()
 
@@ -589,7 +607,7 @@ if(NOT EMSCRIPTEN AND UT_GFX_BACKEND STREQUAL "gl4es")
       # is a Linux -m32 cross-compile workaround; applying it here would send SDL2 hunting for X11 libs
       # that do not exist on a Windows target.
       FetchContent_MakeAvailable(SDL2)
-    else()
+    elseif(UT_PTR_BYTES EQUAL 4)
       # Force X11 video driver — SDL2's CMake misses 32-bit X11 libs during -m32 cross-compile.
       # Point find_library and find_path at the i386 multiarch directories.
       set(SDL_X11 ON CACHE BOOL "" FORCE)
@@ -598,6 +616,18 @@ if(NOT EMSCRIPTEN AND UT_GFX_BACKEND STREQUAL "gl4es")
       list(APPEND CMAKE_LIBRARY_PATH /usr/lib/i386-linux-gnu)
       list(APPEND CMAKE_PREFIX_PATH /usr/lib/i386-linux-gnu)
       set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY BOTH)
+      FetchContent_MakeAvailable(SDL2)
+    else()
+      # UT_ALLOW_64BIT — a native x86_64 build. Pointing SDL2 at /usr/lib/i386-linux-gnu here is
+      # the mirror image of the bug the demotion block warns about: the probes link 64-bit objects
+      # against i386 libs, every check silently fails, SDL_VIDEO_DRIVER_X11_SUPPORTS_GENERIC_EVENTS
+      # goes undefined, and SDL_x11xinput2.h emits a fallback XGenericEventCookie that collides
+      # with the real one in the (arch-independent) Xlib.h — six TUs, ten hard errors, and the
+      # build stops before it can link. The amd64 X11 dev packages are installed, so let SDL2's
+      # own find_package do its job.
+      set(SDL_X11 ON CACHE BOOL "" FORCE)
+      set(SDL_WAYLAND OFF CACHE BOOL "" FORCE)
+      set(SDL_X11_SHARED OFF CACHE BOOL "" FORCE)
       FetchContent_MakeAvailable(SDL2)
     endif()
   endif()
@@ -678,8 +708,12 @@ if(EMSCRIPTEN OR UT_GFX_BACKEND STREQUAL "gl4es")
   set(DEFAULT_ES 2 CACHE STRING "" FORCE)
   set(NO_INIT_CONSTRUCTOR ON CACHE BOOL "" FORCE)
   # Ensure GL4ES C sources compile as 32-bit, matching UT2004's -m32 build (Pitfall 7).
-  # 64-bit Android does not get -m32.
-  if(NOT EMSCRIPTEN AND NOT ANDROID)
+  # 64-bit Android does not get -m32, and neither does the UT_ALLOW_64BIT vehicle.
+  #
+  # ⚠ THIS ONE IS A `CACHE ... FORCE`, so it does not merely build gl4es 32-bit — it writes
+  # `-m32` into CMAKE_C_FLAGS for the WHOLE PROJECT, taking zlib, ogg, vorbis and Speex with it.
+  # At UT_ALLOW_64BIT that produced an i386 libGL.a in an otherwise x86-64 tree.
+  if(NOT EMSCRIPTEN AND NOT ANDROID AND UT_PTR_BYTES EQUAL 4)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -m32" CACHE STRING "" FORCE)
   endif()
   # CMake-policy floor: stock upstream GL4ES v1.1.6 declares cmake_minimum_required(VERSION
