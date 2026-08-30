@@ -78,18 +78,39 @@ android {
                 // the Android SIGSEGV is NOT the layout defect that was located and closed, and
                 // treating it as such would be the second time this note was wrong.
                 //
-                // ★ THE 32-BIT CONTROL EXISTS NOW, and it is what `-Px86abi` is for.
+                // ★★ AND THE 32-BIT CONTROL NOW SAYS IT IS POINTER WIDTH. That is what
+                // `-Px86abi` is for, and it is no longer a plan.
                 // `system-images;android-24;google_apis_playstore;x86` is a 32-bit image, so the
-                // same APK runs the same engine at the shipped pointer width. Measured the same
-                // day: Karma ON at x86 boots the engine, loads UnrealScript and is still running
-                // at 902 log lines. ⚠ READ THAT AS PARTIAL: that emulator holds 5.8 GB and the
-                // tree is 11 GB, so it was run against System + Animations + KarmaData and had
-                // NOT yet reached the renderer init where the 64-bit build dies. It is evidence
-                // that 32-bit Karma starts, not yet evidence that it passes the same point.
+                // same APK runs the same engine at the shipped pointer width. Measured
+                // 2026-08-30, same device, same reduced tree (System + Animations + KarmaData +
+                // the package closure the log asked for, ~1 GB — that emulator holds 5.8 GB
+                // against an 11 GB tree):
                 //
-                // NEXT: a backtrace. The engine installs its own SIGSEGV handler (UnUnix.cpp,
-                // SA_RESETHAND) so there is no tombstone; attach the NDK's lldb-server, or build
-                // one APK with that handler skipped, and name the frame.
+                //   x86    Karma ON  : 486 lines, "Entry map loaded OK", exits, NO SIGSEGV
+                //   x86    Karma OFF : 486 lines, "Entry map loaded OK", exits, NO SIGSEGV
+                //
+                // IDENTICAL. At 32-bit, Karma changes NOTHING — both arms stop at the same line,
+                // and they stop because the tree is incomplete, not because of physics. Against
+                // the 64-bit pair above, that is the attribution:
+                //
+                //   Karma is NEUTRAL at 32-bit and FATAL at 64-bit -> the Android SIGSEGV is
+                //   POINTER-WIDTH DEPENDENT, not an Android-integration defect.
+                //
+                // ⚠ READ THE LIMIT WITH IT. The 32-bit arm stops at 486 lines and the 64-bit
+                // Karma-OFF arm reaches 2153, so this does NOT show that a COMPLETE 32-bit run
+                // passes the instruction the 64-bit one dies on. What it shows is that the
+                // ON/OFF difference exists at one width and not the other, which is the
+                // comparison that was missing.
+                //
+                // NEXT: a backtrace, and there is now a better vehicle than the emulator for
+                // getting one. `-DUT_ALLOW_64BIT=ON` (root CMakeLists) builds this engine for
+                // x86-64 LINUX — the same data model as this ABI, with gdb, ASan and valgrind,
+                // and without the engine's own SIGSEGV handler (UnUnix.cpp, SA_RESETHAND)
+                // swallowing the tombstone. Measured 2026-08-30: every engine translation unit,
+                // all sixteen recovered Karma libraries and every third-party dependency build at
+                // -m64; the only thing missing on this box is the amd64 X11 dev packages, which
+                // SDL2's feature probes need (the i386 ones are installed for the shipping
+                // build). On the device itself, attach the NDK's lldb-server instead.
                 //
                 // Build with `-PwithKarma` to reproduce it — add `-PkarmaDir=/path` to test a
                 // local metoolkit-karma-decomp checkout — and the default stays a NO_KARMA APK

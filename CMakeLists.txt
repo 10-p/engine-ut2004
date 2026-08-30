@@ -138,6 +138,7 @@ endif()
 message(STATUS "Target arch: ${TARGET_ARCH}")
 message(STATUS "64-bit: ${TARGET_IS_64BIT}")
 
+option(UT_ALLOW_64BIT "Skip the -m32 demotion on x86_64 Linux. NOT a shipping target — a debugging vehicle for LP64 defects." OFF)
 # UT_PTR_BYTES — the pointer width this build will ACTUALLY produce, computed once so the
 # Karma gate below has something trustworthy to test.
 #
@@ -156,9 +157,12 @@ elseif(ANDROID)
   else()
     set(UT_PTR_BYTES 8)                     # arm64-v8a, x86_64
   endif()
-elseif(TARGET_IS_X86 AND NOT MSVC)
-  # This tree builds x86 as 32-bit UNCONDITIONALLY (D-05, and the -m32 demotion below), so the
-  # answer is 4 whether that demotion is about to happen or already has.
+elseif(TARGET_IS_X86 AND NOT MSVC AND NOT UT_ALLOW_64BIT)
+  # This tree builds x86 as 32-bit unless UT_ALLOW_64BIT says otherwise (D-05, and the -m32
+  # demotion below), so the answer is 4 whether that demotion is about to happen or already has.
+  # ⚠ AND IT HAS TO HONOUR THAT OPTION OR IT LIES BY 4. Without this the 64-bit vehicle
+  # configured as "Pointer width: 4 bytes" and every gate keyed on UT_PTR_BYTES — including the
+  # Karma LP64 note — read the wrong width on the one build that exists to test that width.
   #
   # ⚠ Testing TARGET_IS_64BIT here instead is WRONG ON A RECONFIGURE, and it fails the safe way
   # round only by luck. CMAKE_C_FLAGS is cached WITH `-m32`, so on the second configure
@@ -173,8 +177,25 @@ message(STATUS "Pointer width: ${UT_PTR_BYTES} bytes")
 # Force 32-bit build on x86_64 hosts (per D-05: Linux x86 32-bit only)
 # WASM is inherently 32-bit -- -m32 causes emcc to fail.
 # Android is a separate 64-bit native build (x86_64 first, arm64 later) -- skip the -m32 demotion.
+#
+# ★ -DUT_ALLOW_64BIT=ON SKIPS THE DEMOTION, AND IT EXISTS FOR ONE MEASUREMENT.
+# The Android x86_64 build ALREADY runs this engine at 64-bit — with Karma off it
+# reaches UT2k4MainMenu.Opened() off the retail packages — so "the engine cannot
+# do LP64" is refuted, and the only thing that crashes there is Karma. What is
+# missing is a way to DEBUG that: on Android the engine installs its own SIGSEGV
+# handler, so there is no tombstone and no backtrace, and there is no gdb, no
+# ASan and no valgrind. An x86-64 LINUX build is the same pointer width with all
+# of those.
+#
+# ⚠ IT IS NOT A SHIPPING TARGET. D-05 stands: the shipped Linux binary is 32-bit.
+# Measured 2026-08-30 before this option existed: all 200 engine translation
+# units compile at -m64 with ZERO hard errors and 198 pointer-width diagnostics
+# (`-Wint-to-pointer-cast` / `-Wpointer-to-int-cast`), 124 of them in Engine —
+# the same class the Karma recovery took from 7,714 to 134. Compiling is not
+# porting; this option is what lets the rest of that be measured rather than
+# guessed.
 if(NOT EMSCRIPTEN AND NOT ANDROID)
-  if(TARGET_IS_64BIT AND TARGET_IS_X86 AND NOT MSVC)
+  if(TARGET_IS_64BIT AND TARGET_IS_X86 AND NOT MSVC AND NOT UT_ALLOW_64BIT)
     message(STATUS "Building x86 binary with x86_64 compiler")
     set(TARGET_IS_64BIT FALSE)
     set(TARGET_ARCH "x86")
@@ -505,7 +526,16 @@ endif()
 #-----------------------------------------------------------------------------
 
 if(TARGET_IS_X86 AND NOT EMSCRIPTEN AND NOT ANDROID)
-  add_compile_options(-march=pentium -mtune=pentiumpro -msse -mmmx)
+  # ⚠ `-march=pentium` IS AN x86-32 CPU AND cc1plus REFUSES IT AT -m64
+  # ("CPU you selected does not support x86-64 instruction set"), so the
+  # UT_ALLOW_64BIT vehicle has to ask for a 64-bit baseline instead. This is the
+  # makefile-header's instruction-set line and it stays exactly as it was for
+  # every shipping target.
+  if(UT_ALLOW_64BIT AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+    add_compile_options(-march=x86-64 -mtune=generic -msse2)
+  else()
+    add_compile_options(-march=pentium -mtune=pentiumpro -msse -mmmx)
+  endif()
 endif()
 
 #-----------------------------------------------------------------------------
