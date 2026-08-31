@@ -32,6 +32,9 @@
 #include <signal.h>
 #include <process.h>	// _spawnv
 #include <unistd.h>
+#if defined(__ANDROID__)
+#include <sys/system_properties.h>   // __system_property_get for debug.ut2004.nofault
+#endif
 #include <dirent.h>
 #include <utime.h>
 #include <sys/time.h>
@@ -3090,9 +3093,40 @@ void appPlatformInit()
 #ifndef _WIN32
 	struct sigaction SigAction;
 
+	// ★ UT_NO_FAULT_HANDLER — LET THE OS SEE THE FAULT. On Android this handler is
+	// the reason a Karma crash is undiagnosable: it catches SIGSEGV, writes a line
+	// to the log and exits, so `debuggerd` never runs and there is NO TOMBSTONE and
+	// NO BACKTRACE — just "Signal: SIGSEGV" and a shutdown. On Linux gdb gets in
+	// first and this never matters; on a phone there is nothing to get in first.
+	//
+	// With the variable set, the six HARDWARE-FAULT signals are left at their
+	// default disposition and the platform's crash reporter produces a real
+	// backtrace (`logcat -s DEBUG`, then llvm-addr2line against the unstripped
+	// .so). The job-control signals below are still installed either way — those
+	// are how the engine shuts down cleanly, and dropping them turns a clean exit
+	// into a kill.
+	//
+	// ⚠ IT IS A DIAGNOSTIC, NOT A DEFAULT. Unset, behaviour is exactly as before.
+	// ⚠ ANDROID HAS NO WAY TO SET AN ENVIRONMENT VARIABLE FOR AN APP. `adb shell`
+	// runs in a different process and the launcher is Java, so the variable that
+	// works everywhere else is unreachable exactly where this is needed. The
+	// system property is the idiomatic equivalent and `debug.*` is settable on a
+	// stock user build without root: `adb shell setprop debug.ut2004.nofault 1`.
+#if defined(__ANDROID__)
+	char NoFaultProp[128] = { 0 };   /* bionic's PROP_VALUE_MAX is 92 */
+	__system_property_get( "debug.ut2004.nofault", NoFaultProp );
+	const UBOOL bNoFaultHandler = (NoFaultProp[0] != 0 && NoFaultProp[0] != '0');
+#else
+	const UBOOL bNoFaultHandler = (getenv("UT_NO_FAULT_HANDLER") != NULL);
+#endif
+	if( bNoFaultHandler )
+		debugf( NAME_Init, TEXT("UT_NO_FAULT_HANDLER set: leaving SIGSEGV/SIGILL/SIGTRAP/SIGIOT/SIGBUS/SIGFPE to the OS.") );
+
 	// Only try once.
 	INT DefaultFlag			= SA_RESETHAND;
 
+	if( !bNoFaultHandler )
+	{
 	SigAction.sa_handler	= HandleSignal;
 	SigAction.sa_flags		= DefaultFlag;
 	sigemptyset( &SigAction.sa_mask );
@@ -3102,6 +3136,7 @@ void appPlatformInit()
 	SigAction.sa_flags		= DefaultFlag;
 	sigemptyset( &SigAction.sa_mask );
 	sigaction( SIGILL, &SigAction, 0 );
+	}
 
 	// Try multiple times.
 	DefaultFlag				= 0;
@@ -3121,25 +3156,37 @@ void appPlatformInit()
 	sigemptyset( &SigAction.sa_mask );
 	sigaction( SIGQUIT, &SigAction, 0 );
 
+	if( !bNoFaultHandler )
+	{
 	SigAction.sa_handler	= HandleSignal;
 	SigAction.sa_flags		= DefaultFlag;
 	sigemptyset( &SigAction.sa_mask );
 	sigaction( SIGTRAP, &SigAction, 0 );
+	}
 
+	if( !bNoFaultHandler )
+	{
 	SigAction.sa_handler	= HandleSignal;
 	SigAction.sa_flags		= DefaultFlag;
 	sigemptyset( &SigAction.sa_mask );
 	sigaction( SIGIOT, &SigAction, 0 );
+	}
 
+	if( !bNoFaultHandler )
+	{
 	SigAction.sa_handler	= HandleSignal;
 	SigAction.sa_flags		= DefaultFlag;
 	sigemptyset( &SigAction.sa_mask );
 	sigaction( SIGBUS, &SigAction, 0 );
+	}
 
+	if( !bNoFaultHandler )
+	{
 	SigAction.sa_handler	= HandleSignal;
 	SigAction.sa_flags		= DefaultFlag;
 	sigemptyset( &SigAction.sa_mask );
 	sigaction( SIGFPE, &SigAction, 0 );
+	}
 
 	SigAction.sa_handler	= HandleSignal;
 	SigAction.sa_flags		= DefaultFlag;
