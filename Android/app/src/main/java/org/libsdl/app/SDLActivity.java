@@ -709,7 +709,22 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
                     // Start up the C app thread and enable sensor input for the first time
                     // FIXME: Why aren't we enabling sensor input at start?
 
-                    mSDLThread = new Thread(new SDLMain(), "SDLThread");
+                    // ufront 2.45 — ★ AN EXPLICIT STACK SIZE, AND IT IS NOT A GUESS.
+                    // Upstream SDL writes `new Thread(new SDLMain(), "SDLThread")`, which takes
+                    // Android's default (1 MB). UT2004's recovered Karma sizes several arrays on
+                    // the stack from a run-time count — `MeDictNode nodemem[200]` in
+                    // McdConvexMeshPlaneCut, and an `alloca` of `triangleMaxCount` McdUserTriangles
+                    // in every Ix*TriList — and at 64-bit pointer width EVERY ONE OF THOSE DOUBLES:
+                    // MeDictNode is 24 bytes at i386 and 48 at LP64, McdUserTriangle 24 and 48. A
+                    // frame budget that fitted on the 32-bit targets does not fit here.
+                    // The symptom is SIGSEGV with code 2 (SEGV_ACCERR) rather than SEGV_MAPERR —
+                    // a guard page is mapped PROT_NONE, so hitting it is a PERMISSION fault, and
+                    // that is what distinguishes stack exhaustion from a wild pointer.
+                    // Measured on a OnePlus 6 (arm64, Android 15) inside MeSetAdd, two minutes into
+                    // an Onslaught match, with the pool stride already repaired.
+                    // 16 MB is reserved address space, not committed memory; Linux backs only the
+                    // pages actually touched.
+                    mSDLThread = new Thread(null, new SDLMain(), "SDLThread", 16 * 1024 * 1024);
                     mSurface.enableSensor(Sensor.TYPE_ACCELEROMETER, true);
                     mSDLThread.start();
 

@@ -315,6 +315,70 @@ Symlink the content directories in and keep a real, writable `System/`.
 
 ---
 
+## `UT_NO_FAULT_HANDLER` — let the OS see the fault
+
+**A diagnostic, not a build option.** It is read at run time and unset behaviour is exactly what it
+always was, so nothing about a shipping build changes.
+
+The engine installs its own `SA_RESETHAND` handler for the six hardware-fault signals
+(`Source/Core/Src/UnUnix.cpp`, `appPlatformInit`). ★ **That handler is Epic's** — it is present
+verbatim in `epic-sources/ut99-v400/Core/Src/UnUnix.cpp`; only the switch below is ours. It catches
+`SIGSEGV`, writes one line to the log and exits. On Linux that is harmless because gdb gets in
+first. **On Android nothing gets in first**: `debuggerd` never runs, so there is no tombstone and no
+backtrace — a Karma crash reads as `Signal: SIGSEGV` and a clean shutdown, and says nothing about
+where. That is why Karma-on-Android had no backtrace at all until 2026-08-31.
+
+With the switch on, `SIGSEGV SIGILL SIGTRAP SIGIOT SIGBUS SIGFPE` are left at their default
+disposition and the platform's crash reporter produces a real one. The job-control signals are
+installed either way — those are how the engine shuts down cleanly, and dropping them would turn a
+clean exit into a kill.
+
+| | |
+|---|---|
+| everywhere but Android | `UT_NO_FAULT_HANDLER=1 ./ut2004.bin ...` (any non-empty value) |
+| Android | `adb shell setprop debug.ut2004.nofault 1` |
+
+⚠ **Android has no way to set an environment variable for an app.** `adb shell` is a different
+process and the launcher is Java, so the variable that works everywhere else is unreachable exactly
+where it was needed. A `debug.*` system property is the idiomatic equivalent and is settable on a
+stock user build without root. The property is read once, in `appPlatformInit`, so set it **before**
+launching; it takes effect on the next start.
+
+Confirm it took, then read the tombstone:
+
+```bash
+adb shell setprop debug.ut2004.nofault 1
+adb shell monkey -p com.ut2004.android -c android.intent.category.LAUNCHER 1
+adb logcat -c && adb logcat -s DEBUG               # the tombstone lands here
+# frame addresses -> source, against the UNSTRIPPED .so:
+llvm-addr2line -f -C -e Android/app/build/intermediates/cxx/Debug/*/obj/arm64-v8a/libUT2004.so <addr>
+```
+
+The log line `UT_NO_FAULT_HANDLER set: leaving SIGSEGV/... to the OS.` in `UT2004.log` is the
+confirmation that the switch was seen — check for it rather than assuming the property took.
+
+⚠ `am start -n com.ut2004.android/.GameActivity` **fails**: that activity is not exported. Use
+`monkey` as above, or `am start -n com.ut2004.android/.MainActivity`, which is.
+
+### Starting a map from `adb` (ufront 2.45)
+
+`MainActivity` forwards a `com.ut2004.android.ARGS` string extra to the game process, which appends
+it to the engine command line after `CPUSPEED=3000`. It is the Android equivalent of
+`ut2004 ONS-Torlan?Game=...` on the desktop; before it existed the activity could only ever launch
+the menu, so "does arm64 *play*?" could not be answered in a scripted run.
+
+```bash
+adb shell am start -n com.ut2004.android/.MainActivity \
+  --es com.ut2004.android.ARGS \
+  'ONS-Dria?Game=Onslaught.ONSOnslaughtGame?bAutoNumBots=True?QuickStart=True?bPlayerMustBeReady=False'
+```
+
+The launcher's 10-second auto-start countdown then needs no touch, so the whole run is one command.
+`?bAutoNumBots=True?QuickStart=True?bPlayerMustBeReady=False` is what makes the match **tick**: a URL
+carrying only `?Game=` loads the level, burns CPU and never leaves the pre-match state.
+
+---
+
 ## Why there is one native stack (ufront 2.34)
 
 BUILD.md used to describe a "hard backend split" between a `legacy` preset (SDL 1.2 + `OpenGLDrv`)

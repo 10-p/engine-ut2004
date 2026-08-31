@@ -307,6 +307,15 @@ public class MainActivity extends Activity {
         Log.i(TAG, "launching game, storage=" + mode);
         Intent i = new Intent(this, GameActivity.class);
         i.putExtra(GameActivity.EXTRA_STORAGE_MODE, mode);
+        // Forward an extra engine command line (a travel URL) if this launcher was itself started
+        // with one — see GameActivity.EXTRA_ARGS. GameActivity is not exported, so this hop is the
+        // only route an `adb shell am start` has into the game process.
+        String extraArgs = getIntent() != null
+                ? getIntent().getStringExtra(GameActivity.EXTRA_ARGS) : null;
+        if (extraArgs != null && !extraArgs.trim().isEmpty()) {
+            i.putExtra(GameActivity.EXTRA_ARGS, extraArgs);
+            Log.i(TAG, "forwarding engine arguments: " + extraArgs);
+        }
         startActivity(i);
         // Deliberately not finish() -- Back from the game returns to this launcher.
     }

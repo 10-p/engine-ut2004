@@ -43,6 +43,23 @@ public class GameActivity extends SDLActivity {
     static final String MODE_INTERNAL = "internal";
     static final String MODE_EXTERNAL = "external";
 
+    /**
+     * Extra engine command line, whitespace-separated, appended after CPUSPEED (ufront 2.45).
+     * This is the Android equivalent of the desktop command line — on every other platform the
+     * engine is started as {@code ut2004 ONS-Torlan?Game=Onslaught.ONSOnslaughtGame?...}, and
+     * without this there is no way to say that here at all: the activity always launched the menu
+     * and a map could only be reached by hand. That made "does arm64 PLAY?" untestable in a
+     * scripted run, which is exactly the question Karma-on-Android is about.
+     *
+     *   adb shell am start -n com.ut2004.android/.MainActivity \
+     *       --es com.ut2004.android.ARGS 'ONS-Dria?Game=Onslaught.ONSOnslaughtGame?bAutoNumBots=True'
+     *
+     * MainActivity forwards it to this process; its 10-second auto-start countdown then needs no
+     * touch, so the whole run is one adb command. ⚠ GameActivity itself is NOT exported (manifest),
+     * so the Intent has to go to MainActivity — an `am start` aimed straight here is refused.
+     */
+    static final String EXTRA_ARGS = "com.ut2004.android.ARGS";
+
     /** App-private fast game root: {@code getFilesDir()/UT2004} (same path in both processes). */
     static File internalRoot(Context ctx) { return new File(ctx.getFilesDir(), "UT2004"); }
 
@@ -203,7 +220,26 @@ public class GameActivity extends SDLActivity {
         // passes the identical CPUSPEED=3000 (packages/frontend shell/boot.ts). GSecondsPerCycle only
         // scales appCycles()->seconds for profiling; the game loop uses appSeconds wall-clock, so the
         // exact value is non-critical — 3000 matches web.
-        return new String[] { "CPUSPEED=3000" };
+        //
+        // ★ ANYTHING ON EXTRA_ARGS GOES FIRST, AND THAT ORDER IS THE WHOLE FEATURE. UGameEngine::Init
+        // takes the FIRST command-line token as the travel URL (UnGame.cpp) — and since ufront 2.38 it
+        // rejects a global option in that slot and falls straight back to DefaultLocalMap without
+        // looking at the next token. So `CPUSPEED=3000 ONS-Dria?...` reaches the MAIN MENU, measured
+        // on the device; the map has to be argv[1]. packages/frontend's web boot builds the same
+        // order (`['Room?connect', 'CPUSPEED=3000', ...]`).
+        //
+        // Split on whitespace: a UT2004 URL has none in it (options are '?'-separated), so this needs
+        // no quoting rules of its own.
+        String extra = getIntent() != null ? getIntent().getStringExtra(EXTRA_ARGS) : null;
+        if (extra == null || extra.trim().isEmpty()) {
+            return new String[] { "CPUSPEED=3000" };
+        }
+        String[] parts = extra.trim().split("\\s+");
+        String[] out = new String[parts.length + 1];
+        System.arraycopy(parts, 0, out, 0, parts.length);
+        out[parts.length] = "CPUSPEED=3000";
+        Log.i(TAG, "extra engine arguments (first, so a travel URL is argv[1]): " + extra);
+        return out;
     }
 
     private static float clamp(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
