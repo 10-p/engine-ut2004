@@ -309,7 +309,35 @@ typedef unsigned int		BITFIELD;	// For bitfields.
 // !!! FIXME:  but it may not be universal. PTRINT should be an integer that
 // !!! FIXME:  is the same size as a pointer, so casting can be (ahem) safely
 // !!! FIXME:  done between them.  --ryan.
+//
+// ★ ufront 2026-09-01: the FIXME came true, on WINDOWS x64. MinGW targets LLP64,
+// where `long` is FOUR bytes and a pointer is EIGHT — the one data model this
+// tree had never built for. Two things broke at once and only one of them looked
+// like a size problem:
+//
+//   * PTRINT was four bytes with eight-byte pointers, so every `(PTRINT)ptr`
+//     silently dropped the top half;
+//   * `<windows.h>`'s DWORD is `unsigned long` too, so PTRINT and DWORD became
+//     the SAME TYPE and `UnArc.cpp` failed to compile with
+//     "redefinition of operator<<(FArchive&, PTRINT&)" — a message that says
+//     nothing about pointer width.
+//
+// ⚠ ONLY WIN64 MOVES. Everywhere else `__SIZEOF_POINTER__ <= __SIZEOF_LONG__`
+// and the typedef is the `unsigned long` it always was: LP64 Linux 8 == 8,
+// i386 4 == 4, wasm32 4 == 4, armv7 4 == 4, arm64 8 == 8. Widening it to
+// `uintptr_t` everywhere would have been the obvious change and would have
+// BROKEN the 32-bit targets — there `uintptr_t` is `unsigned int`, which IS
+// DWORD, so the same redefinition would have appeared on web and on i386 Linux.
+// On Win64 `unsigned long long` is also QWORD, which is why the operator<<
+// guards in UnArc.cpp already say `#ifndef _WIN64` and `#if (... || _WIN64)`:
+// the original author designed for the two being one type there.
+#if defined(_WIN64) || \
+    (defined(__SIZEOF_POINTER__) && defined(__SIZEOF_LONG__) && \
+     __SIZEOF_POINTER__ > __SIZEOF_LONG__)
+typedef unsigned long long PTRINT;
+#else
 typedef unsigned long PTRINT;
+#endif
 
 // !!! FIXME: This should really just include a header.
 #if ((!defined MACOSX) && (!defined __x86_64__) && (!defined __SIZE_TYPE__))

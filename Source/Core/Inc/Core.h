@@ -162,6 +162,20 @@ public:
 #endif
 
 // SSE or not?
+//
+// ★ UT_MSVC_NO_MMX — "this compiler has no MMX intrinsics", which the engine has always spelled
+// `_WIN64` and which is NOT the same question. MSVC's x64 compiler dropped `__m64` and the MMX
+// intrinsics, so Epic wrote second copies of three inner loops that avoid them and read a packed
+// `__m128i` back through `m128i_u32` — an MSVC extension. GCC keeps MMX on x86-64 and its
+// `__m128i` has no members at all, so a GCC x86_64 Windows build (MinGW, which defines `_WIN64`)
+// took the MSVC branch and failed with "request for member 'm128i_u32' ... non-class type".
+// ⚠ Nothing but MSVC x64 changes: every existing target already evaluates this to 0.
+#if defined(_WIN64) && defined(_MSC_VER)
+  #define UT_MSVC_NO_MMX 1
+#else
+  #define UT_MSVC_NO_MMX 0
+#endif
+
 #if ((__INTEL__) && (!NO_SSE_SUPPORT) && !defined(UT_NO_X86_INTRIN))
   #define __HAS_SSE__ 1
   #if defined(__GNUC__)

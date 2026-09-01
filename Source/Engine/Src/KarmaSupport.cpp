@@ -1636,6 +1636,27 @@ void MEAPI KTermLevelKarma(ULevel* level)
 	  -KTRACEBONES         also log ragdoll bone bodies (off by default: they
 	                       respawn, so their actor indices churn and swamp the
 	                       diff with rows that have no counterpart)
+	  -KTRACECONTACTS      also log the CONTACTS holding each body up — see below
+
+	★ WHY -KTRACECONTACTS EXISTS. The B rows record STATE, and state is a
+	continuous quantity: two builds whose arithmetic differs in the last bit
+	produce B rows that differ in the last digit, and the difference grows. That
+	instrument cannot tell those apart from a DISCRETE difference — a contact
+	that one build generates and the other does not — and the two need opposite
+	responses. Measured 2026-09-01: with the FP model held fixed on both sides
+	(`-mfpmath=sse` at 32-bit), 14 of 15 bodies on ONS-Torlan are BIT-identical
+	over all 89 frames and `ONSHoverBike3` is bit-identical for eight frames and
+	then steps by 1.06 at frame 9. Exact agreement followed by a step change of
+	order one is not arithmetic amplifying; it is a decision flipping. A hover
+	bike is held up by repulsor line checks, so the decision that can flip is a
+	contact — and until these rows existed the trace could not see one.
+
+	The C row is the count and the K rows are the contacts themselves. Contact
+	ORDER is not meaningful: a body's constraints hang off `MeDict`, whose order
+	is an allocation artefact and need not agree between two builds. The rows are
+	emitted in dict order and `ktrace_contacts.py` sorts them before comparing —
+	the same reason the B rows are keyed on the engine's actor array rather than
+	on `MdtWorld`'s `bodyDict`.
 ============================================================================*/
 
 static FILE*	GKTraceFile		= NULL;
@@ -1653,7 +1674,46 @@ static INT		GKTraceLimit	= 0;
 static INT		GKTraceFrame	= 0;
 static INT		GKTraceWritten	= 0;
 static UBOOL	GKTraceBones	= 0;
+static UBOOL	GKTraceContacts	= 0;
 static UBOOL	GKTraceTried	= 0;
+
+/* NAMING THE OTHER SIDE OF A CONTACT. A `MdtBodyID` carries no user data in this engine —
+   `KarmaModelUserData` hangs off the McdModel, not the body — so there is no way back from a
+   contact's second body to an actor without a map. It is rebuilt each traced frame from
+   `level->Actors`, which is the same order on every build and every target and is already what
+   the B rows are keyed on. Fifteen bodies on the vehicle map, so a linear scan is the whole cost. */
+struct KTraceLabel
+{
+	MdtBodyID		body;
+	const TCHAR*	name;
+	INT				actor;
+	INT				bone;
+};
+static TArray<KTraceLabel> GKTraceLabels;
+
+static const KTraceLabel* KTraceFindLabel(MdtBodyID body)
+{
+	for(INT i=0; i<GKTraceLabels.Num(); i++)
+		if(GKTraceLabels(i).body == body)
+			return &GKTraceLabels(i);
+	return NULL;
+}
+
+static void KTraceAddLabel(INT ActorIndex, const TCHAR* Name, INT BoneIndex, McdModelID model)
+{
+	if(!model)
+		return;
+	MdtBodyID body = McdModelGetBody(model);
+	if(!body)
+		return;
+
+	KTraceLabel L;
+	L.body	= body;
+	L.name	= Name;
+	L.actor	= ActorIndex;
+	L.bone	= BoneIndex;
+	GKTraceLabels.AddItem(L);
+}
 
 /* One body. %.9g round-trips a float exactly, so a diff that shows nothing is
    evidence of bit-identity rather than of a narrow print format. */
@@ -1686,6 +1746,143 @@ static void KTraceRow(INT ActorIndex, const TCHAR* Name, INT BoneIndex, McdModel
 		(double)w[0], (double)w[1], (double)w[2]);
 }
 
+/* One body's contacts. Walks the body's constraint list, keeps the ones that are contact
+   GROUPS, and emits the group count, the total contact count, and one row per contact.
+
+   ⚠ THE PENETRATION AND THE NORMAL ARE THE POINT, not just the count. Two builds can agree on
+   "one contact with the world" and disagree on how deep it is, and a repulsor's force is a
+   function of the depth — so a count-only row would report a match on exactly the case this
+   was written to catch. */
+static void KTraceContactRows(INT ActorIndex, const TCHAR* Name, INT BoneIndex, McdModelID model)
+{
+	if(!model)
+		return;
+
+	MdtBodyID body = McdModelGetBody(model);
+	if(!body)
+		return;
+
+	/* ⚠ USE appToAnsi's RETURN VALUE, never the buffer. On an ANSI build (TCHAR == char) it
+	   returns the input untouched and never writes the buffer at all, so reading the buffer
+	   yields a stack full of nothing on exactly the targets where the conversion is a no-op. */
+	ANSICHAR SelfBuf[256];
+	const ANSICHAR* SelfA = appToAnsi(Name, SelfBuf, ARRAY_COUNT(SelfBuf));
+
+	INT NumGroups = 0, NumContacts = 0;
+
+	/* ⚠ WALK `constraintDict` DIRECTLY, NOT `MdtBodyGetFirstConstraint`. That accessor is
+	   declared in `MdtBody.h` and is NOT one of the 145 objects the recovery covers, so a build
+	   with `USE_KARMA_DECOMP=ON` fails to LINK against it. The dict walk is what `KPhysic.cpp`
+	   and `KSkeletal.cpp` already use for the same job, and it is inside the SDK's own header
+	   either way. */
+	MeDict* dict = &body->constraintDict;
+	for(MeDictNode* node = MeDictFirst(dict); node != NULL; node = MeDictNext(dict, node))
+	{
+		MdtConstraintID con = (MdtConstraintID)MeDictNodeGet(node);
+		MdtContactGroupID cg = MdtConstraintDCastContactGroup(con);
+		if(!cg)
+			continue;	/* hinges, ball-and-sockets, car wheels — real constraints, not contacts */
+
+		NumGroups++;
+
+		/* WHERE THE GROUP CAME FROM, which is the first thing you want to know and was a
+		   throwaway probe before it was a column. THREE code paths create contact groups on a
+		   body and they behave differently:
+
+		     nearfield   `CreateContactGroup` in KFarfield.cpp, from a collision pair — and it
+		                 is the ONLY one that calls `MdtContactGroupSetGenerator`, so a
+		                 non-NULL generator identifies it exactly. The generator IS the
+		                 `McdModelPair`, so it also names the other MODEL, which is more than
+		                 the second body can do: a contact against level geometry and one
+		                 against a static mesh actor both have a NULL second body and would
+		                 otherwise both read `world`.
+		     repulsor    KScript.cpp, `AKRepulsor` — a line check, one contact, no second body
+		     wheel       UnSVehicle.cpp, `SVehicleWheel` — same shape
+
+		   ⚠ Measured 2026-09-01: an extra group appeared on `ONSHoverBike3` at LP64 and the
+		   nearfield and engine paths BOTH logged identical sequences, so it read as coming from
+		   nowhere. It was a nearfield pair whose other model has no actor — level geometry. */
+		MdtBodyID b0 = MdtContactGroupGetBody(cg, 0);
+		MdtBodyID b1 = MdtContactGroupGetBody(cg, 1);
+		MdtBodyID other = (b0 == body) ? b1 : b0;
+
+		ANSICHAR OtherBuf[256];
+		const ANSICHAR* OtherA;
+		const KTraceLabel* lbl = NULL;
+		McdModelPair* gen = (McdModelPair*)MdtContactGroupGetGenerator(cg);
+		if(gen)
+		{
+			/* The pair's own models, not the bodies: `model2` is the one with no body when the
+			   contact is against the world, and it still has an identity. */
+			McdModelID mine = McdModelGetBody(gen->model1) == body ? gen->model1 : gen->model2;
+			McdModelID them = (mine == gen->model1) ? gen->model2 : gen->model1;
+			AActor* a = KModelGetActor(them);
+			OtherA = a ? appToAnsi(a->GetName(), OtherBuf, ARRAY_COUNT(OtherBuf)) : "level";
+		}
+		else if(other)
+		{
+			lbl = KTraceFindLabel(other);
+			OtherA = lbl ? appToAnsi(lbl->name, OtherBuf, ARRAY_COUNT(OtherBuf)) : "unmapped";
+		}
+		else
+		{
+			/* No generator and no second body: the engine attached this one itself. */
+			OtherA = "attached";
+		}
+
+		for(MdtContactID c = MdtContactGroupGetFirstContact(cg);
+		    c != NULL;
+		    c = MdtContactGroupGetNextContact(cg, c))
+		{
+			MeVector3 cp, cn;
+			MdtContactGetPosition(c, cp);
+			MdtContactGetNormal(c, cn);
+
+			KTOUT("K,%d,%d,%s,%d,%s,%d,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g\n",
+				GKTraceFrame, ActorIndex, SelfA, BoneIndex,
+				OtherA, lbl ? lbl->bone : -1,
+				(double)cp[0], (double)cp[1], (double)cp[2],
+				(double)cn[0], (double)cn[1], (double)cn[2],
+				(double)MdtContactGetPenetration(c));
+			NumContacts++;
+		}
+	}
+
+	KTOUT("C,%d,%d,%s,%d,%d,%d\n",
+		GKTraceFrame, ActorIndex, SelfA, BoneIndex, NumGroups, NumContacts);
+}
+
+/* THE ONE DEFINITION OF "WHICH BODIES ARE IN THE TRACE", walked once per emitter. The bone
+   branch and the -KTRACEBONES rule live here and nowhere else, so the label table, the B rows
+   and the contact rows cannot drift into disagreeing about the body set — which would show up
+   as contacts naming `unmapped` and read like a Karma fault. */
+typedef void (*KTraceBodyFn)(INT ActorIndex, const TCHAR* Name, INT BoneIndex, McdModelID model);
+
+static void KTraceForEachBody(ULevel* level, KTraceBodyFn fn)
+{
+
+	for(INT i=0; i<level->Actors.Num(); i++)
+	{
+		AActor* Actor = level->Actors(i);
+		if(!Actor)
+			continue;
+
+		if(GKTraceBones &&
+		   Actor->Physics == PHYS_KarmaRagDoll &&
+		   Actor->Mesh && Actor->Mesh->IsA(USkeletalMesh::StaticClass()))
+		{
+			USkeletalMesh* skelMesh = Cast<USkeletalMesh>(Actor->Mesh);
+			USkeletalMeshInstance* inst = Cast<USkeletalMeshInstance>(skelMesh->MeshGetInstance(Actor));
+			if(inst)
+				for(INT b=0; b<inst->KSkelModels.Num(); b++)
+					fn(i, Actor->GetName(), b, inst->KSkelModels(b));
+			continue;
+		}
+
+		fn(i, Actor->GetName(), -1, Actor->getKModel());
+	}
+}
+
 static void KTraceLevel(ULevel* level, FLOAT FullTimestep, FLOAT SubTimestep, INT NumSubSteps)
 {
 	if(!GKTraceTried)
@@ -1711,6 +1908,7 @@ static void KTraceLevel(ULevel* level, FLOAT FullTimestep, FLOAT SubTimestep, IN
 		Parse(appCmdLine(), TEXT("KTRACEEVERY="), GKTraceEvery);
 		Parse(appCmdLine(), TEXT("KTRACEFRAMES="), GKTraceLimit);
 		GKTraceBones = ParseParam(appCmdLine(), TEXT("KTRACEBONES"));
+		GKTraceContacts = ParseParam(appCmdLine(), TEXT("KTRACECONTACTS"));
 		if(GKTraceEvery < 1)
 			GKTraceEvery = 1;
 
@@ -1722,13 +1920,15 @@ static void KTraceLevel(ULevel* level, FLOAT FullTimestep, FLOAT SubTimestep, IN
 			debugf(NAME_DevKarma, TEXT("(Karma): -KTRACE could not open '%s'."), Path);
 			return;
 		}
-		KTOUT("# ktrace v1  fixedstep=%.9g every=%d limit=%d bones=%d\n",
-			(double)GFixedTimeStep, GKTraceEvery, GKTraceLimit, (INT)GKTraceBones);
+		KTOUT("# ktrace v1  fixedstep=%.9g every=%d limit=%d bones=%d contacts=%d\n",
+			(double)GFixedTimeStep, GKTraceEvery, GKTraceLimit, (INT)GKTraceBones, (INT)GKTraceContacts);
 		KTOUT("# F,frame,fullstep,substep,numsubsteps\n");
 		KTOUT("# B,frame,actor,name,bone,enabled,px,py,pz,qx,qy,qz,qw,vx,vy,vz,wx,wy,wz\n");
 	KTOUT("# A,actor,name,class,physics,hasmodel,hasbody,bstatic\n");
-		debugf(NAME_DevKarma, TEXT("(Karma): KTRACE -> %s (every %d, limit %d, bones %d)"),
-			Path, GKTraceEvery, GKTraceLimit, (INT)GKTraceBones);
+		KTOUT("# C,frame,actor,name,bone,groups,contacts\n");
+		KTOUT("# K,frame,actor,name,bone,other,otherbone,px,py,pz,nx,ny,nz,penetration\n");
+		debugf(NAME_DevKarma, TEXT("(Karma): KTRACE -> %s (every %d, limit %d, bones %d, contacts %d)"),
+			Path, GKTraceEvery, GKTraceLimit, (INT)GKTraceBones, (INT)GKTraceContacts);
 	}
 
 	if(!GKTraceFile && !GKTraceToConsole)
@@ -1781,26 +1981,20 @@ static void KTraceLevel(ULevel* level, FLOAT FullTimestep, FLOAT SubTimestep, IN
 		}
 	}
 
-	for(INT i=0; i<level->Actors.Num(); i++)
+	/* ★ THE LABEL TABLE IS BUILT BEFORE ANY CONTACT ROW IS WRITTEN, and that is why it is its
+	   own pass rather than filled in as the B rows go out: a contact names the body on its
+	   OTHER side, and that body's row may not have been reached yet. Half a table would name
+	   half the contacts `unmapped` and read like Karma losing bodies. */
+	if(GKTraceContacts)
 	{
-		AActor* Actor = level->Actors(i);
-		if(!Actor)
-			continue;
-
-		if(GKTraceBones &&
-		   Actor->Physics == PHYS_KarmaRagDoll &&
-		   Actor->Mesh && Actor->Mesh->IsA(USkeletalMesh::StaticClass()))
-		{
-			USkeletalMesh* skelMesh = Cast<USkeletalMesh>(Actor->Mesh);
-			USkeletalMeshInstance* inst = Cast<USkeletalMeshInstance>(skelMesh->MeshGetInstance(Actor));
-			if(inst)
-				for(INT b=0; b<inst->KSkelModels.Num(); b++)
-					KTraceRow(i, Actor->GetName(), b, inst->KSkelModels(b));
-			continue;
-		}
-
-		KTraceRow(i, Actor->GetName(), -1, Actor->getKModel());
+		GKTraceLabels.Empty();
+		KTraceForEachBody(level, KTraceAddLabel);
 	}
+
+	KTraceForEachBody(level, KTraceRow);
+
+	if(GKTraceContacts)
+		KTraceForEachBody(level, KTraceContactRows);
 
 	if(GKTraceFile) fflush(GKTraceFile);	/* a run that is killed by `timeout` must still leave a usable file */
 }

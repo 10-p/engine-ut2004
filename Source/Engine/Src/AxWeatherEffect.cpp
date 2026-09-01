@@ -22,6 +22,11 @@ static	FLOAT	tmp_ScaleGlow			= 1.f;
 
 #define USE_SSE_WEATHER __HAS_SSE__
 
+/* ⚠ THE 64-BIT WEATHER PATH IS AN MSVC DIALECT SPLIT, NOT A POINTER-WIDTH ONE. Spelling it
+   `_WIN64` is what stopped this file compiling for MinGW x86_64 (ufront 2026-09-01):
+   GCC took MSVC's branch and failed on `m128i_u32`, while the helper the OTHER branch
+   needs had been #ifdef'd away by the same test. See UT_MSVC_NO_MMX in Core.h. */
+
 #if USE_SSE_WEATHER
 const	FLOAT	INV_005					= 1.f / 0.05f;
 const	FLOAT	INV_095					= 1.f / 0.95f;
@@ -29,7 +34,7 @@ static	FLOAT	FLOAT_255				= 255.f;
 static	F32vec4 M00, M10, M20, M30;
 static	F32vec4 SSE_ScaleGlow;
 
-#ifndef _WIN64
+#if !UT_MSVC_NO_MMX
 // For some reason this didn't get inlined!
 static FORCEINLINE __m64 _mm_cvtps_pi16_EPIC(__m128 a)
 {
@@ -147,7 +152,7 @@ public:
 		INT				Rendered	= 0;
 
 #if USE_SSE_WEATHER
-		#ifdef _WIN64
+		#if UT_MSVC_NO_MMX
 		const UBOOL UseScalarFallback = 0;
 		M00 = _mm_loadu_ps( &WorldToCamera.M[0][0] );
 		M10 = _mm_loadu_ps( &WorldToCamera.M[1][0] );

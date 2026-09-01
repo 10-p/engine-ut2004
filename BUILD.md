@@ -134,6 +134,7 @@ native stack* below) and any script still calling them will fail with "no such p
 | `wasm-karmadecomp-perf` | **DEPRECATED alias of `wasm-perf`.** | `build-wasm-karmadecomp-perf/` | same names |
 | `windows` | 32-bit Windows cross-build (MinGW-w64), **now with the recovered Karma** — it took three portability fixes nothing else could surface (`proven.txt` `WIN32-PORT-3`). No Pixomatic (its `.lib` is a pure import library and the DLL is not in the drop). ⚠ It BUILDS; it does not RUN under wine, and neither does the `windows-nokarma` control, so that is pre-existing rather than Karma's doing. | `build-windows/` | `Source/SDLLaunch/ut2004.exe` |
 | `windows-nokarma` | `windows` + `USE_KARMA_DECOMP=OFF` — the control that established the line above. | `build-windows-nokarma/` | `.../ut2004-nokarma.exe` |
+| *(no preset)* **Windows x64** | The 64-bit Windows cross-build, and the LAST target to be exercised at all. Not a preset because it is not a shipping configuration — see the section below for the one-liner. | `build-windows64/` | `Source/SDLLaunch/ut2004.exe` (PE32+ x86-64) |
 
 **The binary name says WHICH PHYSICS it contains**, and since 2026-08-27 that matters more than it
 used to: `ut2004`, plus `-legacykarma` for `BUILD_KARMA_REF` or `-nokarma` for neither (the
@@ -302,16 +303,77 @@ Two things this configuration cannot have:
   message. `Thirdparty/Pixomatic/Lib/pixomatic_linux.a` is a prebuilt i386 archive with no
   source — the same shape of problem Karma itself was. It used to fail at the last link step,
   after a full 200-TU build.
-- **`-lsamplerate` needs the amd64 dev package.** Most boxes here have only
-  `libsamplerate0-dev:i386`, which provides no `libsamplerate.so` for x86-64:
-  `sudo apt-get install libsamplerate0-dev:amd64`. (The amd64 X11 `-dev` packages are needed
-  too; without them SDL2's probes fail silently, `SDL_VIDEO_DRIVER_X11_SUPPORTS_GENERIC_EVENTS`
-  goes undefined, and SDL emits a fallback `XGenericEventCookie` that collides with the real
-  Xlib one.)
+- **`-lsamplerate` — HANDLED IN-TREE SINCE 2026-09-02, and you should not need to do anything.**
+  `samplerate.h` is architecture-INDEPENDENT, so `libsamplerate0-dev:i386` alone satisfies SDL2's
+  `check_include_file()`; SDL then appends a bare `-lsamplerate` and the 64-bit link dies with
+  `cannot find -lsamplerate`, a message that names nothing and points nowhere.
+  `ut_provide_samplerate_linker_name()` in `CMakeLists.txt` now probes with the compiler and, if
+  the linker name is missing, provides it inside `${CMAKE_BINARY_DIR}/complib` from the runtime
+  SONAME — no root, no apt, nothing outside the build tree. If the runtime library is missing too
+  it turns SDL's use of it off and tells you the package.
+  ⚠ **This replaced a hand-made symlink in `/tmp/kd_lib64`**, which a reboot wipes; every 64-bit
+  build afterwards failed with the message above and nothing connected the two.
+  (The amd64 X11 `-dev` packages ARE still needed; without them SDL2's probes fail silently,
+  `SDL_VIDEO_DRIVER_X11_SUPPORTS_GENERIC_EVENTS` goes undefined, and SDL emits a fallback
+  `XGenericEventCookie` that collides with the real Xlib one.)
 
 Run it out of a tree that is **not** `ut2004-assets` — a native run writes `UT2004.ini`,
 `User.ini` and logs next to itself, and polluting the asset store has cost a session before.
 Symlink the content directories in and keep a real, writable `System/`.
+
+---
+
+## Windows **x64** — LLP64, and the three things that are not about pointer width
+
+```bash
+cmake -S . -B build-windows64 -G "Unix Makefiles" \
+  -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-mingw-w64.cmake \
+  -DMINGW_TARGET_ARCH=x86_64 -DMINGW_THREAD_MODEL=posix \
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo -DUT_GFX_BACKEND=gl4es \
+  -DUSE_PIXOMATIC=OFF -DUT_ALLOW_64BIT=ON -DUSE_KARMA_DECOMP=ON
+cmake --build build-windows64 -j 12
+file build-windows64/Source/SDLLaunch/ut2004.exe   # MUST say PE32+ ... x86-64
+```
+
+⚠ **`UT_ALLOW_64BIT=ON` is required even here.** The `-m32` demotion block is gated on
+`TARGET_IS_X86 AND NOT MSVC`, and a MinGW x86_64 compiler matches it — without the option the
+build hands `-m32` to a toolchain that has no 32-bit sysroot.
+
+★ **MinGW targets LLP64: `long` is FOUR bytes and a pointer is EIGHT.** That is the one data model
+this tree had never built for, and all three build failures it caused read as something else:
+
+- **`PTRINT` was `unsigned long`** — four bytes, with eight-byte pointers. And `<windows.h>`'s
+  `DWORD` is `unsigned long` too, so PTRINT and DWORD became the **same type** and the build died
+  in `UnArc.cpp` with *"redefinition of `operator<<(FArchive&, PTRINT&)`"*. ⚠ The obvious fix —
+  `uintptr_t` everywhere — would have **broken web and i386 Linux**, where `uintptr_t` IS
+  `unsigned int` IS `DWORD` and the same redefinition appears. Only LLP64 moves
+  (`Source/Core/Inc/UnGnuG.h`).
+- **`UT_MSVC_NO_MMX`** (`Source/Core/Inc/Core.h`) — three inner loops in `AxWeatherEffect.cpp` and
+  `UnParticleEmitter.cpp` were guarded on `_WIN64` when the real question is *"is this MSVC?"*.
+  MSVC's x64 compiler dropped the MMX intrinsics; GCC keeps them at every width. MinGW defines
+  `_WIN64` **and is GCC**, so it took MSVC's branch and failed on `__m128i::m128i_u32` — an MSVC
+  extension — while the `__m64` helper the other branch needs had been `#ifdef`'d away by the same
+  test.
+- **the crash handler printed 32-bit addresses.** `%08x` truncated the image base, so it reported
+  `0x40000000` where the PE's preferred base is `0x140000000`, and every rva it printed symbolised
+  to `?? ??:0`. It now prints the base it wants you to add.
+
+**Running it.** `-OPENGLRENDERER` is not optional: Windows has no GLES, and the `-GL4ESRENDERER`
+default produces a crash that reads exactly like a physics bug — `proven.txt` records that wrong
+renderer producing a confident wrong conclusion in both directions at once.
+
+```bash
+WINEPREFIX=~/.wine64ut wine64 ./ut2004.exe \
+  "ONS-Torlan?game=Onslaught.ONSOnslaughtGame?SpectatorOnly=1?NumBots=6?QuickStart=True" \
+  -OPENGLRENDERER -nohomedir -FIXEDFPS=30 -KTRACE=ktrace-win64.csv
+```
+
+★ **Measured 2026-09-02: 11663 physics frames — 388 s of simulated time — 0 faults**, with Manta,
+Hover Bike, Goliath, PRV and RV all moving. ⚠ **Frame advance is verified in the TRACE, not the
+log**: this engine's HUD ticks on the render path, outside `ULevel::Tick`'s `IsPaused()` guard, so
+log output keeps flowing through a paused level. The first run of this build crashed at 2651
+frames in `McdConvexMeshPlaneCut` reading `0xffffffff` — a Karma LP64 defect, now repaired in the
+recovery's generator (karma-decomp `proven.txt` `LP64-GJK-CONTACT`).
 
 ---
 

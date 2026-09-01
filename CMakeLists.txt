@@ -583,6 +583,60 @@ endif()
 # SDL2 via FetchContent (per D-04). Only the gl4es backend uses SDL2; the legacy backend uses the
 # vendored SDL 1.2 .so, and Emscripten gets SDL2 from the -sUSE_SDL=2 port.
 include(FetchContent)
+
+# ---------------------------------------------------------------------------
+# ut_provide_samplerate_linker_name — SDL2's `-lsamplerate` on a 64-bit Linux
+# build where only the i386 dev package is installed.
+#
+# ⚠ THE FAILURE LOOKS NOTHING LIKE ITS CAUSE. `samplerate.h` is architecture
+# INDEPENDENT and lives in /usr/include, so `libsamplerate0-dev:i386` alone
+# satisfies SDL2's `check_include_file(samplerate.h)`; SDL then appends a bare
+# `-lsamplerate` and the 64-bit link dies with
+#
+#     /usr/bin/ld: cannot find -lsamplerate: No such file or directory
+#
+# because only the DEV package ships the unversioned `libsamplerate.so` that
+# `-l` resolves, and the amd64 one is not installed. The runtime library IS
+# there — `libsamplerate.so.0` — under a name the linker will not look for.
+#
+# ★ THIS EXISTED FOR A WEEK AS `-L/tmp/kd_lib64`, A HAND-MADE SYMLINK IN A
+# DIRECTORY THAT DOES NOT SURVIVE A REBOOT. Every 64-bit build after one would
+# fail with the message above and nothing anywhere connected it to a wiped /tmp.
+# Doing it here makes the build self-sufficient: no root, no apt, nothing
+# outside the build tree — and if the runtime library is missing too, the build
+# says which package to install rather than failing at the link.
+function(ut_provide_samplerate_linker_name)
+  if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+    return()
+  endif()
+  # Ask the linker itself rather than guessing a path: `-lsamplerate` is exactly
+  # what SDL2 will emit, so this probe runs the thing that would actually fail.
+  execute_process(COMMAND ${CMAKE_C_COMPILER} -lsamplerate -o /dev/null -xc /dev/null
+                  RESULT_VARIABLE _sr_rc OUTPUT_QUIET ERROR_QUIET)
+  if(_sr_rc EQUAL 0)
+    return()                                    # the dev package is installed
+  endif()
+  find_library(UT_SAMPLERATE_SONAME NAMES libsamplerate.so.0
+               PATHS /usr/lib/x86_64-linux-gnu /usr/lib64 /usr/lib)
+  if(NOT UT_SAMPLERATE_SONAME)
+    message(STATUS
+      "libsamplerate not usable at 64-bit -- disabling SDL2's use of it. "
+      "For the better resampler: sudo apt-get install libsamplerate0-dev:amd64")
+    set(SDL_LIBSAMPLERATE OFF CACHE BOOL "" FORCE)
+    return()
+  endif()
+  set(_dir "${CMAKE_BINARY_DIR}/complib")
+  file(MAKE_DIRECTORY "${_dir}")
+  file(CREATE_LINK "${UT_SAMPLERATE_SONAME}" "${_dir}/libsamplerate.so" SYMBOLIC)
+  # link_directories() is directory-scoped and SDL2 is added as a subdirectory
+  # from HERE, so it reaches SDL's own link; the linker flag covers the targets
+  # that record a link line of their own.
+  link_directories("${_dir}")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -L${_dir}" PARENT_SCOPE)
+  message(STATUS "libsamplerate: no amd64 dev package -- linking through "
+                 "${_dir}/libsamplerate.so -> ${UT_SAMPLERATE_SONAME}")
+endfunction()
+
 if(NOT EMSCRIPTEN AND UT_GFX_BACKEND STREQUAL "gl4es")
   FetchContent_Declare(
     SDL2
@@ -640,6 +694,7 @@ if(NOT EMSCRIPTEN AND UT_GFX_BACKEND STREQUAL "gl4es")
       set(SDL_X11 ON CACHE BOOL "" FORCE)
       set(SDL_WAYLAND OFF CACHE BOOL "" FORCE)
       set(SDL_X11_SHARED OFF CACHE BOOL "" FORCE)
+      ut_provide_samplerate_linker_name()
       FetchContent_MakeAvailable(SDL2)
     endif()
   endif()

@@ -1020,6 +1020,37 @@ MeBool KIntersect(McdModelPair *p, McdIntersectResult *result)
 
 	unguard;
 
+	/* KD_IXPROBE — one line per NEARFIELD INTERSECTION: the two actors, their geometry types,
+	   and what the interaction concluded. Off unless the environment variable is set.
+
+	   ★ THIS IS THE INSTRUMENT THAT LOCALISED THE OPEN LP64 DEFECT, and it is kept because that
+	   defect is still open. The two traces are a pure SEQUENCE: both widths are deterministic, so
+	   `diff` on the two logs names the first pair whose answer differs, and everything before it
+	   is proof the inputs agreed. On test-karma-1 under Onslaught it was identical for 733 lines
+	   and then:
+
+	       IX ONSHoverBike3(t2) StaticMeshActor2(t7) touch=1 n=3      SSE-32
+	       IX ONSHoverBike3(t2) StaticMeshActor2(t7) touch=0 n=0      LP64
+
+	   t2 is Box and t7 is ConvexMesh, so that is `McdGjkCgIntersect` — from inputs the body rows
+	   show to be bit-identical up to that frame. See decomp/docs/STATE.md, OPEN ITEMS item 1.
+
+	   ⚠ The flag is read ONCE. This is called for every model pair every frame, and a getenv() in
+	   that loop is a measurable cost on a build whose timing nobody is watching. */
+	{
+		static INT IxProbe = -1;
+		if(IxProbe < 0)
+			IxProbe = getenv("KD_IXPROBE") ? 1 : 0;
+		if(IxProbe)
+		{
+			AActor* pa1 = KModelGetActor(p->model1);
+			AActor* pa2 = KModelGetActor(p->model2);
+			printf("IX %s(t%d) %s(t%d) touch=%d n=%d\n",
+				pa1 ? appToAnsi(pa1->GetName()) : "level", type1,
+				pa2 ? appToAnsi(pa2->GetName()) : "level", type2,
+				(int)result->touch, (int)result->contactCount);
+		}
+	}
 
 	return 1;  // intersect function found
 

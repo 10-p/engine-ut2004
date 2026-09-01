@@ -2640,12 +2640,18 @@ static LONG WINAPI appWinUnhandledException( EXCEPTION_POINTERS* Info )
 
 	debugf( NAME_Critical, TEXT("=== CRASH (unhandled exception) ===") );
 	debugf( NAME_Critical, TEXT("%s  code=0x%08x"), Name, (DWORD)Code );
-	debugf( NAME_Critical, TEXT("Image base: 0x%08x   (subtract this from the addresses below)"), (DWORD)(size_t)Base );
+	// ⚠ %08x TRUNCATES A 64-BIT BASE, and this is not cosmetic: on Win64 the PE's preferred base
+	// is 0x140000000, so the printed base was `0x40000000` and every rva computed from it sent
+	// addr2line to an address that resolves to nothing. Measured 2026-09-02 on the first x86-64
+	// Windows crash this engine has ever produced -- seven candidate frames, seven `?? ??:0`.
+	debugf( NAME_Critical, TEXT("Image base: 0x%016llx   (subtract this from the addresses below)"),
+	        (QWORD)(size_t)Base );
 
 	if( Info && Info->ExceptionRecord )
 	{
 		const BYTE* At = (const BYTE*)Info->ExceptionRecord->ExceptionAddress;
-		debugf( NAME_Critical, TEXT("Faulting address: 0x%08x   rva=0x%08x"), (DWORD)(size_t)At, (DWORD)(At - Base) );
+		debugf( NAME_Critical, TEXT("Faulting address: 0x%016llx   rva=0x%08x"),
+		        (QWORD)(size_t)At, (DWORD)(At - Base) );
 		// An access violation records what it was doing and to which address -- usually the whole story
 		// (a read of 0x00000000 is a null deref, and the offset says which field).
 		if( Code == EXCEPTION_ACCESS_VIOLATION && Info->ExceptionRecord->NumberParameters >= 2 )
@@ -2751,7 +2757,12 @@ static LONG WINAPI appWinUnhandledException( EXCEPTION_POINTERS* Info )
 	if( GErrorHist[0] )
 		debugf( NAME_Critical, TEXT("Guard history (may be stale, not necessarily this crash): %s"), GErrorHist );
 
-	debugf( NAME_Critical, TEXT("Symbolise with: addr2line -f -C -e ut2004.exe <rva + 0x400000>") );
+	// The image base, not a literal: 0x400000 is the 32-bit PE default and is wrong by
+	// 0x13fc00000 on x86-64. Printing the number the reader must actually add removes the step
+	// where they guess it.
+	debugf( NAME_Critical,
+	        TEXT("Symbolise with: addr2line -f -C -e ut2004.exe <rva + 0x%016llx>"),
+	        (QWORD)(size_t)GetModuleHandleA( NULL ) );
 	debugf( NAME_Critical, TEXT("=== END CRASH ===") );
 
 	if( GLog )
@@ -2781,7 +2792,7 @@ static void appWinAbort( int )
 		Reentered = 1;
 		GIsCriticalError = 1;
 		debugf( NAME_Critical, TEXT("=== CRASH (abort) ===") );
-		debugf( NAME_Critical, TEXT("Image base: 0x%08x"), (DWORD)(size_t)GetModuleHandleA( NULL ) );
+		debugf( NAME_Critical, TEXT("Image base: 0x%016llx"), (QWORD)(size_t)GetModuleHandleA( NULL ) );
 		if( GErrorHist[0] )
 			debugf( NAME_Critical, TEXT("Last engine error: %s"), GErrorHist );
 		{

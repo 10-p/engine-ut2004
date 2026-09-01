@@ -492,7 +492,7 @@ FLOAT UParticleEmitter::SpawnParticles( FLOAT OldLeftover, FLOAT Rate, FLOAT Del
 // Tick each individual particle.
 #if __HAS_SSE__
 static FLOAT FLOAT_255 = 255.f;
-#if !defined(_WIN64)
+#if !UT_MSVC_NO_MMX	/* the MMX helper below; see UT_MSVC_NO_MMX in Core.h */
 // For some reason this didn't get inlined!
 static FORCEINLINE __m64 _mm_cvtps_pi16_EPIC(__m128 a)
 {
@@ -1082,7 +1082,7 @@ INT UParticleEmitter::UpdateParticles( FLOAT DeltaTime )
 			}
 		}
 #if __HAS_SSE__
-		#if defined(_WIN64)
+		#if UT_MSVC_NO_MMX	/* MSVC x64 has no MMX intrinsics; GCC does, at every width */
 		F32vec4 Dummy	=	_mm_mul_ps
 							(
 								_mm_loadu_ps(&Color.X)
