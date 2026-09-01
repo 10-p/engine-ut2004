@@ -112,10 +112,33 @@ android {
                 // SDL2's feature probes need (the i386 ones are installed for the shipping
                 // build). On the device itself, attach the NDK's lldb-server instead.
                 //
-                // Build with `-PwithKarma` to reproduce it — add `-PkarmaDir=/path` to test a
-                // local metoolkit-karma-decomp checkout — and the default stays a NO_KARMA APK
-                // that starts, because an APK without vehicles beats an APK that does not run.
-                if (!project.hasProperty('withKarma')) {
+                // ★★★ ALL OF THE ABOVE IS HISTORY NOW, AND THE DEFAULT HAS CAUGHT UP WITH IT
+                // (2026-09-01). The LP64 port plays. Measured on a OnePlus 6, `ONS-Dria` with
+                // `Game=Onslaught.ONSOnslaughtGame`, bots, vehicles and ragdolls, as a spectator
+                // so nothing can pause the level:
+                //
+                //   arm64-v8a    1397 s (23 min), 0 signals, frame advance verified every 60 s
+                //   armeabi-v7a  the SAME match on the 32-bit slice: 508 s, 0 signals
+                //
+                // ★ The armv7 arm is the attribution control the note above kept asking for, and
+                // it now says the opposite of what it used to: BOTH WIDTHS PLAY. So `Karma is
+                // NEUTRAL at 32-bit and FATAL at 64-bit` is no longer true of this engine.
+                // (metoolkit-karma-decomp `9a92414`, six more LP64 repairs; the last one was a
+                // callback's `void *` context read at i386 offsets, which no static gate in that
+                // project can see — see its decomp/docs/STATE.md.)
+                //
+                // ⚠ SO THE DEFAULT IS NOW KARMA ON: an APK with vehicles and ragdolls is the
+                // point of the whole exercise, and it starts. `-PnoKarma` builds the old
+                // physics-free APK if you need the control arm again; `-PkarmaDir=/path` still
+                // points at a local metoolkit-karma-decomp checkout.
+                //
+                // ⚠ VERIFY IN THE ARTEFACT, NOT THE GRADLE LOG. It reports "BUILD SUCCESSFUL,
+                // up-to-date" whether or not it recompiled:
+                //   nm -D --defined-only <arm64 .so> | grep -c McdAggregateCreate
+                //   llvm-objdump -d --disassemble-symbols=MePoolxDictNodeAllocate <.so>
+                //     -> `mov x9, #0x10` / `#0x14` are the LP64 MePoolx offsets; 0xc/0x10 are the
+                //        i386 ones and mean you are looking at a stale object.
+                if (project.hasProperty('noKarma')) {
                     cmakeArgs += '-DUSE_KARMA_DECOMP=OFF'
                 }
                 if (sdl2Dir && file(sdl2Dir).isDirectory()) {

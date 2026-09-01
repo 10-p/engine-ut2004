@@ -332,16 +332,28 @@ endif()
 # of the 134 that REMAIN moves any of the three scenes, which is a measurement over three scenes
 # and not a proof over the corpus.
 #
-# ⚠ AND ANDROID AT 64-BIT STILL CRASHES WITH KARMA ON — re-measured 2026-08-30 with these
-# repairs in place: SIGSEGV right after the render device init, 501 log lines against 2153 for
-# the same APK with Karma off. It is NOT the layout defect that was closed. See the Karma block
-# in Android/app/build.gradle. Treat the first arm64 run as a measurement, not a formality.
+# ★★★ AND 64-BIT KARMA NOW PLAYS. This block used to read "⚠ ANDROID AT 64-BIT STILL CRASHES
+# WITH KARMA ON — re-measured 2026-08-30 ... 501 log lines against 2153". That is no longer true,
+# and leaving it would have been the third time this note was wrong. Measured 2026-09-01:
+#
+#   arm64-v8a (OnePlus 6)  ONS-Dria Onslaught, bots + vehicles + ragdolls, spectator:
+#                          1397 s (23 min), 0 signals, frame advance verified every 60 s
+#   armeabi-v7a            the SAME match on the 32-bit slice: 508 s, 0 signals
+#   x86-64 Linux           no Karma frame left in an 8-gametype sweep
+#
+# ★ The armv7 arm is the attribution control the old note kept asking for, and it says the
+# opposite of what that note concluded: BOTH WIDTHS PLAY. So "Karma is neutral at 32-bit and
+# fatal at 64-bit" is dead. The last defect was a callback's `void *` context read at i386
+# offsets, which no static gate in metoolkit-karma-decomp can see — its decomp/docs/STATE.md has
+# the gdb dump. Karma is ON by default on every target now, including Android.
+#
+# ⚠ WHAT IS STILL NOT TESTED AT 64-BIT: Android x86_64 (in the APK, never run), and the Windows
+# 64-bit binary (built with Karma, never run). KD_LP64_OK is still honoured as a way to silence
+# this note in a script.
 if(USE_KARMA_DECOMP AND UT_PTR_BYTES GREATER 4 AND NOT KD_LP64_OK)
   message(STATUS
     "USE_KARMA_DECOMP on a ${UT_PTR_BYTES}-byte-pointer target (arch "
-    "${TARGET_ARCH}${ANDROID_ABI}). The LP64 post-passes are in `metoolkit_decomp/src`; "
-    "lp64_pipeline.sh passes on the offline scenes. arm64 also faults on unaligned access, "
-    "which those scenes cannot test — see the note above this line.")
+    "${TARGET_ARCH}${ANDROID_ABI}) -- LP64 Karma, which plays: see the note above this line.")
 endif()
 
 if(NOT BUILD_KARMA_REF AND NOT USE_KARMA_DECOMP)

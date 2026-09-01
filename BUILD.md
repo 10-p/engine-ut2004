@@ -461,9 +461,24 @@ byte-identical:** every Android delta is behind `#if defined(__ANDROID__)` (C++)
   (`libSDL2.so`, aliased to `SDL2::SDL2-static`); stdout/stderr → logcat (`UT2004` tag; SELinux
   blocks `setprop log.redirect-stdio`). There is **no** `-fpack-struct=4` here (that was the
   UE1/UTA build) — packing stays `#pragma pack` under `-DSUPPORTS_PRAGMA_PACK=1`.
-- **64-bit and Karma do not currently mix.** `USE_KARMA_DECOMP` is a 32-bit-pointer assumption: the
-  recovered sources encode i386 struct layouts. armv7 is fine; **arm64 is not** — `HANDOVER.md`
-  §6b has the measurement and `metoolkit-karma-decomp `decomp/tools/layout_check.py`` the gate.
+- **★ 64-bit AND KARMA NOW MIX, AND KARMA IS THE DEFAULT (2026-09-01).** `USE_KARMA_DECOMP` used
+  to be a 32-bit-pointer assumption — the recovered sources encoded i386 struct layouts — and this
+  line used to say *"armv7 is fine; arm64 is not"*. The LP64 post-passes in
+  `metoolkit-karma-decomp` closed that. Measured on a OnePlus 6, `ONS-Dria` Onslaught with bots,
+  vehicles and ragdolls, run as a **spectator** so nothing can pause the level:
+
+  | ABI | result |
+  |---|---|
+  | `arm64-v8a` | **1397 s (23 min), 0 signals**, frame advance verified every 60 s |
+  | `armeabi-v7a` | the same match on the 32-bit slice: **508 s, 0 signals** |
+
+  ★ The armv7 arm is the attribution control: **both widths play**, so arm64 is not passing because
+  64-bit is lenient. `./gradlew :app:assembleDebug` now builds a Karma APK; **`-PnoKarma`** builds
+  the old physics-free control. ⚠ `x86_64` is in the APK and has still never been run.
+  ⚠ **Verify in the artefact, not the gradle log** — it says "BUILD SUCCESSFUL, up-to-date" whether
+  or not it recompiled. `llvm-objdump -d --disassemble-symbols=MePoolxDictNodeAllocate <arm64 .so>`
+  should show `mov x9, #0x10` / `#0x14` (the LP64 `MePoolx` offsets); `0xc`/`0x10` are the i386
+  ones and mean the object is stale.
 
 ```bash
 # NDK r30 + SDK cmake + Android Studio JBR 21. Emulator: x86_64 / API-34 (arm64 runs via translation).
