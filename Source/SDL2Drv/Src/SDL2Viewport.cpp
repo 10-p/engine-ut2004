@@ -1003,25 +1003,54 @@ UBOOL USDL2Viewport::ResizeViewport( DWORD NewBlitFlags, INT InNewX, INT InNewY,
     UpdateWindowFrame();
 
     // Save info.
+    //
+    // ⚠⚠ A DEGENERATE SIZE MUST NOT BE PERSISTED, AND THE `NewX && NewY` TEST THIS REPLACES WAS NOT
+    // ENOUGH — it only rejected ZERO. Anything else went straight into the ini and was read back on
+    // the next launch, and because that size lays out the GUI, a small enough one BRICKS THE GAME
+    // in a way the player cannot undo from inside it:
+    //
+    //   * UGUITabControl::PreDraw computes `(BorderOffsets[0] + BorderOffsets[2]) / Count`, where
+    //     Count is the number of tab buttons placed in the current row. BorderOffsets is INT, so
+    //     that is an INTEGER divide. At a row width of two pixels NO tab fits, the row is flushed
+    //     with Count == 0, and the process takes SIGFPE before it can draw a menu.
+    //   * FCanvasUtil::Vertices, the TArray<FCanvasVertex> DrawTile appends to, reached 106441334
+    //     elements (2554592016 bytes at 24 each) -> `REALLOC FAILED` -> SIGSEGV in the
+    //     FCanvasVertex constructor, writing into the allocation that had just failed.
+    //
+    // Measured 2026-09-01 in a scratch run tree that had drifted to WindowedViewportX=2,
+    // WindowedViewportY=28 — written by an earlier headless run of this very code, read back, and
+    // re-saved, feeding on itself (it passed through 2x1 on the way). Eight of eight gametypes read
+    // as an engine UI bug until the ini was pinned; then all eight ran 150 s clean.
+    //
+    // ★ THE CLAMP IS ON THE SAVE ONLY. The live viewport keeps whatever size it actually has, so
+    // nothing about rendering changes and the web path — where ResizeViewport takes its size from
+    // the canvas — is untouched. This only refuses to WRITE a value that would not be recoverable.
+    // 320x240 is UT2004's own minimum supported mode, so it is a floor the game already knows how
+    // to lay out rather than a number invented here.
     if( RenDev && !GIsEditor && bSaveSize )
     {
-        if( NewBlitFlags & BLIT_Fullscreen )
+        const INT MinSaveX = 320, MinSaveY = 240;
+        if( NewX >= MinSaveX && NewY >= MinSaveY )
         {
-            if( NewX && NewY )
+            if( NewBlitFlags & BLIT_Fullscreen )
             {
                 Client->FullscreenViewportX  = NewX;
                 Client->FullscreenViewportY  = NewY;
             }
-        }
-        else
-        {
-            if( NewX && NewY )
+            else
             {
                 Client->WindowedViewportX  = NewX;
                 Client->WindowedViewportY  = NewY;
             }
+            Client->SaveConfig();
         }
-        Client->SaveConfig();
+        else if( NewX || NewY )
+        {
+            debugf( NAME_Log,
+                    TEXT("[SDL2Viewport] NOT saving a %ix%i viewport - below the %ix%i floor. The ini keeps %ix%i so the next launch can still draw a menu."),
+                    NewX, NewY, MinSaveX, MinSaveY,
+                    Client->WindowedViewportX, Client->WindowedViewportY );
+        }
     }
 
     return 1;
