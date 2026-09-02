@@ -59,21 +59,29 @@ Karma (MathEngine `metoolkit`) is UT2004's physics: Onslaught vehicles and ragdo
 That repository holds the v3369 `metoolkit/` drop, the 145 recovered objects as
 `metoolkit_decomp/`, the toolchain that produces them, and the gates that judge them. This
 repository holds **only the engine-side bridge**: `Source/Engine/Src/K*.cpp`, `KarmaSupport.cpp`,
-`KarmaGlibcCompat.c`, and the CMake that links it. Nothing of the recovery is vendored here —
+and the CMake that links it. Nothing of the recovery is vendored here —
 the top-level `CMakeLists.txt` FetchContents it at `main`, unpinned.
 
 **Before changing anything about the recovered physics, work in that repository, not this one**
 — read its `CLAUDE.md`, then `decomp/docs/STATE.md` and `decomp/proven.txt` (the evidence ledger:
 a non-comment line in it releases an object, and nothing is released without evidence).
 
-Three mutually exclusive states, not two:
+**TWO states, and that changed on 2026-09-02.** `BUILD_KARMA_REF` — MathEngine's prebuilt i386
+archives, linked as an alternative implementation — is **gone**, with its four presets, its
+mutual-exclusion `FATAL_ERROR`, its `-legacykarma` binary suffix and `KarmaGlibcCompat.c`.
+
 | | what links | presets |
 |---|---|---|
-| default | nothing; `NO_KARMA=1` | `native`, `wasm`, `wasm-perf`, `wasm-debug`, `windows` |
-| `BUILD_KARMA_REF=ON` | MathEngine's prebuilt i386 archives, from the fetched SDK | `native-karma`, `karma-ref` |
-| `USE_KARMA_DECOMP=ON` | `metoolkit_decomp::all`, the recovered sources | `wasm-karmadecomp-{debug,perf}` |
+| `USE_KARMA_DECOMP=ON` (**default**) | `metoolkit_decomp::all`, the recovered sources | every preset that can take it |
+| `USE_KARMA_DECOMP=OFF` | nothing; `NO_KARMA=1` | `native-nokarma`, `wasm-nokarma`, `windows-nokarma` |
 
-Setting both of the latter is a hard CMake error — they define the same symbols.
+It existed to be the A/B reference while the recovery was unproven, and the recovery is no longer
+unproven: it is the physics on wasm (55/55), Linux x86-64, **Windows x64**, Android arm64 and
+armv7, its 64-bit trace is byte-identical to the 32-bit control, and it plays a full i386 match
+against a metoolkit with every shipped member deleted. ★ The recovered-vs-MathEngine comparison it
+provided still exists and is **stronger** where it lives — `metoolkit-karma-decomp`'s
+`decomp/test/standalone/difftest_pair.sh` and `substitute_test.sh` link the SDK archives that
+repository vendors, per object, needing no engine at all.
 
 ⚠ **A Karma build needs the network on first configure**, like GL4ES and SDL2. To build offline
 or to test an unpushed change to the recovered sources, point

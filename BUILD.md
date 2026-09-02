@@ -78,9 +78,9 @@ cmake --preset native
 cmake --build --preset native -j"$(nproc)"
 #   -> build-native/Source/SDLLaunch/ut2004-pixo.bin
 
-cmake --preset native-karma
-cmake --build --preset native-karma -j"$(nproc)"
-#   -> build-native-karma/Source/SDLLaunch/ut2004-karma-pixo.bin
+cmake --preset windows64
+cmake --build --preset windows64 -j"$(nproc)"
+#   -> build-windows64/Source/SDLLaunch/ut2004.exe   (run it under wine; see ktrace_gate.sh)
 
 # =========================== WEB (needs $EMSDK) ============================
 source ~/emsdk/emsdk_env.sh
@@ -105,8 +105,9 @@ cmake --build --preset wasm-karmadecomp-perf -j"$(nproc)"
 
 > **Build trees are disposable and are not kept.** Every `build-*/` directory is gitignored and
 > reproducible from the two commands above; they are deleted rather than carried. The **one
-> exception** is `build-native-karma/`, which `metoolkit-karma-decomp `decomp/tools/dropin_gap.py`` and
-> `reachable.py` read object files from. It has to be that one — an engine built without Karma
+> exception** is a Karma build — `build-native/` will do — which `metoolkit-karma-decomp
+> `decomp/tools/dropin_gap.py`` and `reachable.py` read object files from. It has to be a Karma one:
+> an engine built without Karma
 > imports no Karma symbols, so those tools would walk an empty closure and report the drop-in gap
 > as zero for the wrong reason. Both now refuse that case; see `metoolkit-karma-decomp `decomp/tools/README.md``.
 
@@ -121,10 +122,7 @@ native stack* below) and any script still calling them will fail with "no such p
 | Preset | What it is | Build dir | Output |
 |--------|-----------|-----------|--------|
 | `native` | 32-bit native. SDL2 + `OpenGLDrv` + `GL4ESDrv` + `PixoDrv`, **all in one binary**; pick at startup. The WASM stack's native twin. | `build-native/` | `Source/SDLLaunch/ut2004-pixo.bin` |
-| `native-karma` | Older name for `legacy-karma` below; same configuration, kept so existing commands work. | `build-native-karma/` | `.../ut2004-legacykarma-pixo.bin` |
-| **`legacy-karma`** | `native` **+ `BUILD_KARMA_REF`** — links MathEngine's ORIGINAL 32-bit archives instead of the recovered sources. **The A/B reference**, and i386-Linux-only by construction: the shipped members are 32-bit Linux ELF, which is the whole reason `metoolkit-karma-decomp` exists. It earned its keep the day it was added — it played a 300 s ONS match that the recovered build crashed 25 s into. | `build-legacy-karma/` | `.../ut2004-legacykarma-pixo.bin` |
 | **`native-nokarma`** | `native` **+ `USE_KARMA_DECOMP=OFF`** — the NO_KARMA control. Not a spare: it is what says whether a failure is Karma's fault or the harness's, and the ut2004 browser suite's 51/51 only meant something because this arm was run through it in the same session. | `build-native-nokarma/` | `.../ut2004-nokarma-pixo.bin` |
-| `karma-ref` | The same configuration as `native-karma` in a second directory, kept so the Karma change can be A/B'd without disturbing the 2.34 matrix build. (Its preset description claims "without Pixomatic"; it inherits `native`, which turns Pixomatic on. The description is stale, the config is not.) | `build-karma-ref/` | `.../ut2004-karma-pixo.bin` |
 | `physics` | `native` + `WITH_PHYSICS=ON` — the Jolt vehicle sources in `Source/Onslaught`. Not part of the green checkpoint and not exercised recently. | `build-physics/` | `.../ut2004-pixo.bin` |
 | `wasm` | **The everyday web build.** `-O2 -g`: named stacks, DWARF, assertions, and still playable. | `build-wasm/` | `Source/SDLLaunch/SDLLaunch.{js,wasm,data}` |
 | `wasm-debug` | `-O0`, nothing inlined, every local live. **Last resort** — reach for it when the *optimiser* is the suspect. ~5× the boot time. | `build-wasm-debug/` | same names |
@@ -133,23 +131,25 @@ native stack* below) and any script still calling them will fail with "no such p
 | `wasm-karmadecomp-debug` | **DEPRECATED alias of `wasm-debug`.** Karma is the default now, so the two are the same build. Kept working so existing commands and the handovers do not rot. | `build-wasm-karmadecomp-debug/` | same names |
 | `wasm-karmadecomp-perf` | **DEPRECATED alias of `wasm-perf`.** | `build-wasm-karmadecomp-perf/` | same names |
 | `windows` | 32-bit Windows cross-build (MinGW-w64), **now with the recovered Karma** — it took three portability fixes nothing else could surface (`proven.txt` `WIN32-PORT-3`). No Pixomatic (its `.lib` is a pure import library and the DLL is not in the drop). ⚠ It BUILDS; it does not RUN under wine, and neither does the `windows-nokarma` control, so that is pre-existing rather than Karma's doing. | `build-windows/` | `Source/SDLLaunch/ut2004.exe` |
+| **`windows64`** | 64-bit Windows (MinGW-w64 cross) **with the recovered Karma** — the only reason an x64 Windows build exists, since MinGW cannot link MathEngine's MSVC-mangled prebuilts. **LLP64**: `long` is 4 bytes where Linux's is 8 and pointers are 8 on both, so it is the only target exercising that combination. Validated through the same trajectory gate as everything else (`ktrace_gate.sh` runs a `.exe` under wine). | `build-windows64/` | `.../ut2004.exe` |
 | `windows-nokarma` | `windows` + `USE_KARMA_DECOMP=OFF` — the control that established the line above. | `build-windows-nokarma/` | `.../ut2004-nokarma.exe` |
 | *(no preset)* **Windows x64** | The 64-bit Windows cross-build, and the LAST target to be exercised at all. Not a preset because it is not a shipping configuration — see the section below for the one-liner. | `build-windows64/` | `Source/SDLLaunch/ut2004.exe` (PE32+ x86-64) |
 
-**The binary name says WHICH PHYSICS it contains**, and since 2026-08-27 that matters more than it
-used to: `ut2004`, plus `-legacykarma` for `BUILD_KARMA_REF` or `-nokarma` for neither (the
-recovered Karma is the default and so goes unmarked), plus `-pixo` if Pixomatic. Emscripten keeps
+**The binary name says WHICH PHYSICS it contains**: `ut2004`, plus `-nokarma` when
+`USE_KARMA_DECOMP=OFF` (the recovered Karma is the default and so goes unmarked), plus `-pixo` if
+Pixomatic. Emscripten keeps
 the `SDLLaunch` name — the web harness depends on it. Android builds `libUT2004.so`.
 
-> The suffix used to be `-karma` for `BUILD_KARMA_REF` and nothing otherwise. When the recovered
+> The suffix used to be `-karma` for the legacy archives and nothing otherwise. When the recovered
 > Karma became the default that made `native` and `native-nokarma` BOTH produce `ut2004-pixo.bin` —
 > same filename, opposite physics — and telling those two apart is the entire point of the control.
+> (`-legacykarma` went with `BUILD_KARMA_REF` on 2026-09-02.)
 
 ### Karma is the DEFAULT on every 32-bit target (2026-08-27)
 
-`USE_KARMA_DECOMP` is **ON by default**. `native`, `windows`, `wasm`, `wasm-debug` and `wasm-perf`
-all link the recovered Karma; `legacy-karma` asks for MathEngine's originals and the `*-nokarma`
-presets ask for neither.
+`USE_KARMA_DECOMP` is **ON by default**. `native`, `windows`, `windows64`, `wasm`, `wasm-debug` and
+`wasm-perf` all link the recovered Karma; the `*-nokarma` presets ask for none. There is no longer a
+third state — see the note under "Karma" below.
 
 **Android is the exception and it is deliberate.** `Android/app/build.gradle` passes
 `-DUSE_KARMA_DECOMP=OFF` explicitly, because two of its three ABIs (`arm64-v8a`, `x86_64`) are LP64
@@ -207,14 +207,14 @@ CMakeLists enforces this rather than trusting it: `UT_PTR_BYTES` is computed onc
 ### The `wasm-karmadecomp-*` presets — what they do differently
 
 **This is the point of the whole `metoolkit-karma-decomp` effort.** MathEngine shipped Karma as binary-only
-32-bit x86 archives, so `BUILD_KARMA_REF` can never work off x86 and the web build has always been
+32-bit x86 archives, so linking THOSE can never work off x86 and the web build had always been
 `NO_KARMA` — no vehicles, no ragdolls. `metoolkit-karma-decomp` recovered those archives as ordinary
 portable C, which compiles for wasm32 like anything else in the tree.
 
 The presets differ from plain `wasm-debug` / `wasm-perf` by **one cache variable**,
 `USE_KARMA_DECOMP=ON`, which does two things:
 
-1. **Compile side — identical to `BUILD_KARMA_REF`.** `WITH_KARMA=1` globally (so `NO_KARMA` is
+1. **Compile side.** `WITH_KARMA=1` globally (so `NO_KARMA` is
    *not* defined and the eleven `Source/Engine/Src/K*.cpp` bridge files are compiled), plus
    metoolkit's public headers on the include path. Those headers are portable C and were never the
    problem.
@@ -223,8 +223,11 @@ The presets differ from plain `wasm-debug` / `wasm-perf` by **one cache variable
    objects, checked in — see `metoolkit-karma-decomp `metoolkit_decomp/README.md``) plus the hand-written convex-hull
    replacement ``decomp/src/McdConvexCreateHull/kd_convexhull.c``.
 
-`USE_KARMA_DECOMP` and `BUILD_KARMA_REF` are two implementations of the same API and both define
-its symbols, so setting both is a hard CMake error.
+⚠ **`BUILD_KARMA_REF` was removed on 2026-09-02.** It linked MathEngine's prebuilt i386 archives as
+a second implementation of this same API, and it existed to be the A/B reference while the recovery
+was unproven. That comparison still exists, per object and without an engine, in
+`metoolkit-karma-decomp`'s `difftest_pair.sh` / `substitute_test.sh` against the SDK archives that
+repository vendors — which is both stronger and where it belongs.
 
 **There is deliberately no `native-karmadecomp` preset.** On i386 the equivalent already exists and
 is stronger: `metoolkit-karma-decomp `decomp/test/standalone/make_dropin_metoolkit.sh`` builds a metoolkit tree with every shipped
@@ -471,8 +474,8 @@ drivers, coupled 1:1 to an SDL viewport manager) its matching `ViewportManager`:
 | Switch | Render device | Viewport | Available in |
 |--------|---------------|----------|--------------|
 | `-GL4ESRENDERER`   | `GL4ESDrv.GL4ESRenderDevice`   | `SDL2Drv.SDL2Client` | all presets (the default on web) |
-| `-OPENGLRENDERER`  | `OpenGLDrv.OpenGLRenderDevice` | `SDL2Drv.SDL2Client` | `native*`, `karma-ref`, `physics`, `windows` |
-| `-SOFTWARERENDERER`| `PixoDrv.PixoRenderDevice`     | (keep current)       | `native*`, `karma-ref`, `physics` (`USE_PIXOMATIC=ON`, never on web or Windows) |
+| `-OPENGLRENDERER`  | `OpenGLDrv.OpenGLRenderDevice` | `SDL2Drv.SDL2Client` | `native*`, `physics`, `windows*` |
+| `-SOFTWARERENDERER`| `PixoDrv.PixoRenderDevice`     | (keep current)       | `native*`, `physics` (`USE_PIXOMATIC=ON`, never on web or Windows) |
 | `-NULLRENDERER`    | `Engine.NullRenderDevice`      | (keep current)       | all presets |
 
 - Availability is a `StaticFindObject` on the class' short name — a device statically linked into
@@ -631,9 +634,9 @@ Bundled dependencies live under `Thirdparty/`: `zlib`, `Vorbis` (ogg+vorbis), `S
 (headers), and the closed prebuilt libs `metoolkit/` (Karma physics) + `Pixomatic/` (software
 renderer). SDL2 and GL4ES are **not** vendored — they're fetched via CMake FetchContent.
 
-Karma has three states, not two: **off** (the default, `NO_KARMA=1`), **`BUILD_KARMA_REF=ON`**
-(MathEngine's prebuilt 32-bit x86 archives; the `native-karma`/`karma-ref` presets), and
-**`USE_KARMA_DECOMP=ON`** (the recovered sources; the `wasm-karmadecomp-*` presets). Pixomatic is
+Karma has **two** states since 2026-09-02: **`USE_KARMA_DECOMP=ON`** (the recovered sources — the
+default everywhere the pointer width allows) and **OFF** (`NO_KARMA=1`, the `*-nokarma` controls).
+The third, `BUILD_KARMA_REF`, linked MathEngine's prebuilt 32-bit x86 archives and is gone. Pixomatic is
 `USE_PIXOMATIC` — on for every native preset, never on web or Windows.
 
 The former non-game bloat has been **removed** (see git history): the bundled `DirectX8/9/9_AMD64`

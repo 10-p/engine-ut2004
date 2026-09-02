@@ -265,36 +265,30 @@ endif()
 # Case-insensitive file system emulation
 add_definitions(-D__FILE_NOCASE=1)
 
-# Karma: disabled by default (per D-09) — the modern web/native stacks don't use it. ufront 2.12 Part B
-# restores the BUILD_KARMA_REF cmake path (linking the prebuilt 32-bit metoolkit libs) to exercise it as an
-# optional third native binary; the `karma-ref` preset sets it. NO_KARMA stays defined unless it's ON.
-option(BUILD_KARMA_REF "Build the 32-bit Karma reference (links the prebuilt metoolkit static libs)" OFF)
-
 # USE_KARMA_DECOMP — the RECOVERED Karma, built from source in `metoolkit_decomp/src`/.
 # ON BY DEFAULT since 2026-08-27: this is now the physics for every target that can take it.
 #
 # This is the point of the whole metoolkit-karma-decomp effort: MathEngine shipped Karma as binary-only
-# 32-bit x86 archives, so BUILD_KARMA_REF below can never work off x86 and the web and Android
+# 32-bit x86 archives, so linking THOSE can never work off x86 and the web and Android
 # builds were therefore always NO_KARMA — no vehicles, no ragdolls. The recovered sources are
 # ordinary portable C, so they compile and RUN wherever the pointer width is right.
 #
-# It takes the same code path as BUILD_KARMA_REF — same global -DWITH_KARMA=1, same metoolkit
-# INCLUDE dirs, because the public headers are portable C and are not what was missing — and
-# differs only in what gets LINKED: a CMake target built from our sources instead of a glob of
-# gcc-3.2 archives. Setting it implies BUILD_KARMA_REF's compile side, so ask for one or the
-# other, never both. `legacy-karma` is the preset that asks for the other.
+# ★★ `BUILD_KARMA_REF` IS GONE (2026-09-02). It linked MathEngine's prebuilt i386 archives as an
+# alternative implementation of this same API, and it existed to be the A/B reference while the
+# recovery was unproven. The recovery is no longer unproven: it plays a full i386 match against a
+# metoolkit with every shipped member deleted, it is the physics on wasm (55/55 browser suite),
+# Linux x86-64, Android arm64 and armv7, and its 64-bit trace is byte-identical to the 32-bit
+# control. Keeping a second, i386-Linux-only implementation wired into the build meant three Karma
+# states to reason about, a mutual-exclusion FATAL_ERROR, a binary-name suffix and four presets,
+# all to reproduce a comparison the recovery's own repository makes directly against the SDK
+# archives it vendors (`decomp/test/standalone/difftest_pair.sh`, `substitute_test.sh`). That
+# comparison is unaffected and is where it belongs.
 #
 # EVIDENCE FOR THE DEFAULT, so it is not taken on trust: the i386 drop-in plays a full match
 # against a metoolkit with every shipped member deleted, and the wasm build passes the whole
 # ut2004 browser suite (51/51) equal to a NO_KARMA control built from the same tree.
 # metoolkit-karma-decomp `decomp/proven.txt`, entries WASM-SIGMISMATCH and WASM-INDIRECT-SIGS.
-option(USE_KARMA_DECOMP "Link the RECOVERED Karma (`metoolkit_decomp/src`) instead of the prebuilt metoolkit archives" ON)
-if(USE_KARMA_DECOMP AND BUILD_KARMA_REF)
-  message(FATAL_ERROR
-    "USE_KARMA_DECOMP and BUILD_KARMA_REF are two implementations of the same API and both "
-    "define its symbols. Pick one: BUILD_KARMA_REF for the shipped 32-bit x86 archives, "
-    "USE_KARMA_DECOMP for the recovered sources.")
-endif()
+option(USE_KARMA_DECOMP "Link the RECOVERED Karma (`metoolkit_decomp/src`)" ON)
 
 # ★ THE POINTER-WIDTH GATE, LIFTED 2026-08-29. The recovered code used to encode i386 STRUCT
 # LAYOUTS — not merely 32-bit pointers but the sizes and byte offsets those pointers produce. At
@@ -356,7 +350,7 @@ if(USE_KARMA_DECOMP AND UT_PTR_BYTES GREATER 4 AND NOT KD_LP64_OK)
     "${TARGET_ARCH}${ANDROID_ABI}) -- LP64 Karma, which plays: see the note above this line.")
 endif()
 
-if(NOT BUILD_KARMA_REF AND NOT USE_KARMA_DECOMP)
+if(NOT USE_KARMA_DECOMP)
   # ⚠ SAY SO, EVERY TIME. `option()` reads an EXISTING cache before its default, so flipping
   # USE_KARMA_DECOMP to ON in 2026-08-27 does nothing to a build directory configured before
   # that — it silently keeps NO_KARMA and the only symptom is a game with no vehicles or
@@ -419,9 +413,6 @@ else()
   # i386 build — and MathEngine's Windows archives are not linkable here in any case (they are
   # 32-bit Linux ELF). See the note in the fetched metoolkit/include/MeCall.h.
   #
-  # Only for USE_KARMA_DECOMP. BUILD_KARMA_REF is Linux-only by construction — the shipped
-  # members are 32-bit Linux ELF — so WIN32 is never defined on that path and MEAPI is already
-  # empty there; setting it would be a no-op that invited someone to wonder what it meant.
   if(USE_KARMA_DECOMP)
     add_definitions(-DME_FORCE_CDECL=1)
   endif()
@@ -888,7 +879,7 @@ endif()
 # -pthread. That is not evidence it was fine; it is what this class of bug looks
 # like before it bites.
 #-----------------------------------------------------------------------------
-if(BUILD_KARMA_REF OR USE_KARMA_DECOMP)
+if(USE_KARMA_DECOMP)
   FetchContent_MakeAvailable(MetoolkitKarmaDecomp)
   set(METOOLKIT_DIR "${metoolkitkarmadecomp_SOURCE_DIR}/metoolkit" CACHE PATH "metoolkit (Karma SDK) root: include/ + lib.{chk,rel}/")
   set(METOOLKIT_LIB_SUBDIR "lib.rel/linux_single_gcc3.2" CACHE STRING "metoolkit lib variant (rel/chk + toolchain)")

@@ -32,51 +32,11 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
 # From Engine/Src/makefile LIBS: Core, ogg, vorbis (KARMA_LIBS empty with NO_KARMA=1)
 target_link_libraries(${PROJECT_NAME} PRIVATE Core zlib ogg vorbis)
 
-# Karma reference build (ufront 2.12 Part B — restores the pruned BUILD_KARMA_REF path). When ON, Engine
-# compiles WITH_KARMA=1 (NO_KARMA left undefined at the top level) so the K*.cpp bridge activates its real
-# Karma code paths, and links the prebuilt 32-bit metoolkit static libs (release variant). NOTE: these are
-# gcc-3.2-era archives; the API is largely C-linkage, but a link failure here is the expected finding of
-# "exercising the path" on modern gcc.
-if(BUILD_KARMA_REF)
-  target_compile_definitions(${PROJECT_NAME} PRIVATE WITH_KARMA=1)
-  # METOOLKIT_DIR + subdir are set at the top level from the FetchContent'd
-  # metoolkit-karma-decomp (ufront 2.44) — the proprietary Karma archives are no longer bundled in
-  # this repository. Both are CACHE variables there, so an override still wins; point
-  # FETCHCONTENT_SOURCE_DIR_METOOLKITKARMADECOMP at a local checkout to build offline.
-  target_include_directories(${PROJECT_NAME} PRIVATE
-    ${METOOLKIT_DIR}/include
-    ${METOOLKIT_DIR}/include/MdtBcl
-    ${METOOLKIT_DIR}/include/MdtKea
-    ${METOOLKIT_DIR}/include/McdCommon
-    ${METOOLKIT_DIR}/include/McdPrimitives
-    ${METOOLKIT_DIR}/include/McdFrame
-    ${METOOLKIT_DIR}/include/Mst
-    ${METOOLKIT_DIR}/include/MeGlobals
-    ${METOOLKIT_DIR}/include/MeApp
-  )
-  set(METOOLKIT_LIB_DIR "${METOOLKIT_DIR}/${METOOLKIT_LIB_SUBDIR}")
-  # Link ALL metoolkit archives inside a --start-group: these libs have circular inter-dependencies
-  # (e.g. McdCommon <-> McdPrimitives, Mst -> McdSpace/Mdt), so a plain ordered list leaves undefined
-  # references. The group makes ld re-scan until the symbol set closes. The gcc-3.x archives link fine
-  # against modern gcc (verified gcc3.2 + gcc3.1 -> gcc14: no C++ ABI mismatch; only DT_TEXTREL warnings).
-  file(GLOB METOOLKIT_LIBS "${METOOLKIT_LIB_DIR}/*.a")
-  list(LENGTH METOOLKIT_LIBS METOOLKIT_LIB_COUNT)
-  if(METOOLKIT_LIB_COUNT EQUAL 0)
-    message(FATAL_ERROR "BUILD_KARMA_REF: no .a libs in ${METOOLKIT_LIB_DIR} (set METOOLKIT_DIR/METOOLKIT_LIB_SUBDIR).")
-  endif()
-  # glibc-compat shim for pre-2.3 archives (see KarmaGlibcCompat.c). It lives INSIDE the group so its
-  # __ctype_b/toupper/tolower definitions resolve the archives' references during the group scan.
-  add_library(KarmaGlibcCompat STATIC ${CMAKE_CURRENT_SOURCE_DIR}/Src/KarmaGlibcCompat.c)
-  target_link_libraries(${PROJECT_NAME} PRIVATE
-    -Wl,--start-group ${METOOLKIT_LIBS} $<TARGET_FILE:KarmaGlibcCompat> -Wl,--end-group)
-  message(STATUS "Engine: BUILD_KARMA_REF -> ${METOOLKIT_LIB_DIR} (${METOOLKIT_LIB_COUNT} libs)")
-endif()
-
 # ---------------------------------------------------------------------------
 # USE_KARMA_DECOMP — the RECOVERED Karma, compiled from source.
 #
-# Same compile side as BUILD_KARMA_REF above (WITH_KARMA=1 + metoolkit's public headers, which
-# are portable C); what changes is the link. Instead of a glob of gcc-3.2 x86 archives it links
+# WITH_KARMA=1 + metoolkit's public headers (portable C, and never what was missing); what it
+# links is `metoolkit_decomp::all` rather than the gcc-3.2 x86 archives MathEngine shipped —
 # `metoolkit_decomp::all` — 145 objects recovered from those archives' DWARF, plus the
 # hand-written convex-hull replacement that stands in for qhull.
 #
