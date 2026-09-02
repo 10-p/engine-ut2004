@@ -62,6 +62,19 @@ repository holds **only the engine-side bridge**: `Source/Engine/Src/K*.cpp`, `K
 and the CMake that links it. Nothing of the recovery is vendored here —
 the top-level `CMakeLists.txt` FetchContents it at `main`, unpinned.
 
+## ✅ Karma is COMPLETE FOR UT2004 (2026-09-02)
+
+Every code path this game exercises is recovered, repaired and measured, and every target it ships
+on plays on the rebuilt physics: web (55/55), Linux 32 and 64, **Windows x64**, Android arm64 and
+armv7. Decided by measuring which code the game ENTERS (660 functions, 111 of 147 objects) and
+closing that set — the entered set has zero open defects.
+
+⚠ **It is a UT2004 physics backend, not a validated general-purpose Karma SDK.** 36 recovered
+objects the game never enters have never executed, `MdtLOD` carries two 64-bit defects that
+`maxMatrixSize = 0x7ffffffc` makes unreachable here, and the convex hull is a replacement rather
+than a recovery. Full list: that repository's `decomp/STATUS-EXEC.md`. Don't read those as "Karma is
+unfinished", and don't read "Karma is done" as covering them.
+
 **Before changing anything about the recovered physics, work in that repository, not this one**
 — read its `CLAUDE.md`, then `decomp/docs/STATE.md` and `decomp/proven.txt` (the evidence ledger:
 a non-comment line in it releases an object, and nothing is released without evidence).
