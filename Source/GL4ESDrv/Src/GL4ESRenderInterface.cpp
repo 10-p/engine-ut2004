@@ -866,8 +866,23 @@ void FGL4ESRenderInterface::SetMaterialBlending( FGL4ESMaterialState* NewMateria
 				Stage.TextureTransformMatrix.M[3][3] = Stage.TextureTransformMatrix.M[3][2];
 			}	
 			else
+			if( Stage.TexCoordCount == TCN_2DCoords )
 			{
-				Stage.TextureTransformMatrix.M[3][0] = Stage.TextureTransformMatrix.M[2][0]; 
+				// ufront 2.50 - THIS LIFT IS ONLY VALID FOR 2D TEXCOORDS.
+				//
+				// D3D packs a COUNT2 texture transform as a 3x3 inside a 4x4, so its translation sits
+				// in ROW 2 and must be lifted into row 3 for GL. For COUNT3/COUNT4 texgen the
+				// translation is ALREADY in row 3, and doing the lift overwrites it with row 2.
+				//
+				// That is what hid every projector gradient on OpenGL for twenty years. The gradient
+				// stage is TCN_3DCoords, and its matrix (AProjector::CalcMatrix builds it from an
+				// FCoords whose X and Z axes are zero vectors) has row2 = all zeros and row3 = the
+				// offset. Stock copied the zeros over the offset, so the gradient coordinate lost its
+				// origin: MEASURED, T went from ~0.02 -- in range, just in front of the projector --
+				// to -3.87, which clamps to the transparent edge of GRADIENT_Fade and multiplies the
+				// entire projector to nothing. The projected-texture stage escaped only because it
+				// sets TexGenProjected and takes the branch above.
+				Stage.TextureTransformMatrix.M[3][0] = Stage.TextureTransformMatrix.M[2][0];
 				Stage.TextureTransformMatrix.M[3][1] = Stage.TextureTransformMatrix.M[2][1];
 			}
 
@@ -1424,6 +1439,7 @@ void FGL4ESRenderInterface::CommitStreams( INT FirstIndex, INT Pass )
 		INT		Stride;
 		INT		VertexOffset;
 		void*	VertexBuffer;
+		GLuint	Buffer;			// ufront 2.50: the VBO this texcoord actually lives in (see below).
 	} TexCoordInfo[8];
 
 	INT		NumTexCoords	= 0;
@@ -1522,6 +1538,7 @@ void FGL4ESRenderInterface::CommitStreams( INT FirstIndex, INT Pass )
 				TexCoordInfo[NumTexCoords].VertexBuffer	= VertexBuffer;
 				TexCoordInfo[NumTexCoords].VertexOffset = VertexOffset + Offset;
 				TexCoordInfo[NumTexCoords].Stride		= VertexStride;
+				TexCoordInfo[NumTexCoords].Buffer		= BufferATI;	// ufront 2.50 - see below.
 				NumTexCoords++;
 			}
 
@@ -1596,8 +1613,23 @@ void FGL4ESRenderInterface::CommitStreams( INT FirstIndex, INT Pass )
 			}
 			else
 			{
-				RenDev->glTexCoordPointer( 
-					TexCoordInfo[CoordIndex].NumCoords, 
+				// ufront 2.50 - REBIND THIS TEXCOORD'S OWN VERTEX BUFFER FIRST.
+				//
+				// glTexCoordPointer captures whatever is bound to GL_ARRAY_BUFFER when it is called.
+				// The stream loop above binds each stream's VBO in turn but only RECORDS the
+				// texcoords, emitting them down here -- by which point the binding is whichever
+				// stream came LAST. With VBOs the recorded VertexBuffer is NULL (a pure offset), so
+				// every texcoord read from the last stream's buffer at its own stream's offset.
+				//
+				// Single-stream geometry never noticed: last-bound IS stream 0. It breaks exactly
+				// when position and UVs live in SEPARATE streams -- UStaticMesh::VertexStream plus
+				// UVStreams, i.e. terrain decoration layers and skybox sheets. Harmless without VBOs,
+				// which is why it stayed hidden until UseVBO became the default.
+				if( RenDev->SUPPORTS_GL_ARB_vertex_buffer_object )
+					RenDev->glBindBufferARB( GL_ARRAY_BUFFER_ARB, TexCoordInfo[CoordIndex].Buffer );
+
+				RenDev->glTexCoordPointer(
+					TexCoordInfo[CoordIndex].NumCoords,
 					GL_FLOAT,
 					TexCoordInfo[CoordIndex].Stride,
 					(BYTE*) TexCoordInfo[CoordIndex].VertexBuffer + TexCoordInfo[CoordIndex].VertexOffset

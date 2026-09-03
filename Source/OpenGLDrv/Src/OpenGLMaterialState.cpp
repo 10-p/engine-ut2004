@@ -3124,9 +3124,7 @@ UBOOL FOpenGLRenderInterface::SetProjectorMaterial( UProjectorMaterial* Projecto
 			}
 		}
 
-		// !!! FIXME: This is broken right now...causes player shadows to
-		// !!! FIXME:  not render on terrain or static meshes.  --ryan.
-		#if 0
+		// ufront 2.50 - re-enabled; see GL4ESMaterialState.cpp for why.
 		if (ProjectorMaterial->bGradient)
 		{
 			// Handle the gradient texture.
@@ -3188,7 +3186,6 @@ UBOOL FOpenGLRenderInterface::SetProjectorMaterial( UProjectorMaterial* Projecto
 				return 0;
 			}
 		}
-		#endif  // !!! FIXME
 
 		if(ProjectorMaterial->bProjectOnAlpha && BaseOpacity)
 		{

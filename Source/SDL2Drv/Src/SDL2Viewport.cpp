@@ -909,7 +909,26 @@ UBOOL USDL2Viewport::ResizeViewport( DWORD NewBlitFlags, INT InNewX, INT InNewY,
         // GL4ESRenderDevice::SetRes never asks SDL for a stencil buffer, so the shipping web context has
         // none; keep it that way rather than silently changing the pixel format under the renderer.
         Attrs.stencil                   = 0;
-        Attrs.antialias                 = 0;
+        // ufront 2.50 — MSAA. This is the ONLY place it can be decided on the threaded web build:
+        // SDL never creates the context here, so GL4ESRenderDevice::SetRes's SDL_GL_MULTISAMPLE*
+        // hints are inert (see the note above). WebGL exposes a plain boolean and picks the sample
+        // count itself (in practice 4), so the configured count only decides on/off.
+        //
+        // Read from the ACTIVE render device's own ini section so there is one source of truth and
+        // the ini can still turn it off; the fallbacks below mirror
+        // UGL4ESRenderDevice::StaticConstructor for the case where no section exists.
+        {
+            INT MsBuffers = 1, MsSamples = 4;
+            const TCHAR* RenDevStr = GConfig->GetStr( TEXT("Engine.Engine"), TEXT("RenderDevice"), TEXT("System") );
+            if( RenDevStr && *RenDevStr )
+            {
+                GConfig->GetInt( RenDevStr, TEXT("MultisampleBuffers"), MsBuffers, TEXT("System") );
+                GConfig->GetInt( RenDevStr, TEXT("MultisampleSamples"), MsSamples, TEXT("System") );
+            }
+            Attrs.antialias = ( MsBuffers > 0 && MsSamples > 1 ) ? 1 : 0;
+            debugf( NAME_Init, TEXT("ufront 2.50: WebGL antialias=%i (buffers=%i samples=%i from [%s])"),
+                (INT)Attrs.antialias, MsBuffers, MsSamples, RenDevStr ? RenDevStr : TEXT("<none>") );
+        }
         // explicitSwapControl + renderViaOffscreenBackBuffer are what make the frame OURS to present:
         // without them the browser composites at its own cadence and commit_frame() is meaningless on a
         // worker.

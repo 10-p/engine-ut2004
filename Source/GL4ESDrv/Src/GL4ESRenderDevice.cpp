@@ -134,6 +134,44 @@ void UGL4ESRenderDevice::StaticConstructor()
 	// decision about the web. Overridable via ini, like every other option here.
 	UseVBO							= 1;
 
+	// ufront 2.50 — DEFAULT THIS DEVICE TO ITS BEST QUALITY, not to zero.
+	//
+	// Every option above is registered CPF_Config and, until now, assigned nothing -- so a config with
+	// no [GL4ESDrv.GL4ESRenderDevice] section (i.e. every retail install, which predates this class)
+	// ran with MaxTextureUnits=0, no trilinear, no anisotropy and a zero VAR size. Values mirror the
+	// shipped Engine/Config/web/Default.ini, which is the combination the web target is tested on.
+	// The ini still wins wherever it speaks; this only decides what "unset" means.
+	MaxTextureUnits					= 8;		// clamped to the real GL limit at init
+	UseTrilinear					= 1;
+	LevelOfAnisotropy				= 16.f;		// max; the driver clamps to what the GPU offers
+	VARSize							= 32;
+	UseRenderTargets				= 1;
+	DetailTexMipBias				= 0.f;
+	AppleVA							= 1;
+	MultisampleHint					= 2;
+
+	// Deliberately NOT raised, each for a reason:
+	//   UsePixelShaders   0 - the fixed-function path is the one this device actually implements.
+	//   ForceCompression  0 - forcing DXT on already-decoded textures LOSES quality; off is better.
+	//   UseVSync          0 - the browser paces frames; vsync here fights the host's own scheduling.
+	//   ReduceMouseLag    0 - a stall-and-sync that costs frames; the shipped config disables it.
+	UsePixelShaders					= 0;
+	ForceCompression				= 0;
+	UseVSync						= 0;
+	ReduceMouseLag					= 0;
+	DesiredRefreshRate				= 0;
+
+	// ufront 2.50 — MSAA ON BY DEFAULT (4x).
+	// UT2004 is a 2004 game and the fill cost is trivial for anything with a GPU; on the web the
+	// bottleneck is the CPU side, so this is expected to be close to free. ⚠ On the web this is a
+	// BOOLEAN, not a sample count: the threaded build creates its WebGL context directly (see
+	// SDL2Viewport.cpp) and WebGL exposes only `antialias: true/false`, letting the browser pick the
+	// sample count -- in practice 4. The number here still governs native, and still decides on/off
+	// for the web. Both are read back out of the ACTIVE render device's ini section by
+	// SDL2Viewport.cpp, so these two values remain the single place the default is stated.
+	MultisampleBuffers				= 1;
+	MultisampleSamples				= 4;
+
 	SupportsCubemaps				= 1;
 	SupportsZBIAS					= 1;
 	SupportsRenderToTextureRGBA8888	= 0;
