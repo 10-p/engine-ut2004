@@ -35,6 +35,9 @@ IMPLEMENT_CLASS(UCacheManager);
 
 static UCacheManager* Cache=NULL;
 
+/** ufront 2.49 — defined with the quick-screenshot block above ParseMap; called from RefreshCache. */
+void FlushQuickScreenshotSet();
+
 static bool bReverseSort = false;
 static INT Compare( FString& A, FString& B )
 {
@@ -773,6 +776,10 @@ UBOOL UCacheManager::RefreshCache()
 	CacheAnnouncers.Empty();
 	CacheCrosshairs.Empty();
 
+	// ufront 2.49 — the quick-screenshot listing is part of the same cached view of the file system, so
+	// it goes when the records do. A mod load or an uploaded package can add packages under our path.
+	FlushQuickScreenshotSet();
+
 	return 1;
 
 	unguard;
@@ -1063,6 +1070,131 @@ void UCacheManager::IntegrateNewPackages( const TCHAR* CacheKey )
 	unguard;
 }
 
+/*-----------------------------------------------------------------------------
+	Quick screenshots (ufront 2.49).
+
+	A map's preview material lives INSIDE the map package: every GUI2K4 preview call site does
+	`Material(DynamicLoadObject(MapRecord.ScreenshotRef, class'Material'))`, and the first component of
+	`ScreenshotRef` is the map itself (`CTF-UCMP2-Orcus.zio_Textures.OrcusMatSequence`). So merely
+	HIGHLIGHTING a map costs a full level load — measured across this install: 441 map records,
+	7,275 MB of maps, mean 16.5 MB per browse — and on the web that is 16.5 MB over the network to draw
+	a thumbnail. Everything else the browser shows (FriendlyName, Description, Author, player counts) is
+	already in the .ucl; the screenshot is the ONLY thing forcing the load.
+
+	The ufront preprocessor (`yarn quickshots`) emits a dependency-free copy of just that material graph
+	as `QuickScreenshots/<Map>-Screenshot.utx`, KEEPING the group and object names, so only the PACKAGE
+	component of the ref changes here. Mean 715 KB against 16.5 MB.
+
+	★ THE PACKAGE MUST HAVE A DIFFERENT NAME, and that is not a style choice. `appFindPackageFile`
+	(Core/Src/UnMisc.cpp) is first-match-wins on the extension-less name with no way to express intent,
+	and `UObject::GetPackageLinker` (Core/Src/UnObj.cpp) reuses a linker whenever `LinkerRoot` matches —
+	so a `QuickScreenshots/<Map>.utx` would be the SAME UPackage as the map. Once the GUI held a Material
+	from it (and it does — GC cannot purge a referenced object), a later Play would load the stub and the
+	map would silently come up empty. `<Map>-Screenshot` cannot collide with anything.
+
+	★ OPTIONAL BY CONSTRUCTION. With no quick package the record is left byte-identical and the stock
+	path runs, so a missing, partial or stale set can never break the menu — it only costs the old
+	behaviour. That property is what lets the feature ship incrementally, and it is what the E2E's
+	third-map case exercises.
+
+	Only a ref that names the MAP ITSELF is redirected: 20 records already point at a shared texture
+	package, and those are cheap and must be left alone.
+-----------------------------------------------------------------------------*/
+
+#define QUICKSHOT_SUFFIX	TEXT("-Screenshot")
+#define QUICKSHOT_DIR		TEXT("QuickScreenshots")
+
+/** Lower-cased base names of every package found in a QuickScreenshots path. NULL = not built yet. */
+static TMap<FString,BYTE>* GQuickScreenshots = NULL;
+
+/**
+ * Build the set ONCE, from ONE directory listing per QuickScreenshots path.
+ *
+ * ⚠ Not a per-map probe. `appFindPackageFile` walks every `GSys->Paths` entry and tries the language
+ * variant of each, so asking "does <Map>-Screenshot exist?" 441 times is ~8,000 filesystem stats before
+ * the menu draws — and on the web every one of those crosses the JS/WASM VFS boundary.
+ */
+static void BuildQuickScreenshotSet()
+{
+	guard(BuildQuickScreenshotSet);
+
+	GQuickScreenshots = new TMap<FString,BYTE>;
+	for( INT i = 0; i < GSys->Paths.Num(); i++ )
+	{
+		// `../QuickScreenshots/*.utx` -> directory component `../QuickScreenshots`, leaf `QuickScreenshots`.
+		const FString& Spec = GSys->Paths(i);
+		const INT Slash = Spec.InStr( TEXT("/"), 1 );
+		if( Slash <= 0 )
+			continue;
+		const FString Dir  = Spec.Left( Slash );
+		const INT DirSlash = Dir.InStr( TEXT("/"), 1 );
+		const FString Leaf = DirSlash >= 0 ? Dir.Mid( DirSlash + 1 ) : Dir;
+		if( appStricmp( *Leaf, QUICKSHOT_DIR ) != 0 )
+			continue;
+
+		TArray<FString> Found = GFileManager->FindFiles( *Spec, 1, 0 );
+		for( INT f = 0; f < Found.Num(); f++ )
+		{
+			const INT Dot = Found(f).InStr( TEXT("."), 1 );
+			const FString Base = Dot > 0 ? Found(f).Left( Dot ) : Found(f);
+			if( Base.Len() )
+				GQuickScreenshots->Set( *Base.Locs(), 1 );
+		}
+	}
+	debugf( NAME_RecordCache, TEXT("ufront 2.49: %i quick screenshot package(s) available"), GQuickScreenshots->Num() );
+
+	unguard;
+}
+
+/** Drop the set so the next browse re-lists. Called from RefreshCache alongside the record arrays. */
+void FlushQuickScreenshotSet()
+{
+	if( GQuickScreenshots )
+	{
+		delete GQuickScreenshots;
+		GQuickScreenshots = NULL;
+	}
+}
+
+static UBOOL HaveQuickScreenshot( const TCHAR* PackageName )
+{
+	if( !GQuickScreenshots )
+		BuildQuickScreenshotSet();
+	return GQuickScreenshots->Find( *FString(PackageName).Locs() ) != NULL;
+}
+
+/** Swap the PACKAGE component of `Ref` for the map's quick package, iff both conditions hold. */
+/** Swap the PACKAGE component of `Ref` for the map's quick package, iff both conditions hold. */
+static void RedirectToQuickScreenshot( const FString& MapName, FString& Ref )
+{
+	guard(RedirectToQuickScreenshot);
+
+	if( !Ref.Len() || !MapName.Len() )
+		return;
+	const INT Dot = Ref.InStr( TEXT(".") );
+	if( Dot <= 0 )
+		return;											// no package component
+	if( appStricmp( *Ref.Left(Dot), *MapName ) != 0 )
+		return;											// already a shared package — leave it alone
+
+	// ⚠⚠ BUILD THESE WITH `+=`, NEVER WITH `+`. `FString::operator+` (UnTemplate.h) is a NON-CONST
+	// member, so it does not apply to a `const FString&` — and instead of failing, overload resolution
+	// falls back to `FString::operator UBOOL()` (also in UnTemplate.h) and the expression becomes
+	// `1 + (const TCHAR*)`, i.e. POINTER ARITHMETIC. `MapName + TEXT("-Screenshot")` compiles clean and
+	// evaluates to `"Screenshot"`. Measured 2026-09-03: every record looked up the package name
+	// "Screenshot", found nothing, and the feature silently did nothing at all while the set of 605
+	// packages sat correctly built one function away.
+	FString Quick = MapName;
+	Quick += QUICKSHOT_SUFFIX;
+	if( !HaveQuickScreenshot( *Quick ) )
+		return;											// none generated — stock path, byte-identical
+
+	Quick += Ref.Mid( Dot );
+	Ref = Quick;
+
+	unguard;
+}
+
 UBOOL UCacheManager::ParseMap( const TCHAR* Value )
 {
 	guard( UCacheManager::ParseMap );
@@ -1081,6 +1213,9 @@ UBOOL UCacheManager::ParseMap( const TCHAR* Value )
 	Parse( Value, TEXT("PlayerCountMax="), Record.PlayerCountMax );
 	Parse( Value, TEXT("TextName="), Record.TextName );
 	Parse( Value, TEXT("Screenshot="), Record.ScreenshotRef );
+	// ufront 2.49 — prefer the map's dependency-free quick screenshot package if one was generated.
+	// A no-op (record left byte-identical) when there is none; see the block above ParseMap.
+	RedirectToQuickScreenshot( Record.MapName, Record.ScreenshotRef );
 	Parse( Value, TEXT("ExtraInfo="), Record.ExtraInfo );
 
 	if (Record.Acronym == TEXT(""))
