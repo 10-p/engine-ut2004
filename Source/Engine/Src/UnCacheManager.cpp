@@ -1104,49 +1104,15 @@ void UCacheManager::IntegrateNewPackages( const TCHAR* CacheKey )
 #define QUICKSHOT_SUFFIX	TEXT("-Screenshot")
 #define QUICKSHOT_DIR		TEXT("QuickScreenshots")
 
-/** Lower-cased base names of every package found in a QuickScreenshots path. NULL = not built yet. */
+/**
+ * Cache of "does <Package>-Screenshot exist?", keyed by lower-cased package name. NULL = not built yet.
+ * A BYTE value of 1 means present, 0 means measured-absent — both are worth remembering, because the
+ * absent answer is the common one (100 of 822 records have no quick package) and re-asking is the cost
+ * this cache exists to avoid.
+ */
 static TMap<FString,BYTE>* GQuickScreenshots = NULL;
 
-/**
- * Build the set ONCE, from ONE directory listing per QuickScreenshots path.
- *
- * ⚠ Not a per-map probe. `appFindPackageFile` walks every `GSys->Paths` entry and tries the language
- * variant of each, so asking "does <Map>-Screenshot exist?" 441 times is ~8,000 filesystem stats before
- * the menu draws — and on the web every one of those crosses the JS/WASM VFS boundary.
- */
-static void BuildQuickScreenshotSet()
-{
-	guard(BuildQuickScreenshotSet);
-
-	GQuickScreenshots = new TMap<FString,BYTE>;
-	for( INT i = 0; i < GSys->Paths.Num(); i++ )
-	{
-		// `../QuickScreenshots/*.utx` -> directory component `../QuickScreenshots`, leaf `QuickScreenshots`.
-		const FString& Spec = GSys->Paths(i);
-		const INT Slash = Spec.InStr( TEXT("/"), 1 );
-		if( Slash <= 0 )
-			continue;
-		const FString Dir  = Spec.Left( Slash );
-		const INT DirSlash = Dir.InStr( TEXT("/"), 1 );
-		const FString Leaf = DirSlash >= 0 ? Dir.Mid( DirSlash + 1 ) : Dir;
-		if( appStricmp( *Leaf, QUICKSHOT_DIR ) != 0 )
-			continue;
-
-		TArray<FString> Found = GFileManager->FindFiles( *Spec, 1, 0 );
-		for( INT f = 0; f < Found.Num(); f++ )
-		{
-			const INT Dot = Found(f).InStr( TEXT("."), 1 );
-			const FString Base = Dot > 0 ? Found(f).Left( Dot ) : Found(f);
-			if( Base.Len() )
-				GQuickScreenshots->Set( *Base.Locs(), 1 );
-		}
-	}
-	debugf( NAME_RecordCache, TEXT("ufront 2.49: %i quick screenshot package(s) available"), GQuickScreenshots->Num() );
-
-	unguard;
-}
-
-/** Drop the set so the next browse re-lists. Called from RefreshCache alongside the record arrays. */
+/** Drop the cache so the next browse re-probes. Called from RefreshCache alongside the record arrays. */
 void FlushQuickScreenshotSet()
 {
 	if( GQuickScreenshots )
@@ -1156,14 +1122,47 @@ void FlushQuickScreenshotSet()
 	}
 }
 
+/**
+ * Is there a quick screenshot package for this map?
+ *
+ * One `FileSize` probe per DISTINCT package name, memoised. Deliberately NOT `appFindPackageFile`,
+ * which walks every `GSys->Paths` entry and tries a language variant of each — 822 records through that
+ * is thousands of filesystem stats before the menu draws, and on the web every one crosses the JS/WASM
+ * VFS boundary. The path is composed directly instead, which is sound because the directory name is a
+ * constant of this feature on both sides (the generator writes `QuickScreenshots/`, `Default.ini` adds
+ * the matching `Paths=` line so the LOAD can find it).
+ *
+ * ⚠ Paths are relative to the System directory, hence the `../` — the same convention `GSys->Paths`
+ * uses.
+ */
 static UBOOL HaveQuickScreenshot( const TCHAR* PackageName )
 {
+	guard(HaveQuickScreenshot);
+
 	if( !GQuickScreenshots )
-		BuildQuickScreenshotSet();
-	return GQuickScreenshots->Find( *FString(PackageName).Locs() ) != NULL;
+		GQuickScreenshots = new TMap<FString,BYTE>;
+
+	FString Key = FString(PackageName).Locs();
+	// ⚠ TMap<FString,BYTE> keys initialise from `const TCHAR*` (TTypeInfo<FString>::ConstInitType), not
+	// from an FString — hence the `*`.
+	if( BYTE* Cached = GQuickScreenshots->Find( *Key ) )
+		return *Cached != 0;
+
+	// ⚠ `+=`, never `+` — FString::operator+ is a NON-CONST member, so on anything const it silently
+	// falls back to operator UBOOL() and becomes pointer arithmetic. See RedirectToQuickScreenshot.
+	FString File = TEXT("../");
+	File += QUICKSHOT_DIR;
+	File += TEXT("/");
+	File += PackageName;
+	File += TEXT(".utx");
+
+	const UBOOL Exists = GFileManager->FileSize( *File ) >= 0;
+	GQuickScreenshots->Set( *Key, Exists ? (BYTE)1 : (BYTE)0 );
+	return Exists;
+
+	unguard;
 }
 
-/** Swap the PACKAGE component of `Ref` for the map's quick package, iff both conditions hold. */
 /** Swap the PACKAGE component of `Ref` for the map's quick package, iff both conditions hold. */
 static void RedirectToQuickScreenshot( const FString& MapName, FString& Ref )
 {
