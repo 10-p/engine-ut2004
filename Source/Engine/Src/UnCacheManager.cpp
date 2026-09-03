@@ -37,6 +37,8 @@ static UCacheManager* Cache=NULL;
 
 /** ufront 2.49 — defined with the quick-screenshot block above ParseMap; called from RefreshCache. */
 void FlushQuickScreenshotSet();
+/** ufront 2.49 — fills the quick-screenshot cache before any record is parsed. See its comment. */
+void PrimeQuickScreenshots();
 
 static bool bReverseSort = false;
 static INT Compare( FString& A, FString& B )
@@ -676,6 +678,9 @@ void UCacheManager::InitCache( const TCHAR* CacheKey )
 // it is culled from the list of packages that were found when the Tracker was initialized
 // This is where I determine which packages are new, and which packages no longer exist
 
+	// ufront 2.49 — the quick-screenshot listing happens HERE, once, and never from inside ParseMap.
+	PrimeQuickScreenshots();
+
 	Time = appSeconds();
 	ParseCacheFiles( CacheKey );
 	debugf(NAME_RecordCache, TEXT("Parsing took %f ms"), (appSeconds() - Time) * 1000);
@@ -1134,6 +1139,9 @@ void FlushQuickScreenshotSet()
  *
  * ⚠ Paths are relative to the System directory, hence the `../` — the same convention `GSys->Paths`
  * uses.
+ *
+ * ⚠⚠ AND IT IS DELIBERATELY THE ONLY FILESYSTEM WORK LEFT ON THE ParseMap PATH — normally none at
+ * all, because `PrimeQuickScreenshots` has already answered every question. See its comment.
  */
 static UBOOL HaveQuickScreenshot( const TCHAR* PackageName )
 {
@@ -1159,6 +1167,63 @@ static UBOOL HaveQuickScreenshot( const TCHAR* PackageName )
 	const UBOOL Exists = GFileManager->FileSize( *File ) >= 0;
 	GQuickScreenshots->Set( *Key, Exists ? (BYTE)1 : (BYTE)0 );
 	return Exists;
+
+	unguard;
+}
+
+/**
+ * Populate the cache ONCE, from ONE directory listing, BEFORE record parsing starts.
+ *
+ * ⚠⚠ THIS EXISTS FOR A MEASURED REASON, NOT FOR SPEED. Doing the directory listing lazily from inside
+ * `UCacheManager::ParseMap` crashed the web build at boot, deterministically, before the menu:
+ *
+ *     memory access out of bounds
+ *       __memset <- strncpy <- appStrncpy <- UCacheManager::ParseMap <- InitCache <- execInitCache
+ *
+ * i.e. inside ParseMap's OWN `Parse()` buffers, not in any of this code. Ruled out by experiment
+ * rather than by reading: NOT Karma (a NO_KARMA build, 755 KB smaller and differently linked, crashes
+ * identically 3/3), NOT inlining (`__attribute__((noinline))` changes nothing), NOT stack exhaustion
+ * (4x the stack, 8 MB, changes nothing), NOT `FString::Mid`'s MAXINT overflow and NOT the `?:` (both
+ * A/B'd inside ONE binary, both fine), and NOT the assets (it reproduces with the pre-feature
+ * manifest). What did correlate was how much allocation the callee does while ParseMap is live.
+ *
+ * Rather than tune that — "it stopped crashing" is not a diagnosis — the heavy work is hoisted out of
+ * ParseMap entirely. `InitCache` calls this before `ParseCacheFiles`, so by the time any record is
+ * parsed the answer is already a pure in-memory lookup.
+ */
+void PrimeQuickScreenshots()
+{
+	guard(PrimeQuickScreenshots);
+
+	if( GQuickScreenshots )
+		return;
+	GQuickScreenshots = new TMap<FString,BYTE>;
+
+	for( INT i = 0; i < GSys->Paths.Num(); i++ )
+	{
+		// `../QuickScreenshots/*.utx` -> directory `../QuickScreenshots`, leaf `QuickScreenshots`.
+		const FString& Spec = GSys->Paths(i);
+		const INT Slash = Spec.InStr( TEXT("/"), 1 );
+		if( Slash <= 0 )
+			continue;
+		const FString Dir  = Spec.Left( Slash );
+		const INT DirSlash = Dir.InStr( TEXT("/"), 1 );
+		// ⚠ Explicit count: `FString::Mid(Start)` defaults Count to MAXINT and computes
+		// `DWORD End = Start+Count` from two INTs, which is signed overflow (UB).
+		const FString Leaf = DirSlash >= 0 ? Dir.Mid( DirSlash + 1, Dir.Len() - (DirSlash + 1) ) : Dir;
+		if( appStricmp( *Leaf, QUICKSHOT_DIR ) != 0 )
+			continue;
+
+		TArray<FString> Found = GFileManager->FindFiles( *Spec, 1, 0 );
+		for( INT f = 0; f < Found.Num(); f++ )
+		{
+			const INT Dot = Found(f).InStr( TEXT("."), 1 );
+			const FString Base = Dot > 0 ? Found(f).Left( Dot ) : Found(f);
+			if( Base.Len() )
+				GQuickScreenshots->Set( *Base.Locs(), (BYTE)1 );
+		}
+	}
+	debugf( NAME_RecordCache, TEXT("ufront 2.49: %i quick screenshot package(s) available"), GQuickScreenshots->Num() );
 
 	unguard;
 }
