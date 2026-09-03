@@ -122,6 +122,25 @@ native stack* below) and any script still calling them will fail with "no such p
 | Preset | What it is | Build dir | Output |
 |--------|-----------|-----------|--------|
 | `native` | 32-bit native. SDL2 + `OpenGLDrv` + `GL4ESDrv` + `PixoDrv`, **all in one binary**; pick at startup. The WASM stack's native twin. | `build-native/` | `Source/SDLLaunch/ut2004-pixo.bin` |
+
+> ⚠ **A build dir created BEFORE the 2.44 Karma relocation will not configure**, and the message points
+> at a path that no longer exists:
+>
+> ```
+> metoolkit_decomp: no Karma headers at .../engine-ut2004/Thirdparty/metoolkit/include.
+> ```
+>
+> `METOOLKIT_DIR` is a `CACHE PATH`, so the fetched Karma repo's own default cannot overwrite the stale
+> value baked into `CMakeCache.txt` back when the SDK lived in `Thirdparty/`. It is not a source problem
+> and there is nothing to rebuild from scratch — clear the one entry:
+>
+> ```bash
+> cmake -U METOOLKIT_DIR -S . -B build-wasm     # then build the preset as usual
+> ```
+>
+> Measured 2026-09-03: `build-wasm` failed this way while `build-wasm-perf` built fine, purely because
+> the latter had been configured after the move. Any dir can be checked with
+> `grep ^METOOLKIT_DIR <dir>/CMakeCache.txt` — it should name `_deps/metoolkitkarmadecomp-src/…`.
 | **`native-nokarma`** | `native` **+ `USE_KARMA_DECOMP=OFF`** — the NO_KARMA control. Not a spare: it is what says whether a failure is Karma's fault or the harness's, and the ut2004 browser suite's 51/51 only meant something because this arm was run through it in the same session. | `build-native-nokarma/` | `.../ut2004-nokarma-pixo.bin` |
 | `physics` | `native` + `WITH_PHYSICS=ON` — the Jolt vehicle sources in `Source/Onslaught`. Not part of the green checkpoint and not exercised recently. | `build-physics/` | `.../ut2004-pixo.bin` |
 | `wasm` | **The everyday web build.** `-O2 -g`: named stacks, DWARF, assertions, and still playable. | `build-wasm/` | `Source/SDLLaunch/SDLLaunch.{js,wasm,data}` |
