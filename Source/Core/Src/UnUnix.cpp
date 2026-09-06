@@ -3080,6 +3080,24 @@ void appPlatformInit()
 		debugf( NAME_Init, TEXT("CPU Speed Overridden=%f MHz"), 0.000001 / GSecondsPerCycle );
 		appStrcat( GMachineCPU, *FString::Printf(TEXT(" @ %d MHz"), appRound(0.000001 / GSecondsPerCycle) ) ); // gam
 	}
+
+#ifdef UT_NO_X86_INTRIN
+	// ★★ ufront 2.53 — appCycles() COUNTS MICROSECONDS ON THIS PATH, so the conversion factor is fixed
+	// and the CPUSPEED= override above must not be allowed to scale it. Both are still needed:
+	// CPUSPEED= is what stops the `#else` branch a few lines up from appErrorf'ing out of the boot
+	// (there is no CPU-speed detection for wasm or arm), and it is what GMachineCPU reports — but as a
+	// clock rate it is fiction, so applying it here turned a microsecond into 1/3000th of one.
+	//
+	// ⚠ THIS IS ONLY SAFE BECAUSE NOTHING TIMES GAMEPLAY WITH IT, which was checked rather than assumed:
+	// the rdtsc appSeconds() in UnGnuG.h is `#if 0`'d, so the game loop runs on appSecondsSlow()
+	// wall-clock and never reads GSecondsPerCycle. Every remaining consumer in a wasm/arm build is a
+	// `stat` display, a debugf, or the -benchmark frame log — and all of them read 0 today, so this can
+	// only make them correct. (The one arithmetic user, UnActor.cpp's SlowOverlapThreshTime, gates a
+	// debugf and nothing else. D3D's CPUSpeed readback is inside a `#if 0`.)
+	GSecondsPerCycle = 0.000001;
+	debugf( NAME_Init, TEXT("[ufront] appCycles() is a microsecond counter; GSecondsPerCycle pinned to %e"), GSecondsPerCycle );
+#endif
+
 	unguard;
 
 #ifdef _WIN32

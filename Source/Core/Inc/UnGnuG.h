@@ -704,8 +704,24 @@ inline DWORD appCycles()
 {
 	DWORD r;
 #ifdef UT_NO_X86_INTRIN
-	// No rdtsc on WASM; return 0 (timing via emscripten_get_now elsewhere)
-	r = 0;
+	// ★★ ufront 2.53 — THIS USED TO `return 0`, AND THAT MADE EVERY CYCLE-BASED MEASUREMENT DEAD.
+	// The old comment ("timing via emscripten_get_now elsewhere") was true of the game loop but not of
+	// anything that measures a DURATION: every clock()/unclock() pair, every `stat` timing, and the
+	// `-benchmark` frame times all reduce to `appCycles() - appCycles()` == 0. The visible symptom was
+	// `stat fps`: FrameTime 0 -> `1.f/0` == inf -> `(INT)inf` is UB, printed `%u` as ~2^32 "cur FPS",
+	// while FPSAvg never leaves 0 because it seeds itself from that same 0. Reported from a real
+	// session; the whole stat page was showing 0.0 ms for the same reason.
+	//
+	// ⚠ NOT emscripten-only. UT_NO_X86_INTRIN also covers Android arm64/armv7 (see the guard where it
+	// is defined), so this has to be portable C — `emscripten_get_now()` would not compile there.
+	// appSecondsSlow() is declared above, is gettimeofday-based, self-initialising and accumulates its
+	// own counter, so it is monotonic from ~0 on every platform that lands here.
+	//
+	// ⚠ MICROSECONDS, AND GSecondsPerCycle MUST AGREE — appInitTiming pins it to 0.000001 on this same
+	// path. A DWORD of microseconds wraps every ~71 minutes, which is fine and is not new: rdtsc's low
+	// word wraps far faster, and every caller here takes an unsigned DIFFERENCE, which stays correct
+	// across a wrap. Nothing stores an absolute value.
+	r = (DWORD)(appSecondsSlow() * 1000000.0);
 #else
     // !!! FIXME: WHY DOESN'T THIS WORK?!
 	//asm("rdtsc" : "=a" (r) : /* no inputs */ : "edx");
