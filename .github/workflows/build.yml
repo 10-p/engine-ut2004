@@ -50,15 +50,26 @@ jobs:
           #
           # ⚠ The output NAMES encode the physics, deliberately. Before that, `native` and
           # `native-nokarma` both produced `ut2004-pixo.bin` — same filename, opposite physics.
+          #
+          # ufront 2.54: `arch` selects the apt toolchain below. The three 32-bit arms keep Pixomatic
+          # (its prebuilts are i386-only and there is no source); the 64-bit arm cannot have it and
+          # says so in its own name rather than shipping a `-pixo` binary with no Pixomatic in it.
           - preset: native
             bin: ut2004-pixo.bin
             karma: recovered
+            arch: '32'
           - preset: legacy-karma
             bin: ut2004-legacykarma-pixo.bin
             karma: legacy
+            arch: '32'
           - preset: native-nokarma
             bin: ut2004-nokarma-pixo.bin
             karma: none
+            arch: '32'
+          - preset: native64
+            bin: ut2004.bin
+            karma: recovered
+            arch: '64'
     steps:
       # The image is bare: even git has to be installed before checkout can use it.
       - name: Base tools
@@ -73,6 +84,7 @@ jobs:
       # development headers too — a shorter list makes SDL2 configure "successfully" without a video
       # driver, and the failure only shows up as a black window much later.
       - name: Install the 32-bit toolchain
+        if: matrix.arch == '32'
         run: |
           dpkg --add-architecture i386
           apt-get update
@@ -81,6 +93,18 @@ jobs:
             libsdl2-dev:i386 libopenal-dev:i386 \
             libx11-dev:i386 libxext-dev:i386 libxrandr-dev:i386 libxcursor-dev:i386 \
             libxi-dev:i386 libxss-dev:i386 libxxf86vm-dev:i386 libgl-dev:i386
+
+      # ufront 2.54 — the 64-bit arm. Same package list WITHOUT the :i386 suffixes; no multilib,
+      # and no Pixomatic (see the matrix note), so nothing here is the 32-bit list minus something.
+      - name: Install the 64-bit toolchain
+        if: matrix.arch == '64'
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            gcc-13 g++-13 \
+            libsdl2-dev libopenal-dev \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
+            libxi-dev libxss-dev libxxf86vm-dev libgl-dev
 
       - name: Cache fetched dependencies
         uses: actions/cache@v4
@@ -131,8 +155,37 @@ jobs:
           retention-days: 7
 
   windows:
-    name: windows (MinGW-w64 cross, one self-contained .exe)
+    name: windows ${{ matrix.preset }} (MinGW-w64 cross)
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ufront 2.54 — BOTH WIDTHS, and they are not the same binary minus a flag.
+          #
+          # 32-bit carries PIXOMATIC, which renames the exe to `ut2004-pixo.exe` and adds ONE
+          # non-system import. ⚠ That import is LOAD-TIME, not lazy: pixomatic.lib is a pure import
+          # library and there is no /DELAYLOAD, so a missing pixomatic.dll means the process does not
+          # start at all — measured with objdump, whose Delay Import Directory on this exe is empty.
+          # The DLL is vendored (Thirdparty/Pixomatic/Bin) and staged beside the exe by
+          # Source/SDLLaunch/CMakeLists.txt, so the ARTIFACT stays self-contained; it must therefore
+          # ship both files, and the import allow-list below has to admit exactly that one DLL.
+          #
+          # 64-bit cannot have Pixomatic at all — the prebuilts are i386-only on both platforms and
+          # there is no source — so it keeps the plain `ut2004.exe` name and the strict allow-list.
+          - preset: windows
+            bin: ut2004-pixo.exe
+            objdump: i686-w64-mingw32-objdump
+            nm: i686-w64-mingw32-nm
+            # i686-PE decorates C symbols with a leading underscore; x86_64-PE does not.
+            sym_prefix: '_'
+            extra_dll: pixomatic.dll
+          - preset: windows64
+            bin: ut2004.exe
+            objdump: x86_64-w64-mingw32-objdump
+            nm: x86_64-w64-mingw32-nm
+            sym_prefix: ''
+            extra_dll: ''
     steps:
       - uses: actions/checkout@v4
 
@@ -144,14 +197,14 @@ jobs:
       - name: Cache fetched dependencies
         uses: actions/cache@v4
         with:
-          path: build-windows/_deps
-          key: deps-windows-${{ hashFiles('CMakeLists.txt', 'Source/*/CMakeLists.txt', 'cmake/*.cmake') }}
+          path: build-${{ matrix.preset }}/_deps
+          key: deps-${{ matrix.preset }}-${{ hashFiles('CMakeLists.txt', 'Source/*/CMakeLists.txt', 'cmake/*.cmake') }}
 
       - name: Configure
-        run: cmake --preset windows
+        run: cmake --preset ${{ matrix.preset }}
 
       - name: Build
-        run: cmake --build build-windows -j$(nproc)
+        run: cmake --build build-${{ matrix.preset }} -j$(nproc)
 
       # ★ The check that matters for a "drop it somewhere and run it" binary. Without -static-libgcc /
       # -static-libstdc++ the exe imports libgcc_s_dw2-1.dll and libstdc++-6.dll and runs ONLY on the
@@ -165,19 +218,40 @@ jobs:
       - name: Assert the exe carries the recovered Karma
         run: |
           set -euo pipefail
-          n=$(i686-w64-mingw32-nm build-windows/Source/SDLLaunch/ut2004.exe \
-              | grep -cE ' [TD] _(McdBoxBoxIntersect|MdtBSJointCreate|McdGjkCgIntersect)$' || true)
-          echo "windows: $n of 3 Karma entry points present"
-          [ "$n" -eq 3 ] || { echo "::error::windows exe is missing Karma symbols"; exit 1; }
+          n=$(${{ matrix.nm }} build-${{ matrix.preset }}/Source/SDLLaunch/${{ matrix.bin }} \
+              | grep -cE " [TD] ${{ matrix.sym_prefix }}(McdBoxBoxIntersect|MdtBSJointCreate|McdGjkCgIntersect)$" || true)
+          echo "${{ matrix.preset }}: $n of 3 Karma entry points present"
+          [ "$n" -eq 3 ] || { echo "::error::${{ matrix.preset }} exe is missing Karma symbols"; exit 1; }
 
-      - name: Assert the exe imports nothing but system DLLs
+      # ★ The check that matters for a "drop it somewhere and run it" binary — now width-aware.
+      # The allow-list admits exactly one extra DLL, the one this preset is supposed to carry, so a
+      # stray libgcc_s/libstdc++ import still fails the build. ⚠ And on the Pixomatic arm the import
+      # is only half the story: because it binds at LOAD time, an artifact without the DLL beside the
+      # exe is a download that cannot start. Assert the file is actually staged, not just imported.
+      - name: Assert the exe imports nothing but system DLLs (+ this preset's own)
         run: |
           set -euo pipefail
-          imports=$(i686-w64-mingw32-objdump -p build-windows/Source/SDLLaunch/ut2004.exe \
-                    | sed -n 's/^\tDLL Name: //p' | sort -u)
+          exe=build-${{ matrix.preset }}/Source/SDLLaunch/${{ matrix.bin }}
+          imports=$(${{ matrix.objdump }} -p "$exe" | sed -n 's/^\tDLL Name: //p' | sort -u)
           echo "$imports"
-          bad=$(echo "$imports" | grep -viE '^(ADVAPI32|GDI32|IMM32|KERNEL32|msvcrt|ole32|OLEAUT32|OPENGL32|SETUPAPI|SHELL32|USER32|VERSION|WINMM|WS2_32)\.dll$' || true)
-          if [ -n "$bad" ]; then echo "::error::non-system DLL imports: $bad"; exit 1; fi
+          # Exact-match against a name list rather than splicing regex fragments: an earlier version
+          # appended the extra DLL by stripping the trailing `$`, which quietly unanchored the system
+          # alternatives and would have accepted `KERNEL32.dll.anything`.
+          allowed="ADVAPI32.dll GDI32.dll IMM32.dll KERNEL32.dll msvcrt.dll ole32.dll OLEAUT32.dll OPENGL32.dll SETUPAPI.dll SHELL32.dll USER32.dll VERSION.dll WINMM.dll WS2_32.dll ${{ matrix.extra_dll }}"
+          bad=""
+          for imp in $imports; do
+            ok=0
+            for a in $allowed; do
+              [ "$(echo "$imp" | tr 'A-Z' 'a-z')" = "$(echo "$a" | tr 'A-Z' 'a-z')" ] && ok=1 && break
+            done
+            [ "$ok" -eq 1 ] || bad="$bad $imp"
+          done
+          if [ -n "$bad" ]; then echo "::error::non-system DLL imports:$bad"; exit 1; fi
+          if [ -n "$extra" ]; then
+            staged="build-${{ matrix.preset }}/Source/SDLLaunch/$extra"
+            test -f "$staged" || { echo "::error::$extra is a LOAD-TIME import but was not staged beside the exe — the artifact would not start"; exit 1; }
+            echo "staged $extra ($(stat -c%s "$staged") bytes)"
+          fi
 
       # ⚠ RETENTION IS LOAD-BEARING, not tidiness. Every job here built and passed its own
       # assertions on 2026-08-27 and the run was still RED, because `upload-artifact` failed with
@@ -187,8 +261,13 @@ jobs:
       # artifact of a push older than a week has never once been the one anybody wanted.
       - uses: actions/upload-artifact@v4
         with:
-          name: ut2004-windows
-          path: build-windows/Source/SDLLaunch/ut2004.exe
+          name: ut2004-${{ matrix.preset }}
+          # ⚠ The DLL is part of the deliverable on the Pixomatic arm, not an extra: the exe imports
+          # it at load time, so an artifact with only the .exe is a download that refuses to start.
+          # The glob is harmless on the 64-bit arm, which stages no DLL.
+          path: |
+            build-${{ matrix.preset }}/Source/SDLLaunch/${{ matrix.bin }}
+            build-${{ matrix.preset }}/Source/SDLLaunch/*.dll
           if-no-files-found: error
           retention-days: 7
 

@@ -122,6 +122,32 @@ if(UT_HAS_PIXODRV)
   # NB: Pixomatic JITs into the malloc'd heap, which a modern kernel marks NX. The fix is NOT an executable-stack
   # marker (a modern kernel no longer turns that into READ_IMPLIES_EXEC) — SDLLaunch.cpp's main() sets the
   # READ_IMPLIES_EXEC personality + re-execs when -SOFTWARERENDERER is active, which makes the brk heap executable.
+
+  # ★★ ufront 2.54 — WINDOWS: STAGE THE VENDORED pixomatic.dll BESIDE THE EXE.
+  #
+  # ⚠ IT IS A LOAD-TIME IMPORT, NOT A LAZY ONE, so a missing DLL is not "the software renderer is
+  # unavailable" — it is "the process does not start". Measured on a real cross-build: `objdump -p
+  # ut2004-pixo.exe` lists `pixomatic.dll` among its DLL Names and its Delay Import Directory is empty
+  # (00000000 00000000). Thirdparty/Pixomatic/Lib/pixomatic.lib is a pure IMPORT library — every member
+  # is `pixomatic.dll` — so the loader resolves it before main() runs and Windows refuses the exe with
+  # "the code execution cannot proceed" long before any renderer is selected.
+  #
+  # The DLL is vendored (Thirdparty/Pixomatic/Bin/pixomatic.dll, PE32 i386) rather than copied out of a
+  # retail System/ at package time, so a CI artifact is self-contained and runnable outside a game
+  # install. There is no 64-bit build of it and no source, which is why the top-level CMakeLists refuses
+  # USE_PIXOMATIC at 64-bit outright.
+  if(WIN32 OR MINGW)
+    set(_UT_PIXO_DLL "${CMAKE_SOURCE_DIR}/Thirdparty/Pixomatic/Bin/pixomatic.dll")
+    if(NOT EXISTS "${_UT_PIXO_DLL}")
+      message(FATAL_ERROR
+        "USE_PIXOMATIC=ON on Windows needs the vendored ${_UT_PIXO_DLL}. pixomatic.lib is an import "
+        "library, so the DLL is a LOAD-TIME dependency: without it the built .exe will not start at "
+        "all. Vendor the DLL or configure with -DUSE_PIXOMATIC=OFF.")
+    endif()
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_UT_PIXO_DLL}" "$<TARGET_FILE_DIR:${PROJECT_NAME}>/pixomatic.dll"
+      COMMENT "Staging vendored pixomatic.dll beside the executable (load-time import)")
+  endif()
 endif()
 
 target_link_libraries(${PROJECT_NAME}

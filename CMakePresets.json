@@ -17,6 +17,17 @@
             }
         },
         {
+            "name": "native64",
+            "displayName": "Native Linux x86_64 -- SDL2 + both GL devices, NO Pixomatic",
+            "description": "64-bit native build (ufront 2.54). Same engine and the recovered Karma as `native`, at LP64 instead of -m32. NO PIXOMATIC, and that is not a policy choice: the prebuilts are i386-only on BOTH platforms (pixomatic_linux.a is a 32-bit i386 archive; the Windows side is an import lib against a PE32 i386 DLL) and there is no source to rebuild from, so -SOFTWARERENDERER does not exist here. 32-bit remains the DEFAULT (`native`): it is what the suite is calibrated on, and it is the pointer-width CONTROL arm of decomp/test/ut2004/ktrace_gate.sh, which compares a 64-bit candidate against it byte-for-byte.",
+            "inherits": "native-base",
+            "binaryDir": "${sourceDir}/build-native64",
+            "cacheVariables": {
+                "UT_ALLOW_64BIT": "ON",
+                "USE_PIXOMATIC": "OFF"
+            }
+        },
+        {
             "name": "native",
             "displayName": "Native Linux x86 -- SDL2, both GL devices + Pixomatic, one binary",
             "description": "32-bit native build. SDL2Drv + OpenGLDrv (desktop GL) + GL4ESDrv (GL->GLES2 translation) + PixoDrv (Michael Abrash's software rasterizer, -SOFTWARERENDERER) all in ONE binary; pick at startup with -OPENGLRENDERER / -GL4ESRENDERER / -SOFTWARERENDERER. Karma is ON (the RECOVERED sources -- USE_KARMA_DECOMP defaults ON), so this has vehicles and ragdolls; `native-nokarma` is the physics-off control. Builds in build-native/ -> ut2004-pixo.bin. [ufront 2.34]",
@@ -85,7 +96,7 @@
         {
             "name": "windows",
             "displayName": "Windows x86 (MinGW-w64) -- SDL2, both GL devices",
-            "description": "32-bit Windows build (MinGW-w64 cross from Linux). SDL2 + BOTH GL render devices (OpenGLDrv desktop GL and GL4ESDrv) in one static exe, picked at startup with -OPENGLRENDERER / -GL4ESRENDERER. TWO things are deliberately absent, both for the same reason -- the drop ships a Windows binary we cannot use: (1) Karma, whose metoolkit libs are MSVC-mangled C++ that MinGW cannot link (2.34 section 2.1); (2) Pixomatic, whose Thirdparty/Pixomatic/Lib/pixomatic.lib turns out to be a pure IMPORT library -- all 240 members are `pixomatic.dll`, and that DLL is not in the drop, so the exe would fail at load. Everything needed to build it IS in place (the header now compiles under MinGW and the lib is selected per-platform); supply pixomatic.dll and flip USE_PIXOMATIC back on. Do not re-derive this. Builds in build-windows/. [ufront 2.33, SDL2 2.34]",
+            "description": "32-bit Windows build (MinGW-w64 cross from Linux). SDL2 + BOTH GL render devices (OpenGLDrv desktop GL and GL4ESDrv) plus PixoDrv, picked at startup with -OPENGLRENDERER / -GL4ESRENDERER / -SOFTWARERENDERER. ufront 2.54: PIXOMATIC IS NOW ON. Its pixomatic.lib is a pure IMPORT library (all members are `pixomatic.dll`), so the DLL is a LOAD-TIME dependency -- measured: objdump lists pixomatic.dll among the exe imports and the Delay Import Directory is empty, i.e. a missing DLL means the process does not start at all, not a renderer that is merely unavailable. The DLL is now VENDORED at Thirdparty/Pixomatic/Bin/pixomatic.dll (PE32 i386) and staged beside the exe by SDLLaunch/CMakeLists.txt, so the artifact is self-contained rather than only runnable inside a retail install. Karma is ON here too (the recovered sources; the old note that MinGW cannot link MathEngine is pre-recovery history). Builds in build-windows/ -> ut2004-pixo.exe. [ufront 2.33, SDL2 2.34, Pixomatic 2.54]",
             "generator": "Unix Makefiles",
             "binaryDir": "${sourceDir}/build-windows",
             "toolchainFile": "${sourceDir}/cmake/toolchain-mingw-w64.cmake",
@@ -96,7 +107,7 @@
                 "UT_GFX_BACKEND": "gl4es",
                 "MINGW_TARGET_ARCH": "i686",
                 "MINGW_THREAD_MODEL": "posix",
-                "USE_PIXOMATIC": "OFF"
+                "USE_PIXOMATIC": "ON"
             }
         },
         {
@@ -146,6 +157,10 @@
         }
     ],
     "buildPresets": [
+        {
+            "name": "native64",
+            "configurePreset": "native64"
+        },
         {
             "name": "native",
             "configurePreset": "native"

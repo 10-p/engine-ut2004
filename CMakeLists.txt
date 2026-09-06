@@ -138,7 +138,7 @@ endif()
 message(STATUS "Target arch: ${TARGET_ARCH}")
 message(STATUS "64-bit: ${TARGET_IS_64BIT}")
 
-option(UT_ALLOW_64BIT "Skip the -m32 demotion on x86_64 Linux. NOT a shipping target — a debugging vehicle for LP64 defects." OFF)
+option(UT_ALLOW_64BIT "Build x86_64 instead of demoting to -m32. A supported configuration (ufront 2.54); 32-bit remains the default." OFF)
 # UT_PTR_BYTES — the pointer width this build will ACTUALLY produce, computed once so the
 # Karma gate below has something trustworthy to test.
 #
@@ -178,7 +178,16 @@ message(STATUS "Pointer width: ${UT_PTR_BYTES} bytes")
 # WASM is inherently 32-bit -- -m32 causes emcc to fail.
 # Android is a separate 64-bit native build (x86_64 first, arm64 later) -- skip the -m32 demotion.
 #
-# ★ -DUT_ALLOW_64BIT=ON SKIPS THE DEMOTION, AND IT EXISTS FOR ONE MEASUREMENT.
+# ★★ ufront 2.54 — -DUT_ALLOW_64BIT=ON IS NOW A SUPPORTED CONFIGURATION, NOT A DEBUGGING VEHICLE.
+# The owner's call: both widths are shippable and CI builds both for Linux and Windows. 32-bit stays
+# the DEFAULT — it is what the test suite is calibrated on, and it is the only width Pixomatic exists
+# for, so demoting by default keeps `native` and the ktrace 32-bit control arm intact.
+#
+# ⚠ WHAT 64-BIT COSTS YOU, so it is chosen rather than stumbled into: no Pixomatic (see the guard
+# further down — the prebuilts are i386-only on BOTH platforms and there is no source), and the
+# pointer-width diagnostics recorded below are real work that compiling cleanly does not discharge.
+#
+# The original note, kept because the measurement still stands:
 # The Android x86_64 build ALREADY runs this engine at 64-bit — with Karma off it
 # reaches UT2k4MainMenu.Opened() off the retail packages — so "the engine cannot
 # do LP64" is refuted, and the only thing that crashes there is Karma. What is
@@ -187,7 +196,7 @@ message(STATUS "Pointer width: ${UT_PTR_BYTES} bytes")
 # ASan and no valgrind. An x86-64 LINUX build is the same pointer width with all
 # of those.
 #
-# ⚠ IT IS NOT A SHIPPING TARGET. D-05 stands: the shipped Linux binary is 32-bit.
+# ⚠ D-05 RELAXED AT 2.54: 32-bit is still the DEFAULT, but no longer the only shippable width.
 # Measured 2026-08-30 before this option existed: all 200 engine translation
 # units compile at -m64 with ZERO hard errors and 198 pointer-width diagnostics
 # (`-Wint-to-pointer-cast` / `-Wpointer-to-int-cast`), 124 of them in Engine —
@@ -430,9 +439,10 @@ option(USE_PIXOMATIC "Build the Pixomatic software render device (PixoDrv, -SOFT
 # built from source; the software renderer is not needed to debug Karma.
 if(USE_PIXOMATIC AND UT_PTR_BYTES EQUAL 8 AND NOT ANDROID AND NOT EMSCRIPTEN)
   message(FATAL_ERROR
-    "USE_PIXOMATIC=ON is impossible at 64-bit: Thirdparty/Pixomatic/Lib/pixomatic_linux.a is a "
-    "prebuilt 32-bit i386 archive and there is no source to rebuild. Configure with "
-    "-DUSE_PIXOMATIC=OFF for the UT_ALLOW_64BIT vehicle.")
+    "USE_PIXOMATIC=ON is impossible at 64-bit, on EITHER platform, and there is no source to rebuild "
+    "from: Thirdparty/Pixomatic/Lib/pixomatic_linux.a is a prebuilt 32-bit i386 archive, and the "
+    "Windows side is pixomatic.lib (an import library) against a PE32 i386 pixomatic.dll. Configure "
+    "with -DUSE_PIXOMATIC=OFF; 64-bit uses gl4es, which is built from source.")
 endif()
 
 # Emscripten: disable x86 SSE intrinsics (WASM has no x86 instruction sets)
