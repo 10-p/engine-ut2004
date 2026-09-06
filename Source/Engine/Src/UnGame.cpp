@@ -170,10 +170,17 @@ void UGameEngine::Init()
 		GRenDev->Init();
 	}
     
+	// ufront 2.53 — apply [ufront.Shadows] to the ShadowProjector class default before any level (and so
+	// any pawn, and so any shadow) exists. Must be after Engine.u is loaded, which it is by here.
+	// See UnShadowProjector.cpp for why the distance has to reach the ACTOR and not just the fade.
+	{
+		extern void ufrontApplyShadowCfg();
+		ufrontApplyShadowCfg();
+	}
+
 #if defined(WITH_KARMA) || defined(WITH_PHYSICS)
     KInitGameKarma(); // Init physics.
 #endif
-
 #ifdef WITH_LIPSINC
 	GLIPSincInitGame(); // Init LIPSinc system.
 #endif

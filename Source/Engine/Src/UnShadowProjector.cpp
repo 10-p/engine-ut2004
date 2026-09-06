@@ -250,6 +250,96 @@ public:
 //	UShadowBitmapMaterial::Get
 //
 
+// ★★ ufront 2.53 — [ufront.Shadows]: the pawn-shadow fade, exposed so it can be tuned without a rebuild.
+//
+// Reported by the owner as "shadows fade out too close". Retail draws a shadow with
+//     ShadowAtten = 1 - clamp( (dist / CullDistance)^2, 0, 1 )
+// where CullDistance comes from ShadowProjector.uc's `CullDistance=1200.0` in Engine.u. Two things make
+// that feel early, and BOTH are exposed here, because raising only the distance keeps the shape of the
+// curve: the falloff is SQUARED, so a shadow is already 25% faded at half the cull distance and ~51% at
+// 0.7 of it. FadeExponent 1.0 is linear; higher than 2.0 holds full strength longer and then drops fast.
+//
+// ⚠ A FREE CONFIG SECTION, NOT A CLASS — the same decision (and the same reasoning) as [ufront.AutoFOV]
+// in UnRender.cpp: the value belongs to a retail Engine.u class that cannot gain properties, a free
+// section is readable from anywhere, and it is one obvious block for a human to edit. It is NOT a
+// renderer-device setting — this fade is computed in Engine, not in the GL driver — and not a per-player
+// profile field, so it belongs in the system ini rather than User.ini.
+//
+// ⚠ DEFAULTS ARE THE RETAIL VALUES, so an absent or partial section is a NO-OP. Nothing changes until
+// somebody sets something.
+static UBOOL  GShadowCfgParsed  = 0;
+static FLOAT  GShadowCullDist   = 1200.0f;	// ShadowProjector.uc default
+static FLOAT  GShadowFadeExp    = 2.0f;		// retail's squared falloff
+static UBOOL  GShadowDebug      = 0;		// -SHADOWDEBUG: log every shadow's distance and attenuation
+
+static void ufrontParseShadowCfg()
+{
+	guard(ufrontParseShadowCfg);
+	GShadowCfgParsed = 1;
+
+	FLOAT Dist = GShadowCullDist;
+	FLOAT Exp  = GShadowFadeExp;
+	GConfig->GetFloat( TEXT("ufront.Shadows"), TEXT("CullDistance"), Dist );
+	GConfig->GetFloat( TEXT("ufront.Shadows"), TEXT("FadeExponent"), Exp  );
+
+	// Command line wins, so a bad config is recoverable without editing an ini you cannot reach.
+	const TCHAR* Str;
+	if( (Str = appStrfind( appCmdLine(), TEXT("SHADOWDIST=") )) != NULL )
+		Dist = appAtof( Str + 11 );
+	if( (Str = appStrfind( appCmdLine(), TEXT("SHADOWFADE=") )) != NULL )
+		Exp = appAtof( Str + 11 );
+	if( appStrfind( appCmdLine(), TEXT("SHADOWDEBUG") ) )
+		GShadowDebug = 1;
+
+	// 0 or less would divide by zero / invert the curve; the ceilings are sanity, not policy.
+	GShadowCullDist = Clamp( Dist, 1.0f, 65536.0f );
+	GShadowFadeExp  = Clamp( Exp,  0.1f, 16.0f );
+
+	debugf( NAME_Log, TEXT("[ufront.Shadows] cullDistance=%f fadeExponent=%f (retail: 1200.0 / 2.0)"),
+		GShadowCullDist, GShadowFadeExp );
+	unguard;
+}
+
+//
+// Apply the configured shadow distance to the ShadowProjector CLASS DEFAULT. Called once from
+// UGameEngine::Init, after Engine.u is loaded.
+//
+// ★★ WHY THIS IS NEEDED AND WHY THE FADE ALONE IS NOT ENOUGH — MEASURED, NOT ASSUMED. `CullDistance`
+// is used TWICE for a shadow, and they are different mechanisms:
+//   1. the FADE below, via the material's copy (InitShadow does `ShadowTexture.CullDistance = CullDistance`);
+//   2. the ACTOR-level visibility cull, `CheckCullDistance` in UnRenderVisibility.cpp, which reads the
+//      PROJECTOR ACTOR's own `CullDistance` and stops drawing it entirely.
+// Raising only (1) gives a shadow that is still near-full-strength when (2) deletes it — a hard pop
+// instead of a longer fade. Instrumented with -SHADOWDEBUG on two different maps: with the fade pushed
+// to 6000 the attenuation at 1250-1499 was still 0.954, and the samples STOPPED at 1324 on DM-Antalus
+// and 1312 on DM-Rankin. That ceiling is the retail 1200 plus the pawn's bounding-box radius, because
+// CheckCullDistance measures to the box rather than the centre.
+//
+// Patching the class default fixes both at once — the actor cull and the material's own copy — so the
+// two can never disagree, and a mod that overrides CullDistance on its own projector subclass still wins.
+void ufrontApplyShadowCfg()
+{
+	guard(ufrontApplyShadowCfg);
+	if( !GShadowCfgParsed )
+		ufrontParseShadowCfg();
+
+	// Retail value: leave the class exactly as shipped rather than rewriting it with itself.
+	if( Abs(GShadowCullDist - 1200.0f) < 0.01f )
+		return;
+
+	UClass* C = FindObject<UClass>( ANY_PACKAGE, TEXT("ShadowProjector") );
+	if( !C || !C->GetDefaultActor() )
+	{
+		debugf( NAME_Log, TEXT("[ufront.Shadows] ShadowProjector class not found; distance NOT applied") );
+		return;
+	}
+	AActor* Def = C->GetDefaultActor();
+	debugf( NAME_Log, TEXT("[ufront.Shadows] ShadowProjector.CullDistance %f -> %f (actor cull + fade)"),
+		Def->CullDistance, GShadowCullDist );
+	Def->CullDistance = GShadowCullDist;
+	unguard;
+}
+
 UBitmapMaterial* UShadowBitmapMaterial::Get(FTime Time,UViewport* Viewport)
 {
 	guard(UShadowBitmapMaterial::Get);
@@ -313,11 +403,26 @@ UBitmapMaterial* UShadowBitmapMaterial::Get(FTime Time,UViewport* Viewport)
 		{
 			// sjs --- distance fade shadows
             float ShadowAtten = 1.0f;
+            // ufront 2.53 — the DISTANCE arrives through this material's own CullDistance, which
+            // InitShadow copies from the projector actor, whose class default ufrontApplyShadowCfg has
+            // already set from [ufront.Shadows]. Only the CURVE is overridden here. Keeping the distance
+            // on the instance means a mod that overrides CullDistance on its own projector still wins,
+            // and the fade can never disagree with the actor-level cull that decides when it stops
+            // being drawn at all.
+            if( !GShadowCfgParsed )
+                ufrontParseShadowCfg();
             if( CameraActor && CullDistance > 0.0f )
             {
                 float effectiveDist = (ShadowLocation - CameraLocation).Size() * FovBias;
                 float distRatio = effectiveDist / CullDistance;
-                ShadowAtten = 1.0f-Clamp<FLOAT>(appPow(distRatio,2.0f), 0.f, 1.f);
+                ShadowAtten = 1.0f-Clamp<FLOAT>(appPow(distRatio,GShadowFadeExp), 0.f, 1.f);
+                // -SHADOWDEBUG: the numbers behind "shadows fade out too close", so the value can be
+                // tuned against a reading instead of against an impression. ⚠ A shadow that has stopped
+                // being DRAWN prints nothing at all — that absence is the signal that the ACTOR cull
+                // dropped it, which is exactly how the 1200 ceiling was found.
+                if( GShadowDebug )
+                    debugf( NAME_Log, TEXT("[ufront.Shadows] %s dist=%.0f cull=%.0f ratio=%.3f atten=%.3f"),
+                        ShadowActor->GetName(), effectiveDist, CullDistance, distRatio, ShadowAtten );
             }
             // --- sjs
 
