@@ -180,13 +180,22 @@ clean.
 CMakeLists enforces this rather than trusting it: `UT_PTR_BYTES` is computed once and a
 `USE_KARMA_DECOMP` build on a 64-bit-pointer target is a **hard error**, not a warning.
 
-> ### ⚠ EVERY NATIVE BUILD IS -O0, INCLUDING THE PHYSICS
+> ### ✅ FIXED IN ufront 2.54 — NATIVE BUILDS ARE NO LONGER SILENTLY -O0
 >
-> The optimisation block near the top of this file ends in an `else()` marked "Match Phase 1's -O0
-> debug-oriented build for now", and every native configuration lands there — RelWithDebInfo
-> included, because the test is `CMAKE_BUILD_TYPE STREQUAL "Debug"`. The flag line reads
-> `… -O2 -g -DNDEBUG … -m32 -O0 -g …` and the last `-O` wins, so the engine AND `KarmaDecomp`
-> compile unoptimised on Linux and Windows.
+> **This is kept because the consequence below is still live.** The optimisation block used to end in
+> an `else()` marked "Match Phase 1's -O0 debug-oriented build for now", and every native configuration
+> landed there — RelWithDebInfo included, because the only test was `CMAKE_BUILD_TYPE STREQUAL
+> "Debug"`. The flag line read `… -O2 -g -DNDEBUG … -m32 -O0 -g …` and the last `-O` won, so the engine
+> AND `KarmaDecomp` compiled unoptimised on Linux and Windows.
+>
+> `CMakeLists.txt` now states one `-O` per configuration and blanks the per-config `CMAKE_<LANG>_FLAGS_<CONFIG>`
+> variables that were injecting the competing one, so RelWithDebInfo really is `-O2 -g` and Release
+> really is `-O3 -g0`. Verified with `compile_commands.json`: the native line went from
+> `['-O2','-O0']` to `['-O2']`, with `-DNDEBUG`/`-D_NDEBUG=1` unchanged — the optimisation level is the
+> only thing that moved.
+>
+> ⚠⚠ **SO THE WIN32-PORT-3 HAZARD BELOW IS NOW REACHABLE BY DEFAULT.** Native and Windows builds were
+> getting -O0 by accident; they now get what their preset asks for. Re-validate rather than assume.
 >
 > That is pre-existing and predates Karma, but it is load-bearing in a way worth knowing: at -O2
 > gcc sinks a particular dead null-page load onto the branch that guards it, and at -O0 it does

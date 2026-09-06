@@ -517,6 +517,31 @@ endif()
 #-----------------------------------------------------------------------------
 # Build Type Flags
 #-----------------------------------------------------------------------------
+#
+# ★★ ONE `-O` PER CONFIGURATION, AND EXACTLY ONE. Everything below states its optimisation level
+# outright; nothing relies on a later flag beating an earlier one.
+#
+# ⚠ THAT USED NOT TO BE TRUE ON THE NATIVE PATH, AND IT SILENTLY COST EVERY NATIVE BUILD ITS
+# OPTIMISER. CMake injects `CMAKE_<LANG>_FLAGS_<CONFIG>` — RelWithDebInfo is `-O2 -g -DNDEBUG` —
+# AHEAD of anything `add_compile_options()` appends, and the compiler takes the LAST `-O`. The old
+# native branch was a single `else()` marked "Match Phase 1's -O0 build for now" that appended
+# `-O0 -g` to every configuration, so the command line read `-O2 -g -DNDEBUG … -m32 -O0 -g` and
+# RelWithDebInfo — the build type every native and Windows preset asks for — compiled unoptimised.
+# See BUILD.md's "EVERY NATIVE BUILD IS -O0" note, which documented this without fixing it.
+#
+# The per-config variables are blanked for the configurations handled here so there is one `-O` and
+# one assertion decision on the line, rather than two of each and a last-wins race. ⚠ Blanking also
+# drops the `-DNDEBUG` those variables carried, so each branch states NDEBUG explicitly — otherwise
+# "clean up the flags" would quietly switch `assert()` back on across the engine.
+#
+# ⚠⚠ FIXING THIS CHANGES WHAT NATIVE BINARIES ARE, AND THAT IS NOT COSMETIC. BUILD.md's
+# WIN32-PORT-3 records that at -O2 gcc sinks a dead null-page load onto the branch that guards it
+# and at -O0 it does not — which is what turned one recovered Karma defect from dormant into a
+# Windows startup crash. Native and Windows builds need re-validating against this, not assuming.
+foreach(_cfg DEBUG RELWITHDEBINFO RELEASE)
+  set(CMAKE_C_FLAGS_${_cfg} "")
+  set(CMAKE_CXX_FLAGS_${_cfg} "")
+endforeach()
 
 if(EMSCRIPTEN AND UT_WEB_PERF)
   # Max-performance web build (UT_WEB_PERF=ON): optimize hard, strip debug info, assert-free.
@@ -531,15 +556,21 @@ elseif(EMSCRIPTEN AND UT_WEB_DEBUG)
   add_definitions(-D_REENTRANT -D_NDEBUG=1)
 elseif(EMSCRIPTEN)
   # ★ THE DEV DEFAULT (ufront 2.19d) — was -O0. See the option block at the top for why -O2.
+  # ★ ufront 2.54: this is also THE SHIPPED `-debug` BINARY. It is what the launcher's "launch debug
+  # binary" link loads, so it has to stay playable as well as symbolised — which is exactly the
+  # trade -O2 -g was chosen for. Do not "improve" it to -O0; that is what UT_WEB_DEBUG is for.
   add_compile_options(-O2 -g)
   add_definitions(-D_REENTRANT -D_NDEBUG=1)
 elseif(CMAKE_BUILD_TYPE STREQUAL "Debug")
   add_compile_options(-O0 -g)
   add_definitions(-D_DEBUG)
+elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
+  add_compile_options(-O3 -g0)
+  add_definitions(-D_REENTRANT -D_NDEBUG=1 -DNDEBUG)
 else()
-  # Match Phase 1's -O0 debug-oriented build for now
-  add_compile_options(-O0 -g)
-  add_definitions(-D_REENTRANT -D_NDEBUG=1)
+  # RelWithDebInfo, and an unset build type. What every native/Windows preset actually asks for.
+  add_compile_options(-O2 -g)
+  add_definitions(-D_REENTRANT -D_NDEBUG=1 -DNDEBUG)
 endif()
 
 #-----------------------------------------------------------------------------
