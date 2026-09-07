@@ -445,6 +445,31 @@ if(USE_PIXOMATIC AND UT_PTR_BYTES EQUAL 8 AND NOT ANDROID AND NOT EMSCRIPTEN)
     "with -DUSE_PIXOMATIC=OFF; 64-bit uses gl4es, which is built from source.")
 endif()
 
+# ⚠⚠ KNOWN-BROKEN AT -O2 (ufront 2.55, OPEN — not yet fixed). The 32-bit software renderer SIGSEGVs
+# during renderer init when Source/PixoDrv is optimised. Measured with one variable, same commit,
+# same 32-bit configuration, three runs each:
+#
+#     -O0 + Pixomatic ....... exit 0, 150 body rows, clean
+#     -O2 + Pixomatic ....... SIGSEGV, deterministic
+#     -O2 + NullDrv ......... exit 0        <- so it is the renderer, not the physics
+#     -O2 everywhere EXCEPT Source/PixoDrv at -O0 ... exit 0   <- and it is THIS directory
+#
+# The fault is a jump INTO HEAP DATA which then executes garbage — a corrupted code pointer, not a
+# bad data pointer. It is NOT the JIT code-buffer allocator: a breakpoint on PixoAllocCodeBuffer is
+# never reached in either build. Pixomatic itself cannot be the cause — pixomatic_linux.a is a
+# prebuilt archive that -O2 never touches — so the defect is in our own glue in Source/PixoDrv.
+#
+# Until it is fixed, -SOFTWARERENDERER is unusable on an optimised 32-bit build. Workarounds, in
+# order of preference: use -NULLRENDERER (physics is unaffected and traces identically), or build
+# that one directory at -O0, or use a Debug build.
+if(USE_PIXOMATIC AND NOT CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT EMSCRIPTEN)
+  message(WARNING
+    "USE_PIXOMATIC=ON in an optimised build: the 32-bit software renderer is KNOWN TO SIGSEGV at -O2 "
+    "(ufront 2.55, open defect in Source/PixoDrv — a corrupted code pointer, not Pixomatic itself). "
+    "The build succeeds and everything else works; only -SOFTWARERENDERER crashes. Use -NULLRENDERER, "
+    "or configure -DCMAKE_BUILD_TYPE=Debug, until it is fixed.")
+endif()
+
 # Emscripten: disable x86 SSE intrinsics (WASM has no x86 instruction sets)
 if(EMSCRIPTEN)
   add_definitions(-DNO_SSE_SUPPORT=1)
@@ -922,6 +947,48 @@ endif()
 #-----------------------------------------------------------------------------
 if(USE_KARMA_DECOMP)
   FetchContent_MakeAvailable(MetoolkitKarmaDecomp)
+
+  # ★★ THE RECOVERED KARMA C IS PINNED TO -O0 ON NATIVE/WINDOWS, WHILE THE ENGINE AROUND IT KEEPS THE
+  # OPTIMISATION ufront 2.54 RESTORED. Measured, not assumed (ufront 2.55, `test-karma-1`, 40 frames,
+  # Onslaught, KTRACECONTACTS, x86-64):
+  #
+  #     everything -O0 .................. 600 body rows, K=1396, md5 c31ed77b7323   <- the reference
+  #     Karma C -O0 + engine C++ -O2 .... 600 body rows, K=1396, md5 c31ed77b7323   <- byte-identical
+  #     everything -O2 .................. 543 body rows, K=1074, md5 179ace20fb15   <- DIVERGES
+  #
+  # So the engine is innocent: optimising it changes nothing. Optimising the RECOVERED code changes
+  # the simulation — and not by a rounding digit, the traced body-row count itself drops. That breaks
+  # `decomp/test/ut2004/ktrace_gate.sh`, whose whole method is a byte-for-byte trajectory comparison
+  # against md5 c31ed77b7323 / K=1396, and which has caught real defects by being exact.
+  #
+  # ⚠ NOT strict aliasing: metoolkit_decomp already builds with `-fno-strict-aliasing` in its own
+  # MD_C_FLAGS, so that was never a candidate. The specific transformation has not been identified,
+  # and until it is, -O0 is the setting the recovery is validated at.
+  #
+  # ★ WHY THIS COSTS LESS THAN IT LOOKS (owner, 2026-09-07): this source was DECOMPILED FROM AN
+  # ALREADY-OPTIMISED BUILD. MathEngine shipped Karma compiled, and the recovery reconstructs C from
+  # that object code — so the inlining, strength reduction and scheduling are already baked into the
+  # source's shape. Re-optimising an optimiser's output is expected to buy little, which makes -O0
+  # here a cheap price rather than a sacrifice. That is a prediction, not a measurement; if anyone
+  # wants the speed back, MEASURE the two first.
+  #
+  # ⚠ THE WEB IS DELIBERATELY NOT INCLUDED. wasm-perf builds this code at -O3 and the dev/`-debug`
+  # wasm at -O2, and always has — 2.54's `else()` branch only ever caught the native configurations.
+  # The web is validated by its own E2E (170/170 at ufront 2.55) and by the owner playing it daily,
+  # in exactly that optimised state. Changing it would alter the shipped binary and invalidate that
+  # evidence to chase a native-only gate, so it stays as it is.
+  if(NOT EMSCRIPTEN)
+    get_property(_md_targets DIRECTORY "${metoolkitkarmadecomp_SOURCE_DIR}/metoolkit_decomp"
+                 PROPERTY BUILDSYSTEM_TARGETS)
+    foreach(_md_t IN LISTS _md_targets)
+      # PRIVATE target options land AFTER the directory-level `add_compile_options(-O2 -g)` above,
+      # and the compiler takes the last -O — the same last-wins rule the 2.54 bug relied on, used
+      # deliberately here.
+      target_compile_options(${_md_t} PRIVATE -O0)
+    endforeach()
+    list(LENGTH _md_targets _md_n)
+    message(STATUS "Karma decomp: ${_md_n} target(s) pinned to -O0 (engine keeps -O2; ufront 2.55)")
+  endif()
   set(METOOLKIT_DIR "${metoolkitkarmadecomp_SOURCE_DIR}/metoolkit" CACHE PATH "metoolkit (Karma SDK) root: include/ + lib.{chk,rel}/")
   set(METOOLKIT_LIB_SUBDIR "lib.rel/linux_single_gcc3.2" CACHE STRING "metoolkit lib variant (rel/chk + toolchain)")
   # Global, exactly as the ORIGINAL v3369 build did: the Epic makefile-header applies

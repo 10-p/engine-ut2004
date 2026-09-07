@@ -181,7 +181,54 @@ clean.
 CMakeLists enforces this rather than trusting it: `UT_PTR_BYTES` is computed once and a
 `USE_KARMA_DECOMP` build on a 64-bit-pointer target is a **hard error**, not a warning.
 
-> ### ✅ FIXED IN ufront 2.54 — NATIVE BUILDS ARE NO LONGER SILENTLY -O0
+> ### ✅ RE-VALIDATED IN ufront 2.55 — AND IT FOUND TWO REAL REGRESSIONS
+>
+> 2.54 restored optimisation to the native builds and said "re-validate rather than assume". The
+> re-validation was done, and assuming would have been wrong twice.
+>
+> **1. The recovered Karma C cannot be optimised — the engine around it can.** Measured on
+> `test-karma-1`, 40 frames, Onslaught, `-KTRACECONTACTS`, x86-64:
+>
+> | build | body rows | K | md5 |
+> |---|---|---|---|
+> | everything `-O0` | 600 | 1396 | `c31ed77b7323` ← the reference |
+> | **Karma C `-O0` + engine C++ `-O2`** | **600** | **1396** | **`c31ed77b7323`** |
+> | everything `-O2` | 543 | 1074 | `179ace20fb15` |
+>
+> Optimising the ENGINE changes nothing. Optimising the RECOVERED code changes the simulation, and
+> not by a rounding digit — the traced body-row count itself drops. `CMakeLists.txt` now pins the
+> `metoolkit_decomp` targets to `-O0` on native/Windows only, and the gate passes at the reference
+> value with the engine still at `-O2`. ⚠ Not strict aliasing: the decomp already builds with
+> `-fno-strict-aliasing`, so that was never a candidate; the specific transformation is unidentified.
+> ★ It probably costs little: this source was **decompiled from an already-optimised build**, so the
+> optimiser's work is baked into its shape. That is a prediction — measure before trusting it.
+>
+> **2. `Source/PixoDrv` SIGSEGVs at `-O2` (OPEN, not fixed).** The 32-bit software renderer crashes
+> during renderer init; `-O0` is clean, `-O2` is a deterministic fault, and `-O2` everywhere *except*
+> that one directory is clean. The fault is a jump into heap data executing garbage — a corrupted
+> code pointer — and it is not the JIT allocator, which is never reached. Pixomatic itself is a
+> prebuilt archive `-O2` cannot touch, so the defect is ours. Configure now warns. Use
+> `-NULLRENDERER` (physics traces identically) until it is fixed.
+>
+> **The gate, after the fix** — both arms, exactly reproducing the 2026-09-02 result:
+>
+> ```
+> 64-bit vs 32-bit SSE control : self-consistent, BYTE-IDENTICAL (c31ed77b7323, K=1396)
+> windows64 under wine         : self-consistent, differs ONLY at the 1e-15..1e-19 libm floor
+> ```
+>
+> ⚠ **The control must be a 32-bit `-msse2 -mfpmath=sse` build**, as `ktrace_gate.sh`'s own docstring
+> says — *not* the `native` preset. `native` is `-march=pentium -msse` with no `-mfpmath=sse`, so its
+> doubles run on x87 with 80-bit intermediates and it produces `81b06b0cf715`, never the reference.
+> `decomp/test/README.md` pointing at `build-native` is wrong for this purpose.
+>
+> ⚠ **The WEB IS NOT AFFECTED and was never part of this.** `wasm-perf` builds Karma at `-O3` and the
+> dev/`-debug` wasm at `-O2`, and always did — 2.54's `else()` only ever caught native. Verified after
+> this change: the web configure applies no pin, its Karma C is still `-O3`, and the built
+> `SDLLaunch.wasm` is byte-identical to the shipped one.
+>
+> ### The 2.54 note this replaces — NATIVE BUILDS WERE SILENTLY -O0
+
 >
 > **This is kept because the consequence below is still live.** The optimisation block used to end in
 > an `else()` marked "Match Phase 1's -O0 debug-oriented build for now", and every native configuration
