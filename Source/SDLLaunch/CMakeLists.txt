@@ -169,6 +169,16 @@ if(EMSCRIPTEN)
     target_link_options(${PROJECT_NAME} PRIVATE
       -O3
       -g0
+      # ufront 2.57 -- --emit-symbol-map costs the SHIPPED build NOTHING: the map is a SIDE FILE
+      # (SDLLaunch.js.symbols), so the wasm is byte-for-byte the size it is without the flag and the code
+      # section is untouched. It is what makes a PRODUCTION crash address readable -- the shipped wasm plus
+      # this map resolves an offset to a function name offline, with no name section and no DWARF on the wire.
+      # Measured on engine-unreal1: 3,545,604 bytes either way, and 0x2e0000 resolved to
+      # FControlChannel::ReceivedBunch both from the map and from a name section built for the comparison.
+      # DWARF is the one that cannot ride along: it forces "limited binaryen optimizations", which is why the
+      # dev build's code section is more than TWICE this one's. Line numbers stay a debug-build job.
+      # !! The map names every private engine symbol, so it must never reach the published tree.
+      --emit-symbol-map
       -sASSERTIONS=0
       -sSTACK_OVERFLOW_CHECK=0
       -sDISABLE_EXCEPTION_CATCHING=1
