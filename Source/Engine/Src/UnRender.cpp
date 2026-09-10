@@ -1474,21 +1474,17 @@ static void ufrontParseAutoFov()
 	GConfig->GetInt  ( TEXT("ufront.AutoFOV"), TEXT("AutoFOVUI"),       Ui   );
 	GConfig->GetFloat( TEXT("ufront.AutoFOV"), TEXT("UIScale"),         UiSc );
 
-	// Command line wins (lets the E2E drive both modes off ONE build, and makes a bad config recoverable).
-	if( appStrfind( appCmdLine(), TEXT("NOAUTOFOV") ) )
-		Mode = AUTOFOV_Off;
-	const TCHAR* Str;
-	if( (Str = appStrfind( appCmdLine(), TEXT("AUTOFOV=") )) != NULL )
-		Mode = appAtoi( Str + 8 );
-	if( (Str = appStrfind( appCmdLine(), TEXT("AUTOFOVREF=") )) != NULL )
-		Ref = appAtof( Str + 11 );
-	if( (Str = appStrfind( appCmdLine(), TEXT("AUTOFOVWEAPON=") )) != NULL )
-		Weap = appAtof( Str + 14 );
-	if( appStrfind( appCmdLine(), TEXT("NOAUTOFOVUI") ) )
-		Ui = 0;
-	if( (Str = appStrfind( appCmdLine(), TEXT("AUTOFOVUISCALE=") )) != NULL )
-		UiSc = appAtof( Str + 15 );
-
+	// !! NO COMMAND-LINE OVERRIDES (removed 2026-09-10, owner's rule). A setting has ONE home, and this
+	// one's home is the [ufront.AutoFOV] section above. The switches that used to be here were
+	// development scaffolding for step 2.16 that outlived the development: they duplicated every key on a
+	// command line that is already long, repeated on every launch, and undiscoverable.
+	//
+	// Anything that still needs to change a value per launch -- including the E2E, which drives AutoFOV
+	// both ways off ONE build -- uses the engine's GENERIC config switch instead of a bespoke one:
+	//     -ini:System:[ufront.AutoFOV]:AutoFOV=0
+	// (appApplyIniOverrides, UnMisc.cpp). !! That WRITES the value into the ini rather than overriding it
+	// for one run, which is the deliberate trade: one mechanism, and the setting stays where a human can
+	// see it.
 	GAutoFovMode   = Clamp( Mode, (INT)AUTOFOV_Off, (INT)AUTOFOV_Adaptive );
 	GAutoFovRef    = (Ref  > 0.01f) ? Ref : (4.0f / 3.0f);
 	GAutoFovWeapon = Clamp( Weap, 0.0f, 4.0f );

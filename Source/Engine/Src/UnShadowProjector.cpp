@@ -271,7 +271,6 @@ public:
 static UBOOL  GShadowCfgParsed  = 0;
 static FLOAT  GShadowCullDist   = 1200.0f;	// ShadowProjector.uc default
 static FLOAT  GShadowFadeExp    = 2.0f;		// retail's squared falloff
-static UBOOL  GShadowDebug      = 0;		// -SHADOWDEBUG: log every shadow's distance and attenuation
 
 static void ufrontParseShadowCfg()
 {
@@ -283,16 +282,15 @@ static void ufrontParseShadowCfg()
 	GConfig->GetFloat( TEXT("ufront.Shadows"), TEXT("CullDistance"), Dist );
 	GConfig->GetFloat( TEXT("ufront.Shadows"), TEXT("FadeExponent"), Exp  );
 
-	// ⚠ NO `SHADOWDIST=` / `SHADOWFADE=` SWITCHES (removed 2026-09-10, owner's call). They were added
-	// alongside the config as "recoverable without editing an ini you cannot reach", and that reason no
-	// longer holds: the ini IS reachable — the launcher's "Edit config & logs…" dialog opens the system
-	// ini and the value persists in user data. A SETTING HAS ONE HOME; a duplicate on the command line is
-	// permanent surface on a line that is already long, repeated every launch, and undiscoverable.
+	// ⚠ NO COMMAND-LINE SWITCHES AT ALL (removed 2026-09-10, owner's rule). `SHADOWDIST=`/`SHADOWFADE=`
+	// duplicated the two keys above — a setting has ONE home, and this one's is the section. `SHADOWDEBUG`
+	// went with them: it was development scaffolding for 2.53d, and a debug switch that outlives the
+	// development of its feature is just surface. Both reasons compound when an ini option already exists.
 	//
-	// SHADOWDEBUG stays: it is not a setting but a transient diagnostic (a per-shadow log for one run),
-	// which is what a command line is actually for.
-	if( appStrfind( appCmdLine(), TEXT("SHADOWDEBUG") ) )
-		GShadowDebug = 1;
+	// Anything that still needs to change these per launch uses the engine's GENERIC config switch rather
+	// than a bespoke one:  -ini:System:[ufront.Shadows]:CullDistance=6000  (appApplyIniOverrides,
+	// UnMisc.cpp). ⚠ That WRITES the value rather than overriding it for one run — the deliberate trade
+	// for having one mechanism instead of seven.
 
 	// 0 or less would divide by zero / invert the curve; the ceilings are sanity, not policy.
 	GShadowCullDist = Clamp( Dist, 1.0f, 65536.0f );
@@ -313,7 +311,9 @@ static void ufrontParseShadowCfg()
 //   2. the ACTOR-level visibility cull, `CheckCullDistance` in UnRenderVisibility.cpp, which reads the
 //      PROJECTOR ACTOR's own `CullDistance` and stops drawing it entirely.
 // Raising only (1) gives a shadow that is still near-full-strength when (2) deletes it — a hard pop
-// instead of a longer fade. Instrumented with -SHADOWDEBUG on two different maps: with the fade pushed
+// instead of a longer fade. Measured in 2.53d with a temporary per-shadow log on two different maps
+// (the instrumentation and its switch are gone; re-add a debugf here if that reading is ever needed
+// again): with the fade pushed
 // to 6000 the attenuation at 1250-1499 was still 0.954, and the samples STOPPED at 1324 on DM-Antalus
 // and 1312 on DM-Rankin. That ceiling is the retail 1200 plus the pawn's bounding-box radius, because
 // CheckCullDistance measures to the box rather than the centre.
@@ -419,13 +419,6 @@ UBitmapMaterial* UShadowBitmapMaterial::Get(FTime Time,UViewport* Viewport)
                 float effectiveDist = (ShadowLocation - CameraLocation).Size() * FovBias;
                 float distRatio = effectiveDist / CullDistance;
                 ShadowAtten = 1.0f-Clamp<FLOAT>(appPow(distRatio,GShadowFadeExp), 0.f, 1.f);
-                // -SHADOWDEBUG: the numbers behind "shadows fade out too close", so the value can be
-                // tuned against a reading instead of against an impression. ⚠ A shadow that has stopped
-                // being DRAWN prints nothing at all — that absence is the signal that the ACTOR cull
-                // dropped it, which is exactly how the 1200 ceiling was found.
-                if( GShadowDebug )
-                    debugf( NAME_Log, TEXT("[ufront.Shadows] %s dist=%.0f cull=%.0f ratio=%.3f atten=%.3f"),
-                        ShadowActor->GetName(), effectiveDist, CullDistance, distRatio, ShadowAtten );
             }
             // --- sjs
 
