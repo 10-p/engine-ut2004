@@ -266,7 +266,8 @@ public:
 // profile field, so it belongs in the system ini rather than User.ini.
 //
 // ⚠ DEFAULTS ARE THE RETAIL VALUES, so an absent or partial section is a NO-OP. Nothing changes until
-// somebody sets something.
+// somebody sets something — and what the WEB BUILD sets is `CullDistance=4800.0` (4x the retail range,
+// step 2.57) in Engine/Config/web/Default.ini. Only the RANGE ships changed; the falloff stays retail 2.0.
 static UBOOL  GShadowCfgParsed  = 0;
 static FLOAT  GShadowCullDist   = 1200.0f;	// ShadowProjector.uc default
 static FLOAT  GShadowFadeExp    = 2.0f;		// retail's squared falloff
@@ -282,12 +283,14 @@ static void ufrontParseShadowCfg()
 	GConfig->GetFloat( TEXT("ufront.Shadows"), TEXT("CullDistance"), Dist );
 	GConfig->GetFloat( TEXT("ufront.Shadows"), TEXT("FadeExponent"), Exp  );
 
-	// Command line wins, so a bad config is recoverable without editing an ini you cannot reach.
-	const TCHAR* Str;
-	if( (Str = appStrfind( appCmdLine(), TEXT("SHADOWDIST=") )) != NULL )
-		Dist = appAtof( Str + 11 );
-	if( (Str = appStrfind( appCmdLine(), TEXT("SHADOWFADE=") )) != NULL )
-		Exp = appAtof( Str + 11 );
+	// ⚠ NO `SHADOWDIST=` / `SHADOWFADE=` SWITCHES (removed 2026-09-10, owner's call). They were added
+	// alongside the config as "recoverable without editing an ini you cannot reach", and that reason no
+	// longer holds: the ini IS reachable — the launcher's "Edit config & logs…" dialog opens the system
+	// ini and the value persists in user data. A SETTING HAS ONE HOME; a duplicate on the command line is
+	// permanent surface on a line that is already long, repeated every launch, and undiscoverable.
+	//
+	// SHADOWDEBUG stays: it is not a setting but a transient diagnostic (a per-shadow log for one run),
+	// which is what a command line is actually for.
 	if( appStrfind( appCmdLine(), TEXT("SHADOWDEBUG") ) )
 		GShadowDebug = 1;
 
