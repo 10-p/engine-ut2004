@@ -122,6 +122,7 @@ native stack* below) and any script still calling them will fail with "no such p
 | Preset | What it is | Build dir | Output |
 |--------|-----------|-----------|--------|
 | `native` | **32-bit native, and still the DEFAULT.** SDL2 + `OpenGLDrv` + `GL4ESDrv` + `PixoDrv`, **all in one binary**; pick at startup. The WASM stack's native twin. ★ It is also the pointer-width **CONTROL arm** of `decomp/test/ut2004/ktrace_gate.sh`, which compares a 64-bit candidate against it byte-for-byte — which is why the default did not move to 64-bit. | `build-native/` | `Source/SDLLaunch/ut2004-pixo.bin` |
+| `native-sse` | **The ktrace CONTROL arm (ufront 2.58).** 32-bit with `-msse2 -mfpmath=sse` (`UT_FPMATH_SSE=ON`), no Pixomatic: the same recovered Karma at 32-bit pointer width and SSE float math, so the only variable against `native64` is the pointer width. `native` cannot be that control (x87, `81b06b0cf715`). | `build-native-sse/` | `Source/SDLLaunch/ut2004.bin` |
 | `native64` | **64-bit native (ufront 2.54).** Same engine and recovered Karma at LP64. ⚠ **No Pixomatic** — the prebuilts are i386-only on *both* platforms and there is no source, so `-SOFTWARERENDERER` does not exist here; gl4es (built from source) is the fallback. Configure reports `Pointer width: 8 bytes` and an explicit LP64-Karma note. | `build-native64/` | `Source/SDLLaunch/ut2004.bin` |
 
 > ⚠ **A build dir created BEFORE the 2.44 Karma relocation will not configure**, and the message points
@@ -183,6 +184,83 @@ CMakeLists enforces this rather than trusting it: `UT_PTR_BYTES` is computed onc
 
 > ### ✅ RE-VALIDATED IN ufront 2.55 — AND IT FOUND TWO REAL REGRESSIONS
 >
+> ### ufront 2.58 (2026-09-11) — both `-O2` items diagnosed; the pin stays by the owner's decision
+>
+> **1. The Karma `-O2` divergence is ONE FILE and ONE GCC PASS.** Complement bisect over all 146
+> recovered sources (`UT_KARMA_O2_FILES`, below) names
+> `MdtKea/keaCalcIworldandNonInertialForceandVhmf_vanilla.c` alone. Ghidra flattened its two 3x3
+> matrix loops into `m1[0][iVar9 + k]` with `iVar9 = 0,3,6` on `MeReal m1[3][3]`, so iterations 2-3
+> subscript past the inner array — undefined in C, exactly what the machine code does. GCC's
+> value-range propagation (on at `-O2`, off at `-O1`/`-Og`) uses that to cut each loop to one
+> iteration; rows 2-3 of the world inertia tensor are never written; the first constrained body solves
+> wrong at frame 1. GCC even says so — `iteration 1 invokes undefined behavior
+> [-Waggressive-loop-optimizations]` — but the decomp builds `-w`. Measured, all on the reference
+> scenario: every other probe (`-fwrapv`, `-ftrivial-auto-var-init=zero`, `-fno-inline`,
+> `-fno-tree-dse`, `-ffp-contract=off`, `-fno-ipa-*`) still diverges; `-O1`, `-Og` and
+> `-O2 -fno-tree-vrp` match; the file's ten subscripts respelled `((MeReal *)m1)[k]` make **all 146
+> files at `-O2` byte-identical to the reference**, and that respelling compiles to a byte-identical
+> wasm object under the shipping `-O3 -g0` flags. The SDK's amd64 build of the function compares its
+> counters to 3 twelve times. **The pin stays** — measured, `-O2` Karma buys nothing on ONS-Torlan
+> with 6 bots (600 fixed frames: 3.6 s vs 3.7 s) — and the repair is recorded in the decomp repo's
+> `proven.txt` (`O2-VRP-FLATTENED-INDEX`) for whenever it is worth landing as a post-pass.
+>
+> **2. The WEB was measured, not argued.** `packages/e2e/tools/ktrace-probe.cjs` (restored) drove
+> the shipped `-O3` wasm through the same 40 frames with `-KTRACECONTACTS`: 600 body rows, K=1396,
+> two runs identical, 13 of 15 bodies bit-identical to the reference, the two vehicles first
+> differing at frame 13 by < 2e-6 (libm). Clang does not draw the inference GCC draws. The pin
+> fixed the arm nobody ships, and the arm that ships was never broken.
+>
+> **3. `Source/PixoDrv` at `-O2` — ROOT-CAUSED AND FIXED (Linux).** `utils_surface.h` typed the
+> blit/stretch pointer `__stdcall` unconditionally while `pixomatic_linux.a`'s entry points are
+> cdecl, so every `psurf->scale_func(...)` in `scale_buffer()` left `esp` 40 bytes low. `-O0` hid it
+> (`leave` restores `esp` from `ebp`); `-O2` omits the frame pointer, the epilogue restored
+> `ebx/esi/edi/ebp` from the ARGUMENT area and `ret` popped a framebuffer pointer — a jump into the
+> `READ_IMPLIES_EXEC` heap. Under gdb: pc in `[heap]`, `esp` inside `.data`, `ebx == 0x1400`, the
+> 1280-pixel ARGB pitch passed as `dpitch`. Armed by `Zoom2X=True` (the ini default):
+> `PIXO_BUF_LOCK_COMPOSITE` → `PixoSurface_BufferLock` → `scale_buffer`; with `Zoom2X=False` the same
+> `-O2` binary ran clean. Fix: the typedef is `__stdcall` only under `_WIN32`. Verified at `-O2`,
+> `Zoom2X=True`: 40 traced frames, 600/1396, a rendered 1280x720 frame grab, and MATCH 15/15 against
+> the archived x87 trace. The configure WARNING is gone. `UT_PIXODRV_O0` (in `Source/PixoDrv/CMakeLists.txt`)
+> is the owner's fallback pin, OFF.
+>
+> **4. Windows 32-bit with Pixomatic — the second GPU-free target, two defects fixed, one open.**
+> The exe RUNS under wine: the 2.54 note said it did not, but that was the box's default `wine`
+> (wow64-only, exit 53); the i386 loader `/usr/lib/i386-linux-gnu/wine/wine` with a `WINEARCH=win32`
+> prefix runs it, and with `-NULLRENDERER` it traces 600/1396, MATCH 15/15 against the Linux x87
+> build. With `-SOFTWARERENDERER` it died in `pixomatic.dll+0x1d639` with
+> `EXCEPTION_INT_DIVIDE_BY_ZERO` from `CreatePixoBuffers` → `PixoBufferOpen`, because
+> `USDL2Viewport::GetWindow()` returns the `SDL_Window*` and the DLL was handed it as an `HWND`;
+> `SetRes` now resolves the real HWND through `SDL_GetWindowWMInfo`. Past that it died three frames in
+> with a NATIVE segfault — which was the harness, not the game: `ktrace_run.sh` ran Xvfb at 640x480
+> under a 1280x720 window, and wine's GDI cannot blit a window larger than the desktop (SDL2/X11 on
+> Linux does not care). On a 1280x720 screen the win32 Pixomatic exe traces **40/40 frames,
+> 600/1396, twice, byte-identical to its own `-NULLRENDERER` run**, and renders (frame grab). NX
+> was not involved — an exe without `--nxcompat` crashed the same way on the small screen and the
+> shipped exe keeps `NX_COMPAT`. Both harnesses run a 1280x720 screen now. Under real Windows it is
+> still unmeasured; under wine it is the second GPU-free target.
+>
+> ⚠ **One defect in the software renderer is NOT an optimiser defect and stays open:** on Linux,
+> `-SOFTWARERENDERER` dies ~3 minutes into ONS-Torlan with bots at `-O0` and at `-O2` alike (SIGSEGV
+> surfacing in `USkeletalMeshInstance::UpdateAnimation`), while `-NULLRENDERER` runs the full 300 s.
+> Reproduced 3/3 (176 s, 192 s at PixoDrv `-O0`, 169 s), surfacing in two unrelated places
+> (`UpdateAnimation`, then `McdModelGetGeometryType` under `KHandleCollisions`), which is the shape
+> of memory corruption. The first suspect, `PixoRenderInterface.cpp`'s 32-entry stack
+> stream-definition array (up to 16 streams x 9 entries, no bound check), is sized and `check()`ed
+> now and MEASURED innocent: its peak never exceeded 32 in a run that still crashed. Next instrument:
+> AddressSanitizer on the 32-bit build with `-SOFTWARERENDERER`. Not an `-O` question; not 2.58's.
+>
+> **5. The control arm is a preset now** — `native-sse` (`UT_FPMATH_SSE=ON`). Before 2.58 the
+> `-msse2 -mfpmath=sse` flags were passed by hand and never reached the cache: `build-b32-sse` was an
+> SSE binary (DWARF producer, 605 SSE / 1 x87 in `MdtBclAddAngular3`) in an x87 build tree, and one
+> rebuild would have silently regressed it. The `windows64` preset also could not configure at all
+> (it inherited `USE_PIXOMATIC=ON` into the 64-bit guard); it states `OFF` now.
+>
+> **The knobs** (top-level `CMakeLists.txt`, Karma pin block): `UT_KARMA_O2_FILES` — a regex over
+> decomp source basenames compiled with `UT_KARMA_O2_OPTIONS` (default `-O2`) despite the pin; `.*`
+> is the everything-`-O2` arm, a narrower regex one bisect round, `-O2;-fno-tree-vrp` or
+> `-O2;-fsanitize=undefined` a probe. `UT_KARMA_PIN_WEB` lifts the `NOT EMSCRIPTEN` guard for a
+> measurement build (OFF; the shipped wasm stays `-O3`).
+>
 > 2.54 restored optimisation to the native builds and said "re-validate rather than assume". The
 > re-validation was done, and assuming would have been wrong twice.
 >
@@ -203,7 +281,7 @@ CMakeLists enforces this rather than trusting it: `UT_PTR_BYTES` is computed onc
 > ★ It probably costs little: this source was **decompiled from an already-optimised build**, so the
 > optimiser's work is baked into its shape. That is a prediction — measure before trusting it.
 >
-> **2. `Source/PixoDrv` SIGSEGVs at `-O2` (OPEN, not fixed).** The 32-bit software renderer crashes
+> **2. `Source/PixoDrv` SIGSEGVs at `-O2` (was OPEN — FIXED in 2.58, see above: a stdcall/cdecl mismatch in `utils_surface.h`).** The 32-bit software renderer crashes
 > during renderer init; `-O0` is clean, `-O2` is a deterministic fault, and `-O2` everywhere *except*
 > that one directory is clean. The fault is a jump into heap data executing garbage — a corrupted
 > code pointer — and it is not the JIT allocator, which is never reached. Pixomatic itself is a

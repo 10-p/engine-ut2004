@@ -298,6 +298,7 @@ add_definitions(-D__FILE_NOCASE=1)
 # ut2004 browser suite (51/51) equal to a NO_KARMA control built from the same tree.
 # metoolkit-karma-decomp `decomp/proven.txt`, entries WASM-SIGMISMATCH and WASM-INDIRECT-SIGS.
 option(USE_KARMA_DECOMP "Link the RECOVERED Karma (`metoolkit_decomp/src`)" ON)
+option(UT_FPMATH_SSE "32-bit x86 only: add -msse2 -mfpmath=sse — the ktrace CONTROL arm (see BUILD.md, ufront 2.58)" OFF)
 
 # ★ THE POINTER-WIDTH GATE, LIFTED 2026-08-29. The recovered code used to encode i386 STRUCT
 # LAYOUTS — not merely 32-bit pointers but the sizes and byte offsets those pointers produce. At
@@ -445,30 +446,18 @@ if(USE_PIXOMATIC AND UT_PTR_BYTES EQUAL 8 AND NOT ANDROID AND NOT EMSCRIPTEN)
     "with -DUSE_PIXOMATIC=OFF; 64-bit uses gl4es, which is built from source.")
 endif()
 
-# ⚠⚠ KNOWN-BROKEN AT -O2 (ufront 2.55, OPEN — not yet fixed). The 32-bit software renderer SIGSEGVs
-# during renderer init when Source/PixoDrv is optimised. Measured with one variable, same commit,
-# same 32-bit configuration, three runs each:
+# ★ THE -O2 SIGSEGV IN Source/PixoDrv WAS DIAGNOSED AND FIXED (ufront 2.58, 2026-09-11). It was never
+# the optimiser's fault and never Pixomatic's: `utils_surface.h` typed the RAD surface shim's blit/stretch
+# pointer `__stdcall` on every platform while `pixomatic_linux.a`'s entry points are cdecl, so each
+# `scale_func(...)` call in scale_buffer() left esp 40 bytes low. -O0 kept a frame pointer and `leave`
+# repaired it; -O2 omitted it and `ret` popped a framebuffer pointer — the "jump into heap data". Armed
+# by Zoom2X=True, the ini default. The typedef is now stdcall only under _WIN32, and the fixed -O2 build
+# renders and traces identically to -NULLRENDERER (see BUILD.md "ufront 2.58"). UT_PIXODRV_O0 in
+# Source/PixoDrv/CMakeLists.txt is the owner's fallback pin for anything future, OFF.
 #
-#     -O0 + Pixomatic ....... exit 0, 150 body rows, clean
-#     -O2 + Pixomatic ....... SIGSEGV, deterministic
-#     -O2 + NullDrv ......... exit 0        <- so it is the renderer, not the physics
-#     -O2 everywhere EXCEPT Source/PixoDrv at -O0 ... exit 0   <- and it is THIS directory
-#
-# The fault is a jump INTO HEAP DATA which then executes garbage — a corrupted code pointer, not a
-# bad data pointer. It is NOT the JIT code-buffer allocator: a breakpoint on PixoAllocCodeBuffer is
-# never reached in either build. Pixomatic itself cannot be the cause — pixomatic_linux.a is a
-# prebuilt archive that -O2 never touches — so the defect is in our own glue in Source/PixoDrv.
-#
-# Until it is fixed, -SOFTWARERENDERER is unusable on an optimised 32-bit build. Workarounds, in
-# order of preference: use -NULLRENDERER (physics is unaffected and traces identically), or build
-# that one directory at -O0, or use a Debug build.
-if(USE_PIXOMATIC AND NOT CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT EMSCRIPTEN)
-  message(WARNING
-    "USE_PIXOMATIC=ON in an optimised build: the 32-bit software renderer is KNOWN TO SIGSEGV at -O2 "
-    "(ufront 2.55, open defect in Source/PixoDrv — a corrupted code pointer, not Pixomatic itself). "
-    "The build succeeds and everything else works; only -SOFTWARERENDERER crashes. Use -NULLRENDERER, "
-    "or configure -DCMAKE_BUILD_TYPE=Debug, until it is fixed.")
-endif()
+# ⚠ Still open, and NOT an optimiser defect: -SOFTWARERENDERER dies ~3 minutes into ONS-Torlan with
+# bots at -O0 AND at -O2 (SIGSEGV surfacing in USkeletalMeshInstance::UpdateAnimation), while
+# -NULLRENDERER runs the full 300 s. Recorded in ufront 2.58; instrumented in PixoRenderInterface.cpp.
 
 # Emscripten: disable x86 SSE intrinsics (WASM has no x86 instruction sets)
 if(EMSCRIPTEN)
@@ -622,6 +611,17 @@ if(TARGET_IS_X86 AND NOT EMSCRIPTEN AND NOT ANDROID)
     add_compile_options(-march=x86-64 -mtune=generic -msse2)
   else()
     add_compile_options(-march=pentium -mtune=pentiumpro -msse -mmmx)
+    # ★ ufront 2.58: UT_FPMATH_SSE is the ktrace CONTROL arm (`native-sse` preset). A 32-bit build
+    # otherwise runs its doubles on x87 at 80-bit and can never match the 64-bit (SSE) reference:
+    # x87 yields trace md5 81b06b0cf715 where the reference is c31ed77b7323. Until 2.58 this was an
+    # ad-hoc flag that never reached the cache — measured 2026-09-11: the build-b32-sse binary was
+    # SSE by its DWARF producer string while its own CMakeCache and flags.make said x87, so any
+    # rebuild of that directory would have silently regressed the control. A cached option and a
+    # preset are the only form of that knowledge that survives a rebuild.
+    if(UT_FPMATH_SSE)
+      add_compile_options(-msse2 -mfpmath=sse)
+      message(STATUS "UT_FPMATH_SSE: 32-bit float math on SSE2 (the ktrace control arm)")
+    endif()
   endif()
 endif()
 
@@ -961,9 +961,29 @@ if(USE_KARMA_DECOMP)
   # `decomp/test/ut2004/ktrace_gate.sh`, whose whole method is a byte-for-byte trajectory comparison
   # against md5 c31ed77b7323 / K=1396, and which has caught real defects by being exact.
   #
-  # ⚠ NOT strict aliasing: metoolkit_decomp already builds with `-fno-strict-aliasing` in its own
-  # MD_C_FLAGS, so that was never a candidate. The specific transformation has not been identified,
-  # and until it is, -O0 is the setting the recovery is validated at.
+  # ★★ DIAGNOSED (ufront 2.58, 2026-09-11) — THE TRANSFORMATION IS NAMED, AND IT IS ONE FILE. GCC's
+  # value-range propagation (-ftree-vrp, on at -O2, off at -O1/-Og) folds the exit conditions of the
+  # two 3x3 matrix loops in metoolkit_decomp/src/MdtKea/keaCalcIworldandNonInertialForceandVhmf_vanilla.c
+  # (lines 78-103): Ghidra flattened `m[i][j]` into `m1[0][iVar9 + k]` with iVar9 = 0,3,6 on a local
+  # declared `MeReal m1[3][3]`, so iterations 2 and 3 subscript past the inner array — undefined in C,
+  # exactly what the machine code does, and GCC says so once `-w` is lifted: "iteration 1 invokes
+  # undefined behavior [-Waggressive-loop-optimizations]". It cuts each loop to ONE iteration, rows 2-3
+  # of the world inertia tensor are never written, and the first body with a constraint (the Scorpion,
+  # frame 1) is solved wrong. Evidence, all on test-karma-1 / 40 frames / -KTRACECONTACTS:
+  #     every probe at -O2 (-fwrapv, -ftrivial-auto-var-init=zero, -fno-inline, -fno-tree-dse,
+  #       -ffp-contract=off, -fno-ipa-*) ............................ still 543/1074 (DIVERGES)
+  #     -O1, -Og, -O2 -fno-tree-vrp ................................. 600/1396 c31ed77b7323
+  #     complement bisect over 146 files (UT_KARMA_O2_FILES) ......... names that one file, alone
+  #     that file at -O2 -fno-tree-vrp, rest pinned .................. c31ed77b7323
+  #     that file's 10 subscripts respelled `((MeReal *)m1)[k]`, ALL 146 files at -O2 .. c31ed77b7323
+  #     the SDK's amd64 build of the function (lib.chk/win_amd64_whidbey_single) .. 12x `cmpl $3`: 3 iterations
+  #     the same respelling under the shipping wasm flags (-O3 -g0) .. object BYTE-IDENTICAL
+  # The web never showed it: the shipped -O3 wasm traces 600/1396 (13 of 15 bodies bit-identical to the
+  # reference, the rest at the libm floor) — clang does not draw that inference. The same flattened
+  # shape exists in MdtBcl.c (9 sites) and ReadWriteKeaInputToFile.c (1), latent on this map.
+  # ⚠ NOT strict aliasing (measured: kt-noalias == kt-o2-64a) and not FMA (no FMA ISA on any arm).
+  # The pin stays until the owner decides whether to land the generator repair; UT_KARMA_O2_FILES below
+  # is how any of the rows above is re-measured.
   #
   # ★ WHY THIS COSTS LESS THAN IT LOOKS (owner, 2026-09-07): this source was DECOMPILED FROM AN
   # ALREADY-OPTIMISED BUILD. MathEngine shipped Karma compiled, and the recovery reconstructs C from
@@ -977,17 +997,59 @@ if(USE_KARMA_DECOMP)
   # The web is validated by its own E2E (170/170 at ufront 2.55) and by the owner playing it daily,
   # in exactly that optimised state. Changing it would alter the shipped binary and invalidate that
   # evidence to chase a native-only gate, so it stays as it is.
-  if(NOT EMSCRIPTEN)
+  #
+  # ★ ufront 2.58 — two knobs so the pin can be MEASURED rather than assumed (BUILD.md "2.58"):
+  #   UT_KARMA_O2_FILES  a regex over decomp source BASENAMES; matching sources get UT_KARMA_O2_OPTIONS
+  #                      (a per-source COMPILE_OPTIONS lands after the target's -O0; last -O wins).
+  #                      '.*' is the "everything -O2" arm (543 rows / K=1074 / 179ace20fb15); a
+  #                      narrower regex is one round of the complement bisect. Empty = the pin as shipped.
+  #   UT_KARMA_O2_OPTIONS the options those sources get, default "-O2". A probe is one reconfigure:
+  #                      "-O1", "-O2;-fwrapv", "-O2;-ftrivial-auto-var-init=zero", "-O2;-fsanitize=undefined"
+  #                      (that one also needs -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=undefined). Scoped to
+  #                      the matching decomp sources only, so the engine's own C never changes.
+  #   UT_KARMA_PIN_WEB   lift the NOT EMSCRIPTEN guard so the web arm can be built with the pin.
+  #                      Default OFF — the shipped wasm stays -O3 unless a measurement says otherwise.
+  set(UT_KARMA_O2_FILES "" CACHE STRING
+      "regex over metoolkit_decomp source basenames to compile at -O2 despite the pin (bisect aid; empty = all pinned)")
+  set(UT_KARMA_O2_OPTIONS "-O2" CACHE STRING
+      "compile options (;-list) for the sources UT_KARMA_O2_FILES matches (probe aid; default -O2)")
+  option(UT_KARMA_PIN_WEB "Also pin the recovered Karma C to -O0 on Emscripten (measurement aid; the shipped wasm is -O3)" OFF)
+  if(NOT EMSCRIPTEN OR UT_KARMA_PIN_WEB)
     get_property(_md_targets DIRECTORY "${metoolkitkarmadecomp_SOURCE_DIR}/metoolkit_decomp"
                  PROPERTY BUILDSYSTEM_TARGETS)
+    set(_md_o2 0)
     foreach(_md_t IN LISTS _md_targets)
       # PRIVATE target options land AFTER the directory-level `add_compile_options(-O2 -g)` above,
       # and the compiler takes the last -O — the same last-wins rule the 2.54 bug relied on, used
       # deliberately here.
       target_compile_options(${_md_t} PRIVATE -O0)
+      if(NOT UT_KARMA_O2_FILES STREQUAL "")
+        get_target_property(_md_srcs ${_md_t} SOURCES)
+        get_target_property(_md_dir ${_md_t} SOURCE_DIR)
+        if(_md_srcs)
+          foreach(_md_s IN LISTS _md_srcs)
+            if(NOT IS_ABSOLUTE "${_md_s}")
+              set(_md_s "${_md_dir}/${_md_s}")
+            endif()
+            get_filename_component(_md_b "${_md_s}" NAME)
+            if(_md_b MATCHES "\\.c$" AND _md_b MATCHES "${UT_KARMA_O2_FILES}")
+              # Source-file options come after the target's, so this -O2 beats the -O0 above.
+              set_source_files_properties("${_md_s}" TARGET_DIRECTORY ${_md_t} PROPERTIES COMPILE_OPTIONS "${UT_KARMA_O2_OPTIONS}")
+              math(EXPR _md_o2 "${_md_o2}+1")
+            endif()
+          endforeach()
+        endif()
+      endif()
     endforeach()
     list(LENGTH _md_targets _md_n)
-    message(STATUS "Karma decomp: ${_md_n} target(s) pinned to -O0 (engine keeps -O2; ufront 2.55)")
+    if(EMSCRIPTEN)
+      message(STATUS "Karma decomp: ${_md_n} target(s) pinned to -O0 ON THE WEB (UT_KARMA_PIN_WEB; ufront 2.58 measurement arm)")
+    else()
+      message(STATUS "Karma decomp: ${_md_n} target(s) pinned to -O0 (engine keeps -O2; ufront 2.55)")
+    endif()
+    if(_md_o2 GREATER 0)
+      message(STATUS "Karma decomp: ${_md_o2} source(s) compiled with '${UT_KARMA_O2_OPTIONS}' via UT_KARMA_O2_FILES='${UT_KARMA_O2_FILES}' (ufront 2.58 probe/bisect arm)")
+    endif()
   endif()
   set(METOOLKIT_DIR "${metoolkitkarmadecomp_SOURCE_DIR}/metoolkit" CACHE PATH "metoolkit (Karma SDK) root: include/ + lib.{chk,rel}/")
   set(METOOLKIT_LIB_SUBDIR "lib.rel/linux_single_gcc3.2" CACHE STRING "metoolkit lib variant (rel/chk + toolchain)")

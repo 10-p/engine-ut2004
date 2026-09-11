@@ -39,6 +39,18 @@
             }
         },
         {
+            "name": "native-sse",
+            "displayName": "Native Linux x86 -- the ktrace CONTROL arm (32-bit, SSE float math, no Pixomatic)",
+            "description": "ufront 2.58. The 32-bit pointer-width control for decomp/test/ut2004/ktrace_gate.sh: the same recovered Karma at -m32 with -msse2 -mfpmath=sse, so the ONLY variable against the 64-bit candidate is the pointer width. `native` cannot be that control: it is -march=pentium -msse with x87 doubles at 80-bit and produces trace md5 81b06b0cf715, never the reference c31ed77b7323. No Pixomatic (it is not needed for a trace and it is the open -O2 defect), so the binary is build-native-sse/Source/SDLLaunch/ut2004.bin, NOT ut2004-pixo.bin.",
+            "inherits": "native-base",
+            "binaryDir": "${sourceDir}/build-native-sse",
+            "cacheVariables": {
+                "UT_GFX_BACKEND": "gl4es",
+                "USE_PIXOMATIC": "OFF",
+                "UT_FPMATH_SSE": "ON"
+            }
+        },
+        {
             "name": "physics",
             "displayName": "GL4ES + Jolt physics",
             "description": "gl4es stack with WITH_PHYSICS=ON. Builds in build-physics/.",
@@ -84,13 +96,14 @@
         {
             "name": "windows64",
             "displayName": "64-bit Windows (MinGW-w64 cross) -- WITH the recovered Karma",
-            "description": "The x86_64 Windows build, and the reason it exists is Karma: MinGW cannot link MathEngine's MSVC-mangled prebuilts, so a Windows build could never have physics until the recovery replaced them with portable C. It does now. LLP64 (`long` is 4 bytes where Linux's is 8) while pointers are 8 on both, so this is the only target that exercises that combination. Validated by the SAME ktrace as every other target -- `decomp/test/ut2004/ktrace_run.sh` runs a .exe under wine -- and its trajectory matches the 32-bit control. Builds in build-windows64/ -> ut2004.exe.",
+            "description": "The x86_64 Windows build, and the reason it exists is Karma: MinGW cannot link MathEngine's MSVC-mangled prebuilts, so a Windows build could never have physics until the recovery replaced them with portable C. It does now. LLP64 (`long` is 4 bytes where Linux's is 8) while pointers are 8 on both, so this is the only target that exercises that combination. Validated by the SAME ktrace as every other target -- `decomp/test/ut2004/ktrace_run.sh` runs a .exe under wine -- and its trajectory matches the 32-bit control. Builds in build-windows64/ -> ut2004.exe. ufront 2.58: USE_PIXOMATIC=OFF is stated here because the preset inherits ON from `windows` and the 64-bit Pixomatic guard is a configure-time FATAL_ERROR, so `cmake --preset windows64` could not configure at all; the 2026-09-07 build had been configured with the flag passed by hand.",
             "inherits": "windows",
             "binaryDir": "${sourceDir}/build-windows64",
             "cacheVariables": {
                 "MINGW_TARGET_ARCH": "x86_64",
                 "UT_ALLOW_64BIT": "ON",
-                "USE_KARMA_DECOMP": "ON"
+                "USE_KARMA_DECOMP": "ON",
+                "USE_PIXOMATIC": "OFF"
             }
         },
         {
@@ -164,6 +177,10 @@
         {
             "name": "native",
             "configurePreset": "native"
+        },
+        {
+            "name": "native-sse",
+            "configurePreset": "native-sse"
         },
         {
             "name": "physics",
