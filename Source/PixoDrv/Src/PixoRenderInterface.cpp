@@ -1489,9 +1489,9 @@ void FPixoRenderInterface::CommitStreams( INT FirstIndex )
 	// ★ ufront 2.58: the definition handed to PixoSetStreamDefinition below gets one entry per component
 	// plus one per stream, on a STACK array that the original sized at 32 with no bound check, while 16
 	// streams x (MAX_VERTEX_COMPONENTS + 1) is 144. Sized to the maximum and check()ed. MEASURED as a
-	// suspect for the -SOFTWARERENDERER crash ~3 minutes into ONS-Torlan (at -O0 and -O2 alike): the peak
-	// never exceeded 32 in a 169 s run that still crashed — in Karma's collision path that time, in
-	// skeletal animation the time before — so it is a bound, not the cause. That crash stays open.
+	// suspect for the -SOFTWARERENDERER crash ~1-3 minutes into ONS-Torlan: the peak never exceeded 32 in a
+	// run that still crashed, so it is a bound, not the cause. The cause was two null-reference bindings on
+	// empty TArrays in Source/Engine/Src/UnSkeletalMesh.cpp, exploited by the -O2 engine (BUILD.md "2.58").
 	UINT    PixoStreamDefinition[16 * (MAX_VERTEX_COMPONENTS + 1) + 1];
 	static UINT PixoStreamDefinitionPeak = 0;
 

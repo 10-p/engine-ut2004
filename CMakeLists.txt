@@ -455,9 +455,11 @@ endif()
 # renders and traces identically to -NULLRENDERER (see BUILD.md "ufront 2.58"). UT_PIXODRV_O0 in
 # Source/PixoDrv/CMakeLists.txt is the owner's fallback pin for anything future, OFF.
 #
-# ⚠ Still open, and NOT an optimiser defect: -SOFTWARERENDERER dies ~3 minutes into ONS-Torlan with
-# bots at -O0 AND at -O2 (SIGSEGV surfacing in USkeletalMeshInstance::UpdateAnimation), while
-# -NULLRENDERER runs the full 300 s. Recorded in ufront 2.58; instrumented in PixoRenderInterface.cpp.
+# And the software renderer's mid-match crash (ONS-Torlan with bots, ~1-3 min, 5 of 8 runs) was an
+# ENGINE -O2 defect the software renderer merely exposed: two `&Array(0)` null-reference bindings on
+# empty TArrays in Source/Engine/Src/UnSkeletalMesh.cpp (ComputeSkinVerts, GetFrame) — UB the optimiser
+# reasons from. Guarded; 4/4 passes at -O2 afterwards, engine -O0 4/4, that one file at -O1 3/3. The
+# per-source knob that localised it is UT_ENGINE_TU_FILES in Source/Engine/CMakeLists.txt (BUILD.md "2.58").
 
 # Emscripten: disable x86 SSE intrinsics (WASM has no x86 instruction sets)
 if(EMSCRIPTEN)

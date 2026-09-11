@@ -239,15 +239,43 @@ CMakeLists enforces this rather than trusting it: `UT_PTR_BYTES` is computed onc
 > shipped exe keeps `NX_COMPAT`. Both harnesses run a 1280x720 screen now. Under real Windows it is
 > still unmeasured; under wine it is the second GPU-free target.
 >
-> ⚠ **One defect in the software renderer is NOT an optimiser defect and stays open:** on Linux,
-> `-SOFTWARERENDERER` dies ~3 minutes into ONS-Torlan with bots at `-O0` and at `-O2` alike (SIGSEGV
-> surfacing in `USkeletalMeshInstance::UpdateAnimation`), while `-NULLRENDERER` runs the full 300 s.
-> Reproduced 3/3 (176 s, 192 s at PixoDrv `-O0`, 169 s), surfacing in two unrelated places
-> (`UpdateAnimation`, then `McdModelGetGeometryType` under `KHandleCollisions`), which is the shape
-> of memory corruption. The first suspect, `PixoRenderInterface.cpp`'s 32-entry stack
-> stream-definition array (up to 16 streams x 9 entries, no bound check), is sized and `check()`ed
-> now and MEASURED innocent: its peak never exceeded 32 in a run that still crashed. Next instrument:
-> AddressSanitizer on the 32-bit build with `-SOFTWARERENDERER`. Not an `-O` question; not 2.58's.
+> **6. The software renderer's mid-match crash — DIAGNOSED AND FIXED, and it WAS an `-O2` question
+> after all (engine side).** `-SOFTWARERENDERER` died ~1-3 minutes into ONS-Torlan with bots in 5 of
+> 8 runs (96-192 s), surfacing in `USkeletalMeshInstance::UpdateAnimation`, in `McdModelGetGeometryType`
+> under `KHandleCollisions`, and inside glibc's `realloc` — the shape of memory corruption — while
+> `-NULLRENDERER` ran 300 s every time. The `Zoom2X` composite path was NOT it (one pass, then a crash at
+> 136 s); the 32-entry stream-definition array handed to the JIT was NOT it (sized, `check()`ed, peak
+> never above 32); glibc's malloc checker stayed silent (the corruption sits inside objects, not chunk
+> headers); a hardware watchpoint on the class-default block never fired. What the instruments finally
+> agreed on, all measured on ONS-Torlan, 300 s, bots, `-SOFTWARERENDERER`:
+>
+> ```
+> engine -O2, PixoDrv -O2 or -O0 ............ CRASH 5 of 8   (so PixoDrv's own -O is irrelevant)
+> engine -O0 (the Debug probe build) ........ PASS  4 of 4
+> UnSkeletalMesh.cpp alone at -O1 ........... PASS  3 of 3
+> UnSkeletalMesh.cpp alone -fsanitize=undefined  PASS 1 of 1 — and it named TWO sites, both
+>     "reference binding to null pointer": ComputeSkinVerts:3486 `&Duplicates(0)` and
+>     GetFrame:4201 `&TrafoHeap(0)`, each on an EMPTY TArray (Data == NULL)
+> those two sites guarded, everything -O2 .... PASS  4 of 4, growth canaries silent
+> UnSkeletalMesh.cpp -O2 -fno-delete-null-pointer-checks / -fno-tree-vrp .. PASS 3 of 3 each
+> after the fix, every arm rebuilt: 64-bit trace BYTE-IDENTICAL to the SSE control, win64 gate PASS,
+>     Linux 32 Pixomatic 300 s 2/2, win32 Pixomatic 300 s + trace == its null-renderer trace, and the
+>     rebuilt wasm's browser trace BYTE-IDENTICAL to the shipped one (600/1396, ece9a79dee94)
+> ```
+>
+> The mechanism, as far as it was measured: a trap in `FArray::Realloc` caught `USkeletalMeshInstance::Blends`
+> growing ONE ELEMENT AT A TIME through the exact geometric capacity sequence (33, 78, 140, 225, 342,
+> 503, 725, 1030 …) inside a single `ValidateAnimChannel(0)` call at map load (`PostNetBeginPlay` →
+> script `GetBoneCoords` → `GetFrame`), on to ~159k entries — 17.8 MB per instance, then copied into
+> every later instance, then walked by `UpdateAnimation` off the end. The compiled loop is correct
+> and bounded by the channel argument; the caller (`GetFrame`, with the bounds-checking wrapper
+> inlined) is where `&TrafoHeap(0)` tells GCC a pointer it knows is NULL was dereferenced, which makes
+> that path unreachable in the optimiser's model and licenses it to merge control flow — consistent
+> with the clone receiving a foreign local as its bound, and with every mitigation above. Why only
+> the software renderer reaches the empty-`TrafoHeap` state at that call is NOT explained; it is
+> recorded as data-dependence, measured, not understood. The fix is the two guards (`Num() ? &X(0) : NULL`),
+> which are also simply correct C++. `UT_ENGINE_TU_FILES`/`UT_ENGINE_TU_OPTIONS` in
+> `Source/Engine/CMakeLists.txt` is the per-source knob that found it, kept.
 >
 > **5. The control arm is a preset now** — `native-sse` (`UT_FPMATH_SSE=ON`). Before 2.58 the
 > `-msse2 -mfpmath=sse` flags were passed by hand and never reached the cache: `build-b32-sse` was an

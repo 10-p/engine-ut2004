@@ -3477,7 +3477,10 @@ void ComputeSkinVerts( USkeletalMesh* Mesh, USkeletalMeshInstance* MInst, void* 
 	FCoords*	BoneBase		= &FinalTrafos(0);
 	FSkinPoint* SkinVertPtr		= &(LODModel->SmoothVerts(0));
 	DWORD*		InStream		= &(LODModel->SkinningStream(0)); 	
-	FVector*    DupDestination	= (FVector*)&Duplicates(0);
+	// ufront 2.58: `&Duplicates(0)` on an EMPTY TArray binds a reference to a null pointer — undefined,
+	// reported by -fsanitize=undefined, and exactly the kind of fact GCC's optimiser is allowed to reason
+	// from at -O2 (a dereferenced pointer cannot be null). Spell the empty case explicitly.
+	FVector*    DupDestination	= Duplicates.Num() ? (FVector*)&Duplicates(0) : NULL;
 	DWORD		InDW = *InStream;	
 
 	while( InDW < 0xFFFFFFFF ) // End marker...
@@ -4192,7 +4195,9 @@ void USkeletalMeshInstance::GetFrame
 		//  The TrafoHeap entries _are_ order-sensitive.
 		//
 		Twitch *TrafoStart, *Trafo;
-		TrafoStart = &TrafoHeap(0);
+		// ufront 2.58: same null-reference idiom as ComputeSkinVerts — an empty TrafoHeap is legal here
+		// (no animation at all) and the loop below never runs then; do not bind a reference to Data[0].
+		TrafoStart = TrafoHeap.Num() ? &TrafoHeap(0) : NULL;
 		for( INT a=0; a< TrafoHeap.Num(); a++)
 		{	
 			Trafo = TrafoStart++;
