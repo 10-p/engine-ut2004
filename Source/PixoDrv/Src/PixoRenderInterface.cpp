@@ -1486,7 +1486,14 @@ void FPixoRenderInterface::CommitStreams( INT FirstIndex )
 			HasDiffuse      = 0;
 
 	UINT    IndexStreamDefinition = 0;
-	UINT    PixoStreamDefinition[32];
+	// ★ ufront 2.58: the definition handed to PixoSetStreamDefinition below gets one entry per component
+	// plus one per stream, on a STACK array that the original sized at 32 with no bound check, while 16
+	// streams x (MAX_VERTEX_COMPONENTS + 1) is 144. Sized to the maximum and check()ed. MEASURED as a
+	// suspect for the -SOFTWARERENDERER crash ~3 minutes into ONS-Torlan (at -O0 and -O2 alike): the peak
+	// never exceeded 32 in a 169 s run that still crashed — in Karma's collision path that time, in
+	// skeletal animation the time before — so it is a bound, not the cause. That crash stays open.
+	UINT    PixoStreamDefinition[16 * (MAX_VERTEX_COMPONENTS + 1) + 1];
+	static UINT PixoStreamDefinitionPeak = 0;
 
 	if( NoIndexBuffer )
 		IndexBufferBase += FirstIndex;
@@ -1582,6 +1589,13 @@ void FPixoRenderInterface::CommitStreams( INT FirstIndex )
 		}
 	}
 
+	check(IndexStreamDefinition < ARRAY_COUNT(PixoStreamDefinition));
+	if( IndexStreamDefinition > PixoStreamDefinitionPeak )
+	{
+		PixoStreamDefinitionPeak = IndexStreamDefinition;
+		if( PixoStreamDefinitionPeak >= 32 )
+			debugf( NAME_Log, TEXT("PixoDrv: stream definition needs %d entries (the original array held 32)"), PixoStreamDefinitionPeak + 1 );
+	}
 	PixoStreamDefinition[IndexStreamDefinition] = PIXO_STREAM_END;
 	PixoSetStreamDefinition(PixoStreamDefinition);
 

@@ -41,6 +41,16 @@ add_library(${PROJECT_NAME} ${LIB_TYPE} ${SRC_FILES})
 # GPackage=PixoDrv per the makefile; __LINUX_X86__ (already global) selects the SDL Linux path in PixoDrv.h.
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Src ${PIXOMATIC_INC})
 target_compile_definitions(${PROJECT_NAME} PRIVATE GPackage=PixoDrv)
+# ★ ufront 2.58: the owner-approved containment for any PixoDrv defect that only exists at -O2 and is
+# not local — pin this directory (and only this directory) to -O0 while the engine keeps its -O2.
+# Same last-wins mechanism as the Karma pin in the top-level CMakeLists. OFF by default: the stdcall
+# blitter bug was root-caused and fixed at -O2 (utils_surface.h), so the option exists for measuring
+# ("is this an optimiser-only fault?") and as the fallback the owner asked for, not as the default.
+option(UT_PIXODRV_O0 "Compile Source/PixoDrv at -O0 (measurement aid / fallback containment; the engine stays -O2)" OFF)
+if(UT_PIXODRV_O0)
+  target_compile_options(${PROJECT_NAME} PRIVATE -O0)
+  message(STATUS "PixoDrv: pinned to -O0 (UT_PIXODRV_O0; engine keeps -O2)")
+endif()
 target_link_libraries(${PROJECT_NAME} PRIVATE Core Engine ${PIXOMATIC_LIB})
 
 # SDL2 + GL4ES present path (texture upload + fullscreen quad). Needs the gl4es headers + targets (the

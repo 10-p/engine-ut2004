@@ -9,6 +9,11 @@
 =============================================================================*/
 
 #include "PixoDrv.h"
+#if defined(_WIN32) && !USE_SDL
+// ufront 2.58: the HWND translation in SetRes (see there). SDL2 is linked on every platform.
+#include "SDL.h"
+#include "SDL_syswm.h"
+#endif
 
 INT UPixoRenderDevice::STATS_NumVertsXformed = -1;
 INT UPixoRenderDevice::STATS_NumTrianglesSubmitted = -1;
@@ -398,7 +403,26 @@ UBOOL UPixoRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Full
 
 	UpdateGamma( Viewport );
 
-	if(!CreatePixoBuffers((HWND)Viewport->GetWindow(), NewX, NewY, PIXO_ZBUFFER_TYPE_16, Zoom2X ? PIXO_BUF_2XZOOM : 0 ))
+	// ★ ufront 2.58: on the Windows build the viewport is SDL2's, and USDL2Viewport::GetWindow() returns
+	// the SDL_Window*, not an HWND. The Linux branch never looks at the handle (PixoBufferOpen maps to the
+	// RAD shim's PixoSurface_BufferOpen(w,h,f)), but pixomatic.dll's PixoBufferOpen does: it takes the
+	// window's DC and sizes its DIB from GetDeviceCaps(), so a bogus handle yields zeros and the DLL
+	// faults with EXCEPTION_INT_DIVIDE_BY_ZERO inside PixoBufferOpen — measured 2026-09-11 under wine,
+	// pixomatic.dll+0x1d639, called from this line. Resolve the real HWND through SDL's WM info.
+#if defined(_WIN32) && !USE_SDL
+	HWND PixoHwnd = NULL;
+	{
+		SDL_SysWMinfo WmInfo;
+		SDL_VERSION(&WmInfo.version);
+		if( SDL_GetWindowWMInfo( (SDL_Window*)Viewport->GetWindow(), &WmInfo ) && WmInfo.subsystem == SDL_SYSWM_WINDOWS )
+			PixoHwnd = WmInfo.info.win.window;
+		else
+			debugf( NAME_Warning, TEXT("PixoDrv: SDL_GetWindowWMInfo failed (%s); Pixomatic gets no HWND"), appFromAnsi(SDL_GetError()) );
+	}
+#else
+	HWND PixoHwnd = (HWND)Viewport->GetWindow();
+#endif
+	if(!CreatePixoBuffers(PixoHwnd, NewX, NewY, PIXO_ZBUFFER_TYPE_16, Zoom2X ? PIXO_BUF_2XZOOM : 0 ))
 		return 0;
 
 	return 1;

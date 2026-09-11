@@ -24,8 +24,26 @@ extern "C" {
 
 #endif
 
+// ★ ufront 2.58: the blit/stretch functions this points at are Pixomatic ARCHIVE entry points, and
+// their calling convention is whatever PIXO_DYNLINK says — __stdcall on Windows (pixomatic.dll), plain
+// cdecl on Linux (pixomatic_linux.a: `PIXO_DYNLINK(ret) ret` under BUILDING_PIXO_STATIC). This typedef
+// said __stdcall unconditionally, so on Linux every `psurf->scale_func(...)` in scale_buffer() was a
+// stdcall CALL SITE into a cdecl CALLEE: the caller did not pop its ten arguments (40 bytes) and neither
+// did the callee, so esp came back 40 bytes low. At -O0 the frame pointer hid it (`leave` restores esp
+// from ebp); at -O2 gcc omits the frame pointer, the epilogue restored ebx/esi/edi/ebp from the ARGUMENT
+// area and then `ret` popped a framebuffer pointer as the return address — a jump into the (executable,
+// READ_IMPLIES_EXEC) heap. Measured 2026-09-11 under gdb: pc in [heap], esp inside .data, ebx == 0x1400
+// == the 1280-pixel ARGB pitch that was passed as `dpitch`. The path is armed by Zoom2X=True (the ini
+// default): PIXO_BUF_LOCK_COMPOSITE -> PixoSurface_BufferLock -> scale_buffer; Zoom2X=False never called
+// through the pointer and the same -O2 binary ran clean. Windows is unaffected: there PIXO_DYNLINK IS
+// stdcall, so the cast was right all along.
+#if defined(_WIN32)
 typedef void __stdcall PIXOSURFACE_BLITFUNC(void *dest, int dx, int dy, int dpitch,
     void *src, int sx, int sy, int sw, int sh, int spitch);
+#else
+typedef void PIXOSURFACE_BLITFUNC(void *dest, int dx, int dy, int dpitch,
+    void *src, int sx, int sy, int sw, int sh, int spitch);
+#endif
 
 typedef struct PIXOSURFACE PIXOSURFACE;
 struct PIXOSURFACE
