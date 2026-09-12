@@ -39,6 +39,17 @@
             }
         },
         {
+            "name": "legacy-karma",
+            "inherits": "native",
+            "displayName": "Native Linux x86 -- the LEGACY Karma (MathEngine's shipped archives): the A/B reference arm",
+            "description": "ufront 2026-09-12. `native` with BUILD_KARMA_REF instead of USE_KARMA_DECOMP: identical engine, identical renderers (SDL2 + OpenGLDrv + GL4ESDrv + Pixomatic), and MathEngine's own prebuilt i386 archives as the physics instead of the recovered sources. THIS IS THE A/B CONTROL and it replaces `native-nokarma` in CI -- comparing the recovery against the real thing answers 'is the recovered code right', where comparing it against no physics only ever answered 'is Karma involved'. 32-BIT x86 ONLY: the archives are binary-only i386, there is no 64-bit Linux variant, and the build refuses early rather than fail at the link. Builds in build-legacy-karma/ -> ut2004-legacykarma-pixo.bin, named so it can sit beside the recovered binary in one directory.",
+            "binaryDir": "${sourceDir}/build-legacy-karma",
+            "cacheVariables": {
+                "USE_KARMA_DECOMP": "OFF",
+                "BUILD_KARMA_REF": "ON"
+            }
+        },
+        {
             "name": "native-sse",
             "displayName": "Native Linux x86 -- the ktrace CONTROL arm (32-bit, SSE float math, no Pixomatic)",
             "description": "ufront 2.58. The 32-bit pointer-width control for decomp/test/ut2004/ktrace_gate.sh: the same recovered Karma at -m32 with -msse2 -mfpmath=sse, so the ONLY variable against the 64-bit candidate is the pointer width. `native` cannot be that control: it is -march=pentium -msse with x87 doubles at 80-bit and produces trace md5 81b06b0cf715, never the reference c31ed77b7323. No Pixomatic (it is not needed for a trace and it is the open -O2 defect), so the binary is build-native-sse/Source/SDLLaunch/ut2004.bin, NOT ut2004-pixo.bin.",
@@ -124,6 +135,17 @@
             }
         },
         {
+            "name": "windows-legacykarma",
+            "inherits": "windows",
+            "displayName": "Windows x86 (MinGW-w64 cross) -- the LEGACY Karma: the A/B reference arm",
+            "description": "ufront 2026-09-12, and NEW: a legacy-Karma Windows build had never been attempted, because the note beside ME_FORCE_CDECL asserted MathEngine's Windows archives were '32-bit Linux ELF' and therefore unlinkable. They are not -- metoolkit/lib.rel/win32_single_msvcrt/*.lib are MS COFF archives whose Karma entry points are plain __stdcall-decorated C (`_McdNullCreate@4`), which binutils reads and MinGW links. \u26a0 ME_FORCE_CDECL MUST STAY OFF HERE (it is guarded by USE_KARMA_DECOMP): MeCall.h declares the API __stdcall under WIN32 and the archives were built that way, so forcing cdecl compiles clean, links clean and corrupts the stack at the first Karma call. `win32_single_msvcrt` and not `win32_single_libcmt` because MinGW links msvcrt too. Otherwise identical to `windows`, Pixomatic included. Builds in build-windows-legacykarma/ -> ut2004-legacykarma-pixo.exe.",
+            "binaryDir": "${sourceDir}/build-windows-legacykarma",
+            "cacheVariables": {
+                "USE_KARMA_DECOMP": "OFF",
+                "BUILD_KARMA_REF": "ON"
+            }
+        },
+        {
             "name": "wasm-karmadecomp-debug",
             "displayName": "DEPRECATED alias of `wasm-debug` (Karma is the default since 2026-08-27)",
             "inherits": "wasm-debug",
@@ -179,6 +201,10 @@
             "configurePreset": "native"
         },
         {
+            "name": "legacy-karma",
+            "configurePreset": "legacy-karma"
+        },
+        {
             "name": "native-sse",
             "configurePreset": "native-sse"
         },
@@ -201,6 +227,10 @@
         {
             "name": "windows",
             "configurePreset": "windows"
+        },
+        {
+            "name": "windows-legacykarma",
+            "configurePreset": "windows-legacykarma"
         },
         {
             "name": "windows64",

@@ -144,6 +144,7 @@ native stack* below) and any script still calling them will fail with "no such p
 > the latter had been configured after the move. Any dir can be checked with
 > `grep ^METOOLKIT_DIR <dir>/CMakeCache.txt` — it should name `_deps/metoolkitkarmadecomp-src/…`.
 | **`native-nokarma`** | `native` **+ `USE_KARMA_DECOMP=OFF`** — the NO_KARMA control. Not a spare: it is what says whether a failure is Karma's fault or the harness's, and the ut2004 browser suite's 51/51 only meant something because this arm was run through it in the same session. | `build-native-nokarma/` | `.../ut2004-nokarma-pixo.bin` |
+| **`legacy-karma`** | `native` **+ `BUILD_KARMA_REF=ON`, `USE_KARMA_DECOMP=OFF`** — the **A/B REFERENCE ARM** (restored 2026-09-12). Identical engine and renderers; MathEngine's own prebuilt i386 archives as the physics instead of the recovered sources. This is what the recovery is judged against, and it replaced `native-nokarma` in CI: comparing against the real thing answers *is the recovered code right*, where comparing against no physics only answered *is Karma involved*. **32-bit x86 only** — the archives are binary-only i386 and the build refuses early rather than fail at the link. ✅ Measured 2026-09-12: 40/40 frames on `test-karma-1` and `ktrace_score.py` says `MATCH` (8/8 bodies at rest, 8/8 asleep) against `native`. | `build-legacy-karma/` | `.../ut2004-legacykarma-pixo.bin` |
 | `physics` | `native` + `WITH_PHYSICS=ON` — the Jolt vehicle sources in `Source/Onslaught`. Not part of the green checkpoint and not exercised recently. | `build-physics/` | `.../ut2004-pixo.bin` |
 | `wasm` | **The everyday web build.** `-O2 -g`: named stacks, DWARF, assertions, and still playable. | `build-wasm/` | `Source/SDLLaunch/SDLLaunch.{js,wasm,data}` |
 | `wasm-debug` | `-O0`, nothing inlined, every local live. **Last resort** — reach for it when the *optimiser* is the suspect. ~5× the boot time. | `build-wasm-debug/` | same names |
@@ -153,18 +154,21 @@ native stack* below) and any script still calling them will fail with "no such p
 | `wasm-karmadecomp-perf` | **DEPRECATED alias of `wasm-perf`.** | `build-wasm-karmadecomp-perf/` | same names |
 | `windows` | 32-bit Windows cross-build (MinGW-w64), **now with the recovered Karma** — it took three portability fixes nothing else could surface (`proven.txt` `WIN32-PORT-3`). ★ **ufront 2.54: Pixomatic is ON here.** The earlier note that the DLL "is not in the drop" was half right — it was absent from `Thirdparty/`, but it ships in a retail `System/`, and it is now **vendored** at `Thirdparty/Pixomatic/Bin/pixomatic.dll` (PE32 i386, byte-identical to retail) and staged beside the exe. ⚠ `pixomatic.lib` is a pure IMPORT library and nothing is delay-loaded, so the DLL is a **load-time** dependency: without it the process does not start at all — measured, `objdump -p` lists `pixomatic.dll` and the Delay Import Directory is empty. ⚠ It BUILDS; it does not RUN under wine, and neither does the `windows-nokarma` control, so that is pre-existing rather than Karma's doing. | `build-windows/` | `Source/SDLLaunch/ut2004-pixo.exe` + `pixomatic.dll` |
 | **`windows64`** | 64-bit Windows (MinGW-w64 cross) **with the recovered Karma** — the only reason an x64 Windows build exists, since MinGW cannot link MathEngine's MSVC-mangled prebuilts. **LLP64**: `long` is 4 bytes where Linux's is 8 and pointers are 8 on both, so it is the only target exercising that combination. Validated through the same trajectory gate as everything else (`ktrace_gate.sh` runs a `.exe` under wine). | `build-windows64/` | `.../ut2004.exe` |
+| **`windows-legacykarma`** | `windows` **+ `BUILD_KARMA_REF=ON`** — the legacy Karma on Windows, **new on 2026-09-12 and never built before**. The note beside `ME_FORCE_CDECL` had asserted for a year that MathEngine's Windows archives were "32-bit Linux ELF"; they are `lib.rel/win32_single_msvcrt/*.lib`, MS COFF, with `__stdcall`-decorated C entry points (`_McdNullCreate@4`) that binutils reads and MinGW links. Needs two things nothing else does: `Source/Engine/Src/KarmaMsvcCompat.c` (six MSVC compiler-support routines — `_chkstk`/`_alloca_probe`, `_alldiv`/`_aulldiv`/`_allmul`, `_except_list`) and `--exclude-libs` over the vendor archives, or `--export-all-symbols` dies on their MSVC-mangled COMDATs. ⚠ **`ME_FORCE_CDECL` MUST NOT reach this arm** — `MeCall.h` declares the API `__stdcall` under `WIN32` and the archives were built that way; forcing cdecl compiles clean, links clean and corrupts the stack at the first Karma call. ⚠⚠ **IT BUILDS AND BOOTS; IT DOES NOT YET PLAY.** Measured 2026-09-12: loads the map, starts the match, simulates Karma, then `EXCEPTION_ACCESS_VIOLATION` ~12 frames in, inside MathEngine's own `McdSphylSphereIntersect`, reading a float where a geometry pointer belongs. The same archives on Linux run 40/40, and the recovered Windows build runs 40/40 with a trace byte-identical to recovered Linux — so it is specific to Windows + legacy and smells like a GCC-vs-MSVC disagreement about the shared metoolkit structs. **Undiagnosed. Cite the LINUX legacy arm as the A/B reference, not this one.** | `build-windows-legacykarma/` | `.../ut2004-legacykarma-pixo.exe` + `pixomatic.dll` |
 | `windows-nokarma` | `windows` + `USE_KARMA_DECOMP=OFF` — the control that established the line above. | `build-windows-nokarma/` | `.../ut2004-nokarma.exe` |
 | *(no preset)* **Windows x64** | The 64-bit Windows cross-build, and the LAST target to be exercised at all. Not a preset because it is not a shipping configuration — see the section below for the one-liner. | `build-windows64/` | `Source/SDLLaunch/ut2004.exe` (PE32+ x86-64) |
 
-**The binary name says WHICH PHYSICS it contains**: `ut2004`, plus `-nokarma` when
-`USE_KARMA_DECOMP=OFF` (the recovered Karma is the default and so goes unmarked), plus `-pixo` if
-Pixomatic. Emscripten keeps
+**The binary name says WHICH PHYSICS it contains**: `ut2004`, plus `-legacykarma` when
+`BUILD_KARMA_REF=ON` or `-nokarma` when `USE_KARMA_DECOMP=OFF` (the recovered Karma is the default
+and so goes unmarked), plus `-pixo` if Pixomatic. Emscripten keeps
 the `SDLLaunch` name — the web harness depends on it. Android builds `libUT2004.so`.
 
 > The suffix used to be `-karma` for the legacy archives and nothing otherwise. When the recovered
 > Karma became the default that made `native` and `native-nokarma` BOTH produce `ut2004-pixo.bin` —
 > same filename, opposite physics — and telling those two apart is the entire point of the control.
-> (`-legacykarma` went with `BUILD_KARMA_REF` on 2026-09-02.)
+> (`-legacykarma` went with `BUILD_KARMA_REF` on 2026-09-02 and came back with it on 2026-09-12 —
+> and it matters more now than it did, because legacy and recovered are the two arms of the CI A/B
+> and are downloaded side by side from one run.)
 
 ### Karma is the DEFAULT on every 32-bit target (2026-08-27)
 
@@ -405,11 +409,14 @@ The presets differ from plain `wasm-debug` / `wasm-perf` by **one cache variable
    objects, checked in — see `metoolkit-karma-decomp `metoolkit_decomp/README.md``) plus the hand-written convex-hull
    replacement ``decomp/src/McdConvexCreateHull/kd_convexhull.c``.
 
-⚠ **`BUILD_KARMA_REF` was removed on 2026-09-02.** It linked MathEngine's prebuilt i386 archives as
-a second implementation of this same API, and it existed to be the A/B reference while the recovery
-was unproven. That comparison still exists, per object and without an engine, in
-`metoolkit-karma-decomp`'s `difftest_pair.sh` / `substitute_test.sh` against the SDK archives that
-repository vendors — which is both stronger and where it belongs.
+⚠ **`BUILD_KARMA_REF` was removed on 2026-09-02 and RESTORED on 2026-09-12.** It links MathEngine's
+prebuilt archives as a second implementation of this same API. The removal's reasoning — that a
+proven recovery needs no second implementation in the engine, and that `metoolkit-karma-decomp`'s
+`difftest_pair.sh` / `substitute_test.sh` compare per object without one — still holds for the
+*decompilation*; what it missed is the *shipped build*, which is what the owner asked to keep
+proving per push. It is now the CI A/B arm (`legacy-karma`, `windows-legacykarma`) and it replaced
+`native-nokarma` there. **32-bit x86 only**: the archives are binary-only i386, and the configure
+step fails by name rather than letting the link fail twenty minutes in.
 
 **There is deliberately no `native-karmadecomp` preset.** On i386 the equivalent already exists and
 is stronger: `metoolkit-karma-decomp `decomp/test/standalone/make_dropin_metoolkit.sh`` builds a metoolkit tree with every shipped
@@ -816,10 +823,11 @@ Bundled dependencies live under `Thirdparty/`: `zlib`, `Vorbis` (ogg+vorbis), `S
 (headers), and the closed prebuilt libs `metoolkit/` (Karma physics) + `Pixomatic/` (software
 renderer). SDL2 and GL4ES are **not** vendored — they're fetched via CMake FetchContent.
 
-Karma has **two** states since 2026-09-02: **`USE_KARMA_DECOMP=ON`** (the recovered sources — the
-default everywhere the pointer width allows) and **OFF** (`NO_KARMA=1`, the `*-nokarma` controls).
-The third, `BUILD_KARMA_REF`, linked MathEngine's prebuilt 32-bit x86 archives and is gone. Pixomatic is
-`USE_PIXOMATIC` — on for every native preset, never on web or Windows.
+Karma has **three** states again since 2026-09-12: **`USE_KARMA_DECOMP=ON`** (the recovered sources
+— the default everywhere the pointer width allows), **`BUILD_KARMA_REF=ON`** (MathEngine's prebuilt
+32-bit x86 archives — the `legacy-karma` / `windows-legacykarma` A/B arms; removed 2026-09-02,
+restored 2026-09-12), and **both OFF** (`NO_KARMA=1`, the `*-nokarma` controls). Pixomatic is
+`USE_PIXOMATIC` — on for every native preset and for 32-bit Windows since 2.54.
 
 The former non-game bloat has been **removed** (see git history): the bundled `DirectX8/9/9_AMD64`
 SDKs and the `Microsoft Platform SDK for Windows XP SP2` (the kept `WinDrv`/`D3DDrv` code now uses

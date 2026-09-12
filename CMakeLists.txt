@@ -282,22 +282,55 @@ add_definitions(-D__FILE_NOCASE=1)
 # builds were therefore always NO_KARMA — no vehicles, no ragdolls. The recovered sources are
 # ordinary portable C, so they compile and RUN wherever the pointer width is right.
 #
-# ★★ `BUILD_KARMA_REF` IS GONE (2026-09-02). It linked MathEngine's prebuilt i386 archives as an
-# alternative implementation of this same API, and it existed to be the A/B reference while the
-# recovery was unproven. The recovery is no longer unproven: it plays a full i386 match against a
-# metoolkit with every shipped member deleted, it is the physics on wasm (55/55 browser suite),
-# Linux x86-64, Android arm64 and armv7, and its 64-bit trace is byte-identical to the 32-bit
-# control. Keeping a second, i386-Linux-only implementation wired into the build meant three Karma
-# states to reason about, a mutual-exclusion FATAL_ERROR, a binary-name suffix and four presets,
-# all to reproduce a comparison the recovery's own repository makes directly against the SDK
-# archives it vendors (`decomp/test/standalone/difftest_pair.sh`, `substitute_test.sh`). That
-# comparison is unaffected and is where it belongs.
-#
 # EVIDENCE FOR THE DEFAULT, so it is not taken on trust: the i386 drop-in plays a full match
 # against a metoolkit with every shipped member deleted, and the wasm build passes the whole
 # ut2004 browser suite (51/51) equal to a NO_KARMA control built from the same tree.
 # metoolkit-karma-decomp `decomp/proven.txt`, entries WASM-SIGMISMATCH and WASM-INDIRECT-SIGS.
 option(USE_KARMA_DECOMP "Link the RECOVERED Karma (`metoolkit_decomp/src`)" ON)
+
+# BUILD_KARMA_REF — the LEGACY Karma: MathEngine's own prebuilt archives, linked as an alternative
+# implementation of the same API. It is the A/B REFERENCE ARM, and as of 2026-09-12 it is the only
+# one: `native-nokarma` (physics vs. no physics) has been retired in CI in its favour, because
+# comparing the recovery against the REAL THING answers "is the recovered code right" and comparing
+# it against nothing only ever answered "is Karma involved at all".
+#
+# ⚠ IT WAS REMOVED ON 2026-09-02 AND IS BACK ON 2026-09-12, so read the removal commit (c591d23)
+# before deciding it is dead weight again: that commit's argument was that a second implementation
+# bought nothing once the recovery was proven, and the owner's answer is that A/B against the
+# shipped archives is exactly what a shipped BUILD should keep proving, per push, on both platforms
+# people actually download.
+#
+# ⚠ 32-BIT x86 ONLY, and that is the archives' constraint, not a policy: MathEngine shipped Karma
+# as binary-only 32-bit x86 objects. There is no 64-bit Linux variant at all, and the `win_amd64_*`
+# variants are MSVC/Whidbey objects the MinGW cross cannot use. The guard below is a FATAL_ERROR
+# rather than a silent NO_KARMA because a "legacy" binary with no legacy Karma in it is worse than
+# no binary.
+#
+# ★ IT NOW BUILDS ON WINDOWS TOO (new on 2026-09-12), which the removal commit's text said was
+# impossible — it claimed the shipped Windows archives were "32-bit Linux ELF". They are not:
+# `metoolkit/lib.rel/win32_single_msvcrt/*.lib` are real MS COFF archives whose Karma entry points
+# are plain `__stdcall`-decorated C (`_McdNullCreate@4`), which binutils reads and MinGW links. The
+# calling convention is why ME_FORCE_CDECL must NOT be defined on this path: MeCall.h declares the
+# API __stdcall under WIN32 and the archives were built that way, so forcing cdecl here would
+# produce a clean compile, a clean link and a corrupted stack at the first Karma call.
+option(BUILD_KARMA_REF "Link the LEGACY Karma — MathEngine's prebuilt 32-bit archives (the A/B reference arm)" OFF)
+if(USE_KARMA_DECOMP AND BUILD_KARMA_REF)
+  message(FATAL_ERROR
+    "USE_KARMA_DECOMP and BUILD_KARMA_REF are two implementations of the same API and both "
+    "define its symbols. Pick one: BUILD_KARMA_REF for MathEngine's shipped 32-bit archives, "
+    "USE_KARMA_DECOMP for the recovered sources.")
+endif()
+if(BUILD_KARMA_REF)
+  # The archives are 32-bit x86 machine code. Nothing about that is fixable from here, so refuse
+  # early and by name rather than let the link fail 20 minutes in with a wall of "incompatible"
+  # ld notes — or, worse, succeed against a stale cache.
+  if(EMSCRIPTEN OR ANDROID OR NOT UT_PTR_BYTES EQUAL 4 OR NOT TARGET_ARCH STREQUAL "x86")
+    message(FATAL_ERROR
+      "BUILD_KARMA_REF is 32-bit x86 ONLY -- MathEngine shipped Karma as binary-only i386 objects "
+      "and this build targets ${TARGET_ARCH}${ANDROID_ABI} at ${UT_PTR_BYTES}-byte pointers. "
+      "Use USE_KARMA_DECOMP (the recovered sources), which is portable and is the default.")
+  endif()
+endif()
 option(UT_FPMATH_SSE "32-bit x86 only: add -msse2 -mfpmath=sse — the ktrace CONTROL arm (see BUILD.md, ufront 2.58)" OFF)
 
 # ★ THE POINTER-WIDTH GATE, LIFTED 2026-08-29. The recovered code used to encode i386 STRUCT
@@ -360,14 +393,14 @@ if(USE_KARMA_DECOMP AND UT_PTR_BYTES GREATER 4 AND NOT KD_LP64_OK)
     "${TARGET_ARCH}${ANDROID_ABI}) -- LP64 Karma, which plays: see the note above this line.")
 endif()
 
-if(NOT USE_KARMA_DECOMP)
+if(NOT USE_KARMA_DECOMP AND NOT BUILD_KARMA_REF)
   # ⚠ SAY SO, EVERY TIME. `option()` reads an EXISTING cache before its default, so flipping
   # USE_KARMA_DECOMP to ON in 2026-08-27 does nothing to a build directory configured before
   # that — it silently keeps NO_KARMA and the only symptom is a game with no vehicles or
   # ragdolls. This line is how you find out; `rm -rf build-<preset>` is the fix.
   message(STATUS "Physics: NO_KARMA (no vehicles, no ragdolls) -- "
-                 "USE_KARMA_DECOMP=OFF. If that is not what you asked for, this build "
-                 "directory has a stale cache: delete it and reconfigure.")
+                 "USE_KARMA_DECOMP=OFF and BUILD_KARMA_REF=OFF. If that is not what you asked "
+                 "for, this build directory has a stale cache: delete it and reconfigure.")
   add_definitions(-DNO_KARMA=1)
 else()
   # ★ THE KARMA SDK AND THE RECOVERED LIBRARY ARE FETCHED, NOT VENDORED (ufront 2.44).
@@ -420,9 +453,15 @@ else()
   #
   # MinGW-w64 predefines WIN32, so MeCall.h would otherwise declare the whole API __stdcall on
   # the `windows` preset. The recovered sources are cdecl — they were decompiled from the Linux
-  # i386 build — and MathEngine's Windows archives are not linkable here in any case (they are
-  # 32-bit Linux ELF). See the note in the fetched metoolkit/include/MeCall.h.
+  # i386 build — so they need the override. See the note in the fetched metoolkit/include/MeCall.h.
   #
+  # ⚠ AND THIS IS WHY IT IS GUARDED BY USE_KARMA_DECOMP RATHER THAN APPLIED UNCONDITIONALLY.
+  # BUILD_KARMA_REF on Windows links `lib.rel/win32_single_msvcrt/*.lib`, which MathEngine built
+  # WITH the __stdcall that MeCall.h declares — the archives' entry points are decorated for it
+  # (`_McdNullCreate@4`). Forcing cdecl there compiles clean, links clean (the decoration is what
+  # the engine asks for either way once the header agrees with itself) and corrupts the stack at
+  # the first Karma call. The older text here said the Windows archives were "32-bit Linux ELF"
+  # and so unusable; that was simply wrong, and it is the reason nobody tried for a year.
   if(USE_KARMA_DECOMP)
     add_definitions(-DME_FORCE_CDECL=1)
   endif()
@@ -947,6 +986,23 @@ endif()
 # -pthread. That is not evidence it was fine; it is what this class of bug looks
 # like before it bites.
 #-----------------------------------------------------------------------------
+# The LEGACY arm populates the same repository, and stops there. It wants the SDK that repository
+# carries — the public headers and the shipped archives — and none of the recovered sources, so it
+# never reaches the -O0 pin block below (which exists to constrain code this arm does not compile).
+if(BUILD_KARMA_REF)
+  FetchContent_MakeAvailable(MetoolkitKarmaDecomp)
+  # ...and it must not BUILD them either. MakeAvailable adds that directory's targets to `all`, so
+  # without this the legacy arm compiles 146 recovered C sources on every CI run and links none of
+  # them. Same get_property walk the -O0 pin below uses, so both stay keyed off one mechanism.
+  get_property(_kr_targets DIRECTORY "${metoolkitkarmadecomp_SOURCE_DIR}/metoolkit_decomp"
+               PROPERTY BUILDSYSTEM_TARGETS)
+  foreach(_kr_t ${_kr_targets})
+    set_target_properties(${_kr_t} PROPERTIES EXCLUDE_FROM_ALL TRUE)
+  endforeach()
+  list(LENGTH _kr_targets _kr_n)
+  message(STATUS "BUILD_KARMA_REF: ${_kr_n} recovered-Karma target(s) excluded from the build (legacy arm links the shipped archives)")
+endif()
+
 if(USE_KARMA_DECOMP)
   FetchContent_MakeAvailable(MetoolkitKarmaDecomp)
 
@@ -1053,8 +1109,23 @@ if(USE_KARMA_DECOMP)
       message(STATUS "Karma decomp: ${_md_o2} source(s) compiled with '${UT_KARMA_O2_OPTIONS}' via UT_KARMA_O2_FILES='${UT_KARMA_O2_FILES}' (ufront 2.58 probe/bisect arm)")
     endif()
   endif()
+endif()
+
+# The SDK's location and its public headers — needed by BOTH Karma arms, because the recovered
+# sources reimplement what the archives contain and share their headers verbatim.
+if(USE_KARMA_DECOMP OR BUILD_KARMA_REF)
   set(METOOLKIT_DIR "${metoolkitkarmadecomp_SOURCE_DIR}/metoolkit" CACHE PATH "metoolkit (Karma SDK) root: include/ + lib.{chk,rel}/")
-  set(METOOLKIT_LIB_SUBDIR "lib.rel/linux_single_gcc3.2" CACHE STRING "metoolkit lib variant (rel/chk + toolchain)")
+  # ⚠ THE VARIANT IS PER-PLATFORM and there is no sensible cross-platform default: the Linux
+  # archives are ELF `.a`, the Windows ones MS COFF `.lib`, and pointing either toolchain at the
+  # other's directory produces a glob that matches nothing (or, with a stale cache, matches the
+  # wrong thing). Only the legacy arm ever reads it, but it is set for both because METOOLKIT_DIR
+  # is, and splitting them would leave a half-configured pair in the cache.
+  if(WIN32)
+    set(_UT_METOOLKIT_LIB_SUBDIR "lib.rel/win32_single_msvcrt")
+  else()
+    set(_UT_METOOLKIT_LIB_SUBDIR "lib.rel/linux_single_gcc3.2")
+  endif()
+  set(METOOLKIT_LIB_SUBDIR "${_UT_METOOLKIT_LIB_SUBDIR}" CACHE STRING "metoolkit lib variant (rel/chk + toolchain)")
   # Global, exactly as the ORIGINAL v3369 build did: the Epic makefile-header applies
   # -I$(METOOLKIT_INC) to EVERY module's compile, and a module that misses it while another has it
   # disagrees about AActor/ULevel/ASVehicle's Karma members -- which is an in-game vtable crash.

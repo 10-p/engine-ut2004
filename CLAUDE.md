@@ -79,14 +79,25 @@ unfinished", and don't read "Karma is done" as covering them.
 — read its `CLAUDE.md`, then `decomp/docs/STATE.md` and `decomp/proven.txt` (the evidence ledger:
 a non-comment line in it releases an object, and nothing is released without evidence).
 
-**TWO states, and that changed on 2026-09-02.** `BUILD_KARMA_REF` — MathEngine's prebuilt i386
-archives, linked as an alternative implementation — is **gone**, with its four presets, its
-mutual-exclusion `FATAL_ERROR`, its `-legacykarma` binary suffix and `KarmaGlibcCompat.c`.
+**THREE states again as of 2026-09-12.** `BUILD_KARMA_REF` — MathEngine's prebuilt archives, linked
+as an alternative implementation — was removed on 2026-09-02 and **restored** on 2026-09-12 at the
+owner's request, because a shipped build should keep proving the recovery against the real thing on
+every push. It brings back its mutual-exclusion `FATAL_ERROR`, the `-legacykarma` binary suffix and
+`KarmaGlibcCompat.c`, and it is now the **A/B arm in CI**, where it replaced `native-nokarma`.
 
 | | what links | presets |
 |---|---|---|
 | `USE_KARMA_DECOMP=ON` (**default**) | `metoolkit_decomp::all`, the recovered sources | every preset that can take it |
+| `BUILD_KARMA_REF=ON` | MathEngine's shipped archives | `legacy-karma`, `windows-legacykarma` — **32-bit x86 only** |
 | `USE_KARMA_DECOMP=OFF` | nothing; `NO_KARMA=1` | `native-nokarma`, `wasm-nokarma`, `windows-nokarma` |
+
+★ **The legacy arm now builds on Windows too**, which the removal commit said was impossible ("the
+Windows archives are 32-bit Linux ELF" — they are not; they are MS COFF with `__stdcall`-decorated
+C entry points). It needs `Source/Engine/Src/KarmaMsvcCompat.c` for six MSVC compiler-support
+routines MinGW does not provide, and the vendor archives kept out of `--export-all-symbols`.
+⚠ **It BUILDS and BOOTS but does not survive a Karma-heavy scene** — access violation ~12 frames in,
+inside MathEngine's own `McdSphylSphereIntersect`, undiagnosed as of 2026-09-12. The **Linux** legacy
+arm is the one to cite: 40/40 frames, and it scores `MATCH` against the recovered arm.
 
 It existed to be the A/B reference while the recovery was unproven, and the recovery is no longer
 unproven: it is the physics on wasm (55/55), Linux x86-64, **Windows x64**, Android arm64 and

@@ -454,9 +454,14 @@ elseif(NOT EMSCRIPTEN)
   # `ut2004-pixo.bin` — same filename, opposite physics — and the A/B that proved a red E2E test
   # was Karma's fault rather than the harness's depends on telling those two apart.
   #
-  # So: the default (recovered Karma) stays unsuffixed because it is what ships, and the one
-  # deviation names itself. (`-legacykarma` went with BUILD_KARMA_REF on 2026-09-02.)
-  if(NOT USE_KARMA_DECOMP)
+  # So: the default (recovered Karma) stays unsuffixed because it is what ships, and each
+  # deviation names itself. `-legacykarma` came back with BUILD_KARMA_REF on 2026-09-12, and it
+  # matters more than it did: legacy and recovered are now the two arms of the A/B, downloaded
+  # side by side from the same CI run, so a filename that did not distinguish them would make the
+  # comparison unperformable by the person doing it.
+  if(BUILD_KARMA_REF)
+    set(UT_BIN_NAME "${UT_BIN_NAME}-legacykarma")
+  elseif(NOT USE_KARMA_DECOMP)
     set(UT_BIN_NAME "${UT_BIN_NAME}-nokarma")
   endif()
   if(UT_HAS_PIXODRV)
