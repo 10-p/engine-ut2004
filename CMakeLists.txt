@@ -306,14 +306,31 @@ option(USE_KARMA_DECOMP "Link the RECOVERED Karma (`metoolkit_decomp/src`)" ON)
 # rather than a silent NO_KARMA because a "legacy" binary with no legacy Karma in it is worse than
 # no binary.
 #
-# ★ IT NOW BUILDS ON WINDOWS TOO (new on 2026-09-12), which the removal commit's text said was
-# impossible — it claimed the shipped Windows archives were "32-bit Linux ELF". They are not:
-# `metoolkit/lib.rel/win32_single_msvcrt/*.lib` are real MS COFF archives whose Karma entry points
-# are plain `__stdcall`-decorated C (`_McdNullCreate@4`), which binutils reads and MinGW links. The
-# calling convention is why ME_FORCE_CDECL must NOT be defined on this path: MeCall.h declares the
-# API __stdcall under WIN32 and the archives were built that way, so forcing cdecl here would
-# produce a clean compile, a clean link and a corrupted stack at the first Karma call.
-option(BUILD_KARMA_REF "Link the LEGACY Karma — MathEngine's prebuilt 32-bit archives (the A/B reference arm)" OFF)
+# ⚠⚠ AND IT IS LINUX-ONLY, WHICH WAS ESTABLISHED BY BUILDING THE WINDOWS ONE AND MEASURING IT
+# (2026-09-12). The removal commit's reason — "MathEngine's Windows archives are 32-bit Linux ELF"
+# — is FALSE: `metoolkit/lib.rel/win32_single_msvcrt/*.lib` are real MS COFF archives whose Karma
+# entry points are plain `__stdcall`-decorated C (`_McdNullCreate@4`). MinGW compiles, links and
+# BOOTS them; the exe loads a map, starts a match and simulates Karma. It then dies about twelve
+# frames in, and the reason is not fixable from here:
+#
+#   ★ GNU ld SILENTLY DROPS CROSS-OBJECT COMDAT RELOCATIONS IN THESE ARCHIVES. In
+#     `McdSphylSphereIntersect+0x9d` the object has `DISP32 ?MeVector3Dot@@YGMQBM0@Z`; the linked
+#     image has `e8 00 00 00 00` — displacement ZERO, so the `call` targets the NEXT INSTRUCTION.
+#     That pushes a return address nothing ever pops, ESP stays 4 low for the rest of the function,
+#     and every `N(%esp)` after it reads the wrong slot. The crash is a geometry pointer read out
+#     of a stack slot holding a float, exactly as that predicts, and the bogus return address
+#     0x00a84662 is visible in the crash dump's stack scan.
+#     ⚠ NOT A FLAG PROBLEM: 42 such sites across McdBoxBoxIntersect, McdGjkTest and the
+#     triangle-list intersectors — the core of collision detection — and the count and the bytes
+#     are IDENTICAL with `--exclude-libs` and `--export-all-symbols` both removed. ld resolves a
+#     COMDAT kept from the SAME object and fails across objects; there is no ld option for it.
+#     Each site is a silent stack corruption, so "it mostly works" is the dangerous reading.
+#
+# The `windows-legacykarma` preset, the MSVC compiler-support shim (KarmaMsvcCompat.c, six
+# routines, its stack probe unit-tested correct) and the CI arm all existed and were REMOVED on
+# 2026-09-12 rather than shipped. Git history has them if binutils ever fixes COMDAT handling.
+# BUILD.md has the full account. Do not re-derive this: it is a linker defect, not a build recipe.
+option(BUILD_KARMA_REF "Link the LEGACY Karma — MathEngine's prebuilt 32-bit LINUX archives (the A/B reference arm)" OFF)
 if(USE_KARMA_DECOMP AND BUILD_KARMA_REF)
   message(FATAL_ERROR
     "USE_KARMA_DECOMP and BUILD_KARMA_REF are two implementations of the same API and both "
@@ -329,6 +346,17 @@ if(BUILD_KARMA_REF)
       "BUILD_KARMA_REF is 32-bit x86 ONLY -- MathEngine shipped Karma as binary-only i386 objects "
       "and this build targets ${TARGET_ARCH}${ANDROID_ABI} at ${UT_PTR_BYTES}-byte pointers. "
       "Use USE_KARMA_DECOMP (the recovered sources), which is portable and is the default.")
+  endif()
+  # ⚠ AND NOT WINDOWS. This refuses a configuration that COMPILES, LINKS AND BOOTS, so the guard
+  # has to exist: without it the next person gets a plausible-looking binary that corrupts its own
+  # stack in collision detection. See the option's note above for the measurement.
+  if(WIN32)
+    message(FATAL_ERROR
+      "BUILD_KARMA_REF is not usable on Windows. MathEngine's win32 archives DO link with MinGW -- "
+      "that part of the old 'they are Linux ELF' note was wrong -- but GNU ld drops their "
+      "cross-object COMDAT relocations and emits `call` with displacement 0 at 42 sites in the "
+      "collision core, each one a silent stack corruption (measured 2026-09-12; see BUILD.md). "
+      "Use USE_KARMA_DECOMP on Windows; the legacy A/B arm is Linux-only.")
   endif()
 endif()
 option(UT_FPMATH_SSE "32-bit x86 only: add -msse2 -mfpmath=sse — the ktrace CONTROL arm (see BUILD.md, ufront 2.58)" OFF)
@@ -1115,17 +1143,10 @@ endif()
 # sources reimplement what the archives contain and share their headers verbatim.
 if(USE_KARMA_DECOMP OR BUILD_KARMA_REF)
   set(METOOLKIT_DIR "${metoolkitkarmadecomp_SOURCE_DIR}/metoolkit" CACHE PATH "metoolkit (Karma SDK) root: include/ + lib.{chk,rel}/")
-  # ⚠ THE VARIANT IS PER-PLATFORM and there is no sensible cross-platform default: the Linux
-  # archives are ELF `.a`, the Windows ones MS COFF `.lib`, and pointing either toolchain at the
-  # other's directory produces a glob that matches nothing (or, with a stale cache, matches the
-  # wrong thing). Only the legacy arm ever reads it, but it is set for both because METOOLKIT_DIR
-  # is, and splitting them would leave a half-configured pair in the cache.
-  if(WIN32)
-    set(_UT_METOOLKIT_LIB_SUBDIR "lib.rel/win32_single_msvcrt")
-  else()
-    set(_UT_METOOLKIT_LIB_SUBDIR "lib.rel/linux_single_gcc3.2")
-  endif()
-  set(METOOLKIT_LIB_SUBDIR "${_UT_METOOLKIT_LIB_SUBDIR}" CACHE STRING "metoolkit lib variant (rel/chk + toolchain)")
+  # Only the legacy arm ever reads this, and that arm is Linux-only (see BUILD_KARMA_REF's note);
+  # the `win32_single_msvcrt` variant beside it links but cannot be used, which is recorded there
+  # so that pointing this at it looks like the dead end it is.
+  set(METOOLKIT_LIB_SUBDIR "lib.rel/linux_single_gcc3.2" CACHE STRING "metoolkit lib variant (rel/chk + toolchain)")
   # Global, exactly as the ORIGINAL v3369 build did: the Epic makefile-header applies
   # -I$(METOOLKIT_INC) to EVERY module's compile, and a module that misses it while another has it
   # disagrees about AActor/ULevel/ASVehicle's Karma members -- which is an in-game vtable crash.

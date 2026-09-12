@@ -60,65 +60,24 @@ if(BUILD_KARMA_REF)
     ${METOOLKIT_DIR}/include/MeApp
   )
   set(METOOLKIT_LIB_DIR "${METOOLKIT_DIR}/${METOOLKIT_LIB_SUBDIR}")
-  # ⚠ THE ARCHIVE EXTENSION IS THE PLATFORM'S, not a detail: MathEngine shipped ELF `.a` for Linux
-  # and MS COFF `.lib` for Windows. A glob for the wrong one matches nothing, and an empty glob
-  # would otherwise link a WITH_KARMA engine against no Karma at all — every Karma symbol
+  # An empty glob would link a WITH_KARMA engine against no Karma at all — every Karma symbol
   # undefined at the FINAL exe link, hundreds of lines away from the cause. Hence the count check.
-  if(WIN32)
-    file(GLOB METOOLKIT_LIBS "${METOOLKIT_LIB_DIR}/*.lib")
-  else()
-    file(GLOB METOOLKIT_LIBS "${METOOLKIT_LIB_DIR}/*.a")
-  endif()
+  file(GLOB METOOLKIT_LIBS "${METOOLKIT_LIB_DIR}/*.a")
   list(LENGTH METOOLKIT_LIBS METOOLKIT_LIB_COUNT)
   if(METOOLKIT_LIB_COUNT EQUAL 0)
     message(FATAL_ERROR "BUILD_KARMA_REF: no archives in ${METOOLKIT_LIB_DIR} (set METOOLKIT_DIR/METOOLKIT_LIB_SUBDIR).")
   endif()
-  if(WIN32)
-    # KarmaMsvcCompat is the Windows counterpart of KarmaGlibcCompat below, and it is needed for
-    # the same reason: these are the vendor's ORIGINAL binaries and they call their original
-    # compiler's support library. MinGW links msvcrt itself — which is why `win32_single_msvcrt`
-    # is the variant used here and not `win32_single_libcmt`, whose archives want MSVC's static
-    # CRT — but msvcrt.dll does not export MSVC's COMPILER helpers (_chkstk, _alldiv, ...), and
-    # libgcc spells every one of them differently. See the file for the six and their ABIs.
-    # It goes INSIDE the group so the archives' references resolve during the scan.
-    add_library(KarmaMsvcCompat STATIC ${CMAKE_CURRENT_SOURCE_DIR}/Src/KarmaMsvcCompat.c)
-    # ★ --exclude-libs FOR THE VENDOR ARCHIVES, and the exe does not link without it.
-    #
-    # SDLLaunch links with --export-all-symbols (the game's .u/.dll modules resolve against the
-    # exe, so it needs a real export table and an import library). That sweep walks every archive
-    # it pulled, and on MathEngine's MSVC-built C++ objects it dies with a screenful of
-    #   "cannot export ?solveLCP@keaLCPSolver@@QAEHPAV...: symbol not found"
-    # — MSVC-mangled COMDAT members that appear in the archive's symbol index while their section
-    # is discarded, so ld puts them on the export list and then cannot find them. Nothing outside
-    # these archives should be exported from a Karma implementation anyway, so excluding them from
-    # the auto-export sweep is both the fix and the correct description of intent.
-    #
-    # Built from METOOLKIT_LIBS rather than written out, so a change to the SDK's contents cannot
-    # leave a stale name behind: --exclude-libs silently ignores a name that matches no archive,
-    # which is exactly how this would rot without being noticed.
-    #
-    # ⚠ THE SHIM ITSELF IS ON THE LIST TOO, for the same reason and not as a
-    # precaution: it defines `??3@YAXPAX@Z`, and the auto-export sweep cannot put an
-    # MSVC-mangled name in an export table either — it fails with "cannot export
-    # ??3@YAXPAX@Z: symbol not found" about a symbol `nm` shows is plainly there.
-    # Nothing outside this link should import from a compatibility shim anyway.
-    set(METOOLKIT_EXCLUDE "libKarmaMsvcCompat.a")
-    foreach(_mk_lib ${METOOLKIT_LIBS})
-      get_filename_component(_mk_name "${_mk_lib}" NAME)
-      set(METOOLKIT_EXCLUDE "${METOOLKIT_EXCLUDE}:${_mk_name}")
-    endforeach()
-    target_link_libraries(${PROJECT_NAME} PRIVATE
-      -Wl,--exclude-libs,${METOOLKIT_EXCLUDE}
-      -Wl,--start-group ${METOOLKIT_LIBS} $<TARGET_FILE:KarmaMsvcCompat> -Wl,--end-group)
-  else()
-    # The glibc-compat shim for the pre-2.3 archives (see KarmaGlibcCompat.c) lives INSIDE the
-    # group so its __ctype_b/toupper/tolower definitions resolve during the group scan. The
-    # gcc-3.x archives otherwise link fine against a modern gcc — verified gcc3.2 + gcc3.1 ->
-    # gcc14: no C++ ABI mismatch, only DT_TEXTREL warnings.
-    add_library(KarmaGlibcCompat STATIC ${CMAKE_CURRENT_SOURCE_DIR}/Src/KarmaGlibcCompat.c)
-    target_link_libraries(${PROJECT_NAME} PRIVATE
-      -Wl,--start-group ${METOOLKIT_LIBS} $<TARGET_FILE:KarmaGlibcCompat> -Wl,--end-group)
-  endif()
+  # ⚠ LINUX ONLY, AND THE WINDOWS SIDE IS NOT MERELY UNIMPLEMENTED — IT IS REFUSED AT
+  # CONFIGURE TIME, one option-block up. It was built and measured on 2026-09-12 and the
+  # result is recorded there and in BUILD.md: GNU ld cannot resolve MathEngine's MSVC
+  # COMDAT references, so do not reach for this again without reading that note first.
+  # The glibc-compat shim for the pre-2.3 archives (see KarmaGlibcCompat.c) lives INSIDE the
+  # group so its __ctype_b/toupper/tolower definitions resolve during the group scan. The
+  # gcc-3.x archives otherwise link fine against a modern gcc — verified gcc3.2 + gcc3.1 ->
+  # gcc14: no C++ ABI mismatch, only DT_TEXTREL warnings.
+  add_library(KarmaGlibcCompat STATIC ${CMAKE_CURRENT_SOURCE_DIR}/Src/KarmaGlibcCompat.c)
+  target_link_libraries(${PROJECT_NAME} PRIVATE
+    -Wl,--start-group ${METOOLKIT_LIBS} $<TARGET_FILE:KarmaGlibcCompat> -Wl,--end-group)
   message(STATUS "Engine: BUILD_KARMA_REF (LEGACY Karma) -> ${METOOLKIT_LIB_DIR} (${METOOLKIT_LIB_COUNT} archives)")
 endif()
 

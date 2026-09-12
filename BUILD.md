@@ -154,7 +154,6 @@ native stack* below) and any script still calling them will fail with "no such p
 | `wasm-karmadecomp-perf` | **DEPRECATED alias of `wasm-perf`.** | `build-wasm-karmadecomp-perf/` | same names |
 | `windows` | 32-bit Windows cross-build (MinGW-w64), **now with the recovered Karma** — it took three portability fixes nothing else could surface (`proven.txt` `WIN32-PORT-3`). ★ **ufront 2.54: Pixomatic is ON here.** The earlier note that the DLL "is not in the drop" was half right — it was absent from `Thirdparty/`, but it ships in a retail `System/`, and it is now **vendored** at `Thirdparty/Pixomatic/Bin/pixomatic.dll` (PE32 i386, byte-identical to retail) and staged beside the exe. ⚠ `pixomatic.lib` is a pure IMPORT library and nothing is delay-loaded, so the DLL is a **load-time** dependency: without it the process does not start at all — measured, `objdump -p` lists `pixomatic.dll` and the Delay Import Directory is empty. ⚠ It BUILDS; it does not RUN under wine, and neither does the `windows-nokarma` control, so that is pre-existing rather than Karma's doing. | `build-windows/` | `Source/SDLLaunch/ut2004-pixo.exe` + `pixomatic.dll` |
 | **`windows64`** | 64-bit Windows (MinGW-w64 cross) **with the recovered Karma** — the only reason an x64 Windows build exists, since MinGW cannot link MathEngine's MSVC-mangled prebuilts. **LLP64**: `long` is 4 bytes where Linux's is 8 and pointers are 8 on both, so it is the only target exercising that combination. Validated through the same trajectory gate as everything else (`ktrace_gate.sh` runs a `.exe` under wine). | `build-windows64/` | `.../ut2004.exe` |
-| **`windows-legacykarma`** | `windows` **+ `BUILD_KARMA_REF=ON`** — the legacy Karma on Windows, **new on 2026-09-12 and never built before**. The note beside `ME_FORCE_CDECL` had asserted for a year that MathEngine's Windows archives were "32-bit Linux ELF"; they are `lib.rel/win32_single_msvcrt/*.lib`, MS COFF, with `__stdcall`-decorated C entry points (`_McdNullCreate@4`) that binutils reads and MinGW links. Needs two things nothing else does: `Source/Engine/Src/KarmaMsvcCompat.c` (six MSVC compiler-support routines — `_chkstk`/`_alloca_probe`, `_alldiv`/`_aulldiv`/`_allmul`, `_except_list`) and `--exclude-libs` over the vendor archives, or `--export-all-symbols` dies on their MSVC-mangled COMDATs. ⚠ **`ME_FORCE_CDECL` MUST NOT reach this arm** — `MeCall.h` declares the API `__stdcall` under `WIN32` and the archives were built that way; forcing cdecl compiles clean, links clean and corrupts the stack at the first Karma call. ⚠⚠ **IT BUILDS AND BOOTS; IT DOES NOT YET PLAY.** Measured 2026-09-12: loads the map, starts the match, simulates Karma, then `EXCEPTION_ACCESS_VIOLATION` ~12 frames in, inside MathEngine's own `McdSphylSphereIntersect`, reading a float where a geometry pointer belongs. The same archives on Linux run 40/40, and the recovered Windows build runs 40/40 with a trace byte-identical to recovered Linux — so it is specific to Windows + legacy and smells like a GCC-vs-MSVC disagreement about the shared metoolkit structs. **Undiagnosed. Cite the LINUX legacy arm as the A/B reference, not this one.** | `build-windows-legacykarma/` | `.../ut2004-legacykarma-pixo.exe` + `pixomatic.dll` |
 | `windows-nokarma` | `windows` + `USE_KARMA_DECOMP=OFF` — the control that established the line above. | `build-windows-nokarma/` | `.../ut2004-nokarma.exe` |
 | *(no preset)* **Windows x64** | The 64-bit Windows cross-build, and the LAST target to be exercised at all. Not a preset because it is not a shipping configuration — see the section below for the one-liner. | `build-windows64/` | `Source/SDLLaunch/ut2004.exe` (PE32+ x86-64) |
 
@@ -409,12 +408,51 @@ The presets differ from plain `wasm-debug` / `wasm-perf` by **one cache variable
    objects, checked in — see `metoolkit-karma-decomp `metoolkit_decomp/README.md``) plus the hand-written convex-hull
    replacement ``decomp/src/McdConvexCreateHull/kd_convexhull.c``.
 
+### ⚠ The legacy Karma is LINUX-ONLY, and Windows was tried (2026-09-12)
+
+A `windows-legacykarma` arm existed for a few hours on 2026-09-12 and was removed the same day.
+Recording it so nobody re-derives it:
+
+* **The long-standing reason was wrong.** The note beside `ME_FORCE_CDECL` said MathEngine's Windows
+  archives were "32-bit Linux ELF" and therefore unlinkable. They are not:
+  `metoolkit/lib.rel/win32_single_msvcrt/*.lib` are real MS COFF archives whose Karma entry points
+  are plain `__stdcall`-decorated C (`_McdNullCreate@4`).
+* **It links, and it boots.** It needed six MSVC compiler-support routines MinGW does not provide
+  (`_chkstk`/`_alloca_probe`, `_alldiv`/`_aulldiv`/`_allmul`, `_except_list`, plus `??3@YAXPAX@Z`),
+  and the vendor archives kept out of `--export-all-symbols`. The resulting exe loads a map, starts
+  a match and simulates Karma.
+* **★ And then GNU ld's COMDAT handling kills it.** At `McdSphylSphereIntersect+0x9d` the object
+  carries `DISP32 ?MeVector3Dot@@YGMQBM0@Z`; the linked image carries `e8 00 00 00 00` —
+  displacement **zero**, so the `call` targets the *next instruction*. It pushes a return address
+  nothing pops, ESP stays 4 bytes low for the rest of the function, and every `N(%esp)` after it
+  reads the wrong slot. The observed crash is a geometry pointer read out of a slot holding a
+  float, exactly as that predicts, and the bogus return address `0x00a84662` is sitting in the
+  crash dump's stack scan.
+* **⚠ It is not a linker-flag problem, and that was checked rather than assumed.** There are **42**
+  such sites — `McdBoxBoxIntersect`, `McdGjkTest`, the triangle-list intersectors, i.e. the core of
+  collision detection — and the count and the bytes are **identical** with `--exclude-libs` and
+  `--export-all-symbols` both removed. ld binds a COMDAT kept from the *same* object and fails
+  across objects. Each site is a silent stack corruption, so "it mostly works" is the dangerous
+  reading, not a mitigation.
+* **What was checked and cleared first**, so the search is not repeated: the hand-written `_chkstk`
+  (unit-tested across page boundaries, ECX preserved — correct); `sizeof(McdContact)` (40, and
+  MathEngine's own code uses `add $0x28` — identical); `McdModelPair` / `McdIntersectResult`
+  layouts; and the engine's own out-of-range geometry-type diagnostic, which never fired.
+* **Baseline discipline saved a wrong conclusion.** The exe has 4804 `U` symbols and 544
+  "call-to-next-instruction" sites — and the *working* recovered Windows exe has **more** of both
+  (4661 / 585). Those aggregates are artifacts of `--export-all-symbols` and objdump desyncing on
+  data in `.text`. Only the symbol-anchored single site is evidence.
+
+The engine now **refuses** `BUILD_KARMA_REF` on Windows with a `FATAL_ERROR`, because the
+configuration compiles, links and boots — without the guard the next person gets a plausible binary
+that corrupts its own stack. Git history has the preset and the shim if binutils ever fixes this.
+
 ⚠ **`BUILD_KARMA_REF` was removed on 2026-09-02 and RESTORED on 2026-09-12.** It links MathEngine's
 prebuilt archives as a second implementation of this same API. The removal's reasoning — that a
 proven recovery needs no second implementation in the engine, and that `metoolkit-karma-decomp`'s
 `difftest_pair.sh` / `substitute_test.sh` compare per object without one — still holds for the
 *decompilation*; what it missed is the *shipped build*, which is what the owner asked to keep
-proving per push. It is now the CI A/B arm (`legacy-karma`, `windows-legacykarma`) and it replaced
+proving per push. It is now the CI A/B arm (`legacy-karma`, Linux only — see above) and it replaced
 `native-nokarma` there. **32-bit x86 only**: the archives are binary-only i386, and the configure
 step fails by name rather than letting the link fail twenty minutes in.
 
@@ -825,8 +863,8 @@ renderer). SDL2 and GL4ES are **not** vendored — they're fetched via CMake Fet
 
 Karma has **three** states again since 2026-09-12: **`USE_KARMA_DECOMP=ON`** (the recovered sources
 — the default everywhere the pointer width allows), **`BUILD_KARMA_REF=ON`** (MathEngine's prebuilt
-32-bit x86 archives — the `legacy-karma` / `windows-legacykarma` A/B arms; removed 2026-09-02,
-restored 2026-09-12), and **both OFF** (`NO_KARMA=1`, the `*-nokarma` controls). Pixomatic is
+32-bit x86 archives — the `legacy-karma` A/B arm, **Linux only**; removed 2026-09-02, restored
+2026-09-12), and **both OFF** (`NO_KARMA=1`, the `*-nokarma` controls). Pixomatic is
 `USE_PIXOMATIC` — on for every native preset and for 32-bit Windows since 2.54.
 
 The former non-game bloat has been **removed** (see git history): the bundled `DirectX8/9/9_AMD64`

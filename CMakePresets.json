@@ -135,17 +135,6 @@
             }
         },
         {
-            "name": "windows-legacykarma",
-            "inherits": "windows",
-            "displayName": "Windows x86 (MinGW-w64 cross) -- the LEGACY Karma: the A/B reference arm",
-            "description": "ufront 2026-09-12, and NEW: a legacy-Karma Windows build had never been attempted, because the note beside ME_FORCE_CDECL asserted MathEngine's Windows archives were '32-bit Linux ELF' and therefore unlinkable. They are not -- metoolkit/lib.rel/win32_single_msvcrt/*.lib are MS COFF archives whose Karma entry points are plain __stdcall-decorated C (`_McdNullCreate@4`), which binutils reads and MinGW links. \u26a0 ME_FORCE_CDECL MUST STAY OFF HERE (it is guarded by USE_KARMA_DECOMP): MeCall.h declares the API __stdcall under WIN32 and the archives were built that way, so forcing cdecl compiles clean, links clean and corrupts the stack at the first Karma call. `win32_single_msvcrt` and not `win32_single_libcmt` because MinGW links msvcrt too. Otherwise identical to `windows`, Pixomatic included. Builds in build-windows-legacykarma/ -> ut2004-legacykarma-pixo.exe.",
-            "binaryDir": "${sourceDir}/build-windows-legacykarma",
-            "cacheVariables": {
-                "USE_KARMA_DECOMP": "OFF",
-                "BUILD_KARMA_REF": "ON"
-            }
-        },
-        {
             "name": "wasm-karmadecomp-debug",
             "displayName": "DEPRECATED alias of `wasm-debug` (Karma is the default since 2026-08-27)",
             "inherits": "wasm-debug",
@@ -227,10 +216,6 @@
         {
             "name": "windows",
             "configurePreset": "windows"
-        },
-        {
-            "name": "windows-legacykarma",
-            "configurePreset": "windows-legacykarma"
         },
         {
             "name": "windows64",

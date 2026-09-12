@@ -206,29 +206,13 @@ jobs:
             # i686-PE decorates C symbols with a leading underscore; x86_64-PE does not.
             sym_prefix: '_'
             extra_dll: pixomatic.dll
-          # ufront 2026-09-12 — the LEGACY Karma on Windows, which had never been built before this
-          # date. The note beside ME_FORCE_CDECL in CMakeLists.txt asserted for a year that
-          # MathEngine's Windows archives were "32-bit Linux ELF" and therefore unlinkable; they are
-          # MS COFF, their entry points are __stdcall-decorated C, and MinGW links them once six MSVC
-          # compiler-support routines are supplied (Source/Engine/Src/KarmaMsvcCompat.c) and the
-          # vendor archives are kept out of --export-all-symbols.
-          #
-          # ⚠ THIS ARM IS A BUILD, NOT A BLESSING, AND THE DISTINCTION IS NOT PEDANTIC. Verified on
-          # the owner's box 2026-09-12: the exe boots, loads the map, starts the match and simulates
-          # Karma — then dies with an ACCESS_VIOLATION about twelve frames in, inside MathEngine's
-          # own McdSphylSphereIntersect, reading a float where a geometry pointer belongs. The same
-          # legacy archives on LINUX run the same scenario 40/40 and score MATCH against the
-          # recovered arm, and the recovered WINDOWS build runs it 40/40 with a trace byte-identical
-          # to recovered Linux — so this is specific to Windows + legacy and looks like a GCC-vs-MSVC
-          # disagreement about the metoolkit structs the engine and the archives share. Undiagnosed.
-          # ⇒ The A/B REFERENCE IS THE LINUX LEGACY ARM. Do not cite this exe as one.
-          - preset: windows-legacykarma
-            bin: ut2004-legacykarma-pixo.exe
-            karma: legacy
-            objdump: i686-w64-mingw32-objdump
-            nm: i686-w64-mingw32-nm
-            sym_prefix: '_'
-            extra_dll: pixomatic.dll
+          # ⚠ THERE IS NO WINDOWS LEGACY-KARMA ARM, and that is a measured conclusion rather than
+          # an omission. One existed on 2026-09-12 and was removed the same day: MathEngine's win32
+          # archives DO link with MinGW (the long-standing "they are 32-bit Linux ELF" note was
+          # wrong) and the exe boots and simulates Karma, but GNU ld drops their cross-object COMDAT
+          # relocations and emits `call` with displacement 0 at 42 sites in the collision core —
+          # each a silent 4-byte stack shift. The engine now refuses that configuration at CONFIGURE
+          # time. See BUILD_KARMA_REF's note in CMakeLists.txt. The A/B reference arm is LINUX.
           - preset: windows64
             bin: ut2004.exe
             karma: recovered
@@ -281,13 +265,10 @@ jobs:
           [ "$n" -eq 3 ] || { echo "::error::${{ matrix.preset }} exe is missing Karma symbols"; exit 1; }
           # ★ AND WHICH IMPLEMENTATION — see the same check in the linux job for why the count above
           # cannot answer it and why `_kdbytes` failing loudly is the acceptable kind of fragility.
+          # Both Windows arms are the recovered Karma (there is no legacy one — see the matrix note).
           kd=$(${{ matrix.nm }} "$exe" | grep -c '_kdbytes' || true)
           echo "${{ matrix.preset }}: $kd recovered-Karma (_kdbytes) symbols"
-          if [ "${{ matrix.karma }}" = "legacy" ]; then
-            [ "$kd" -eq 0 ] || { echo "::error::the legacy arm contains RECOVERED Karma symbols — it did not link MathEngine's archives"; exit 1; }
-          else
-            [ "$kd" -gt 0 ] || { echo "::error::${{ matrix.preset }} carries no recovered-Karma symbols (renamed upstream, or this is not the physics it claims)"; exit 1; }
-          fi
+          [ "$kd" -gt 0 ] || { echo "::error::${{ matrix.preset }} carries no recovered-Karma symbols (renamed upstream, or this is not the physics it claims)"; exit 1; }
 
       # ★ The check that matters for a "drop it somewhere and run it" binary — now width-aware.
       # The allow-list admits exactly one extra DLL, the one this preset is supposed to carry, so a

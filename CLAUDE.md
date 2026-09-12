@@ -91,13 +91,15 @@ every push. It brings back its mutual-exclusion `FATAL_ERROR`, the `-legacykarma
 | `BUILD_KARMA_REF=ON` | MathEngine's shipped archives | `legacy-karma`, `windows-legacykarma` — **32-bit x86 only** |
 | `USE_KARMA_DECOMP=OFF` | nothing; `NO_KARMA=1` | `native-nokarma`, `wasm-nokarma`, `windows-nokarma` |
 
-★ **The legacy arm now builds on Windows too**, which the removal commit said was impossible ("the
-Windows archives are 32-bit Linux ELF" — they are not; they are MS COFF with `__stdcall`-decorated
-C entry points). It needs `Source/Engine/Src/KarmaMsvcCompat.c` for six MSVC compiler-support
-routines MinGW does not provide, and the vendor archives kept out of `--export-all-symbols`.
-⚠ **It BUILDS and BOOTS but does not survive a Karma-heavy scene** — access violation ~12 frames in,
-inside MathEngine's own `McdSphylSphereIntersect`, undiagnosed as of 2026-09-12. The **Linux** legacy
-arm is the one to cite: 40/40 frames, and it scores `MATCH` against the recovered arm.
+⚠ **WINDOWS WAS TRIED AND IS NOW REFUSED — do not re-derive it.** The removal commit's reason (the
+Windows archives are "32-bit Linux ELF") is false: they are MS COFF, MinGW links them, and the exe
+boots and simulates Karma. But **GNU ld drops their cross-object COMDAT relocations** and emits
+`call` with displacement 0 at **42 sites** in the collision core, each a silent 4-byte stack shift —
+identical with `--exclude-libs` and `--export-all-symbols` removed, so it is not a flag problem. The
+engine `FATAL_ERROR`s on that configuration precisely because it would otherwise *look* fine.
+`BUILD.md` has the full account, including what was cleared first (the stack probe, the `McdContact`
+layout) and the baseline that refuted a wrong conclusion. The **Linux** legacy arm is the A/B
+reference: 40/40 frames, scoring `MATCH` against the recovered arm.
 
 It existed to be the A/B reference while the recovery was unproven, and the recovery is no longer
 unproven: it is the physics on wasm (55/55), Linux x86-64, **Windows x64**, Android arm64 and
