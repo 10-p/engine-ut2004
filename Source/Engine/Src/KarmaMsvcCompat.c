@@ -15,6 +15,17 @@
 	    _alldiv _aulldiv _allmul   64-bit integer math (MeGlobals/MeProfile.obj)
 	    _chkstk _alloca_probe      the stack probe (many objects, any frame >4 KB)
 	    _except_list               the SEH chain head (MdtKea/keaCheckCPU_sse.obj)
+	    ??3@YAXPAX@Z               operator delete (McdCommon/CxSmallSort.obj)
+
+	⚠ operator delete IS ON THIS LIST BECAUSE THE TOOLCHAIN CANNOT BE RELIED ON TO
+	SUPPLY IT, and that was learned the expensive way: the link succeeded on the
+	owner's box and failed in CI on the same binutils 2.45, because msvcrt.dll
+	exports `??3@YAXPAX@Z` and whether MinGW's libmsvcrt.a import library lists it
+	varies by distribution. Defining it here removes the question. It forwards to
+	the ENGINE's own ::operator delete rather than to free(), so a pointer that
+	ever does cross the boundary is released by the allocator that produced it.
+	(Nothing here references operator NEW — measured across all sixteen archives —
+	so there is no matching allocation side to provide.)
 
 	⚠ THE ASSEMBLER LABELS BELOW CARRY TWO LEADING UNDERSCORES AND THAT IS NOT A
 	TYPO. These names already begin with an underscore at C level, and i386-PE
@@ -126,6 +137,20 @@ __asm__(
 "	movl	4(%eax), %eax\n"		/* the return address */
 "	pushl	%eax\n"
 "	ret\n"
+"\n"
+/*-----------------------------------------------------------------------------
+	??3@YAXPAX@Z — `void __cdecl operator delete(void *)`, MSVC's mangling.
+
+	Caller-popped and single-argument, so a bare jump is the whole trampoline: the
+	engine's own `operator delete` has the identical signature and convention. The
+	name is quoted because `?` is not an ordinary symbol character, and it takes NO
+	leading underscore — the i386-PE prefix applies to C names, not to MSVC-mangled
+	ones, which is the opposite of the two-underscore rule above. Both spellings in
+	one file, and each is wrong for the other.
+-----------------------------------------------------------------------------*/
+"	.globl	\"??3@YAXPAX@Z\"\n"
+"\"??3@YAXPAX@Z\":\n"
+"	jmp	__ZdlPv\n"
 "\n"
 /*-----------------------------------------------------------------------------
 	_except_list — not a routine. MSVC's CRT defines it as the ABSOLUTE value 0,

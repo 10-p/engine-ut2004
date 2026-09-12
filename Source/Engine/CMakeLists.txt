@@ -96,14 +96,16 @@ if(BUILD_KARMA_REF)
     # Built from METOOLKIT_LIBS rather than written out, so a change to the SDK's contents cannot
     # leave a stale name behind: --exclude-libs silently ignores a name that matches no archive,
     # which is exactly how this would rot without being noticed.
-    set(METOOLKIT_EXCLUDE "")
+    #
+    # ⚠ THE SHIM ITSELF IS ON THE LIST TOO, for the same reason and not as a
+    # precaution: it defines `??3@YAXPAX@Z`, and the auto-export sweep cannot put an
+    # MSVC-mangled name in an export table either — it fails with "cannot export
+    # ??3@YAXPAX@Z: symbol not found" about a symbol `nm` shows is plainly there.
+    # Nothing outside this link should import from a compatibility shim anyway.
+    set(METOOLKIT_EXCLUDE "libKarmaMsvcCompat.a")
     foreach(_mk_lib ${METOOLKIT_LIBS})
       get_filename_component(_mk_name "${_mk_lib}" NAME)
-      if(METOOLKIT_EXCLUDE STREQUAL "")
-        set(METOOLKIT_EXCLUDE "${_mk_name}")
-      else()
-        set(METOOLKIT_EXCLUDE "${METOOLKIT_EXCLUDE}:${_mk_name}")
-      endif()
+      set(METOOLKIT_EXCLUDE "${METOOLKIT_EXCLUDE}:${_mk_name}")
     endforeach()
     target_link_libraries(${PROJECT_NAME} PRIVATE
       -Wl,--exclude-libs,${METOOLKIT_EXCLUDE}
