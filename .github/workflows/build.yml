@@ -40,20 +40,30 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # THREE physics variants of one binary (SDL2 + OpenGLDrv + GL4ESDrv + PixoDrv), and since
-          # 2026-08-27 the DEFAULT is the recovered Karma rather than NO_KARMA. The other two are not
-          # spares: `legacy-karma` links MathEngine's shipped archives and is the A/B reference the
-          # recovered code is judged against, and `native-nokarma` is the control that says whether a
-          # failure is Karma's fault or the harness's. Both earned their place the day they were added
-          # — the legacy arm played a 300 s ONS match that the recovered arm crashed 25 s into, which
-          # is how McdGjkPenetrationDepth was localised.
+          # THE MATRIX IS THE OWNER'S SHIP LIST (2026-09-12), and the physics arms are an A/B:
+          # the DEFAULT recovered Karma, and `legacy-karma` — MathEngine's own prebuilt archives —
+          # as the reference it is judged against.
           #
-          # ⚠ The output NAMES encode the physics, deliberately. Before that, `native` and
-          # `native-nokarma` both produced `ut2004-pixo.bin` — same filename, opposite physics.
+          # ⚠ `native-nokarma` WAS RETIRED HERE in favour of `legacy-karma`. It compared physics
+          # against NO physics, which only ever answered "is Karma involved in this failure"; the
+          # legacy arm compares the recovered code against the real thing, which answers "is the
+          # recovered code right". Both arms are downloadable from the same run, which is what makes
+          # that comparison something a person can actually perform.
           #
-          # ufront 2.54: `arch` selects the apt toolchain below. The three 32-bit arms keep Pixomatic
-          # (its prebuilts are i386-only and there is no source); the 64-bit arm cannot have it and
-          # says so in its own name rather than shipping a `-pixo` binary with no Pixomatic in it.
+          # ⚠ `legacy-karma` was itself removed from the engine on 2026-09-02 (BUILD_KARMA_REF) and
+          # restored on 2026-09-12 for this. Read the option's note in CMakeLists.txt before deleting
+          # it a second time — a matrix entry for a preset that does not exist does not fail fast,
+          # it hangs the job for hours, which is how the 2026-09-06..11 runs went red.
+          #
+          # ⚠ The output NAMES encode the physics, deliberately. `native` and `native-nokarma` both
+          # produced `ut2004-pixo.bin` once — same filename, opposite physics — and the two arms of
+          # an A/B cannot share a filename if anyone is to download both.
+          #
+          # ufront 2.54: `arch` selects the apt toolchain below. Both 32-bit arms keep Pixomatic (its
+          # prebuilts are i386-only and there is no source); the 64-bit arm cannot have it and says so
+          # in its own name rather than shipping a `-pixo` binary with no Pixomatic in it. The legacy
+          # arm has no 64-bit counterpart for the same reason and a stronger one: MathEngine shipped
+          # Karma as binary-only i386 objects.
           - preset: native
             bin: ut2004-pixo.bin
             karma: recovered
@@ -61,10 +71,6 @@ jobs:
           - preset: legacy-karma
             bin: ut2004-legacykarma-pixo.bin
             karma: legacy
-            arch: '32'
-          - preset: native-nokarma
-            bin: ut2004-nokarma-pixo.bin
-            karma: none
             arch: '32'
           - preset: native64
             bin: ut2004.bin
@@ -138,6 +144,25 @@ jobs:
           else
             [ "$n" -eq 3 ] || { echo "::error::Karma build is missing Karma symbols — stale cache?"; exit 1; }
           fi
+          # ★ AND WHICH IMPLEMENTATION, because the entry-point count above cannot tell them apart.
+          # The recovered Karma exists precisely to define the same API, so BOTH arms show 3 of 3,
+          # and a legacy arm that silently fell back to the recovered sources would sail through
+          # while making the A/B compare a build against itself — the one failure this arm must not
+          # have. `_kdbytes` is the recovered sources' own suffix for the static byte arrays their
+          # decompiler emits: measured at 12 in every recovered binary (Linux x86, Linux x86-64 and
+          # Windows alike) and 0 in both legacy binaries.
+          #
+          # ⚠ It is a NAMING CONVENTION IN ANOTHER REPOSITORY, so it can be renamed out from under
+          # this check. That is acceptable only because of which way it then fails: a rename makes
+          # the recovered arms report 0 and go RED here, rather than making the legacy arm quietly
+          # pass. Do not "fix" such a failure by deleting the check.
+          kd=$(nm "$bin" | grep -c '_kdbytes' || true)
+          echo "${{ matrix.preset }}: $kd recovered-Karma (_kdbytes) symbols"
+          if [ "${{ matrix.karma }}" = "legacy" ]; then
+            [ "$kd" -eq 0 ] || { echo "::error::the legacy arm contains RECOVERED Karma symbols — it did not link MathEngine's archives, so the A/B would be vacuous"; exit 1; }
+          elif [ "${{ matrix.karma }}" = "recovered" ]; then
+            [ "$kd" -gt 0 ] || { echo "::error::${{ matrix.preset }} carries no recovered-Karma symbols (renamed upstream, or this is not the physics it claims)"; exit 1; }
+          fi
 
       # ⚠ RETENTION IS LOAD-BEARING, not tidiness. Every job here built and passed its own
       # assertions on 2026-08-27 and the run was still RED, because `upload-artifact` failed with
@@ -175,13 +200,38 @@ jobs:
           # there is no source — so it keeps the plain `ut2004.exe` name and the strict allow-list.
           - preset: windows
             bin: ut2004-pixo.exe
+            karma: recovered
             objdump: i686-w64-mingw32-objdump
             nm: i686-w64-mingw32-nm
             # i686-PE decorates C symbols with a leading underscore; x86_64-PE does not.
             sym_prefix: '_'
             extra_dll: pixomatic.dll
+          # ufront 2026-09-12 — the LEGACY Karma on Windows, which had never been built before this
+          # date. The note beside ME_FORCE_CDECL in CMakeLists.txt asserted for a year that
+          # MathEngine's Windows archives were "32-bit Linux ELF" and therefore unlinkable; they are
+          # MS COFF, their entry points are __stdcall-decorated C, and MinGW links them once six MSVC
+          # compiler-support routines are supplied (Source/Engine/Src/KarmaMsvcCompat.c) and the
+          # vendor archives are kept out of --export-all-symbols.
+          #
+          # ⚠ THIS ARM IS A BUILD, NOT A BLESSING, AND THE DISTINCTION IS NOT PEDANTIC. Verified on
+          # the owner's box 2026-09-12: the exe boots, loads the map, starts the match and simulates
+          # Karma — then dies with an ACCESS_VIOLATION about twelve frames in, inside MathEngine's
+          # own McdSphylSphereIntersect, reading a float where a geometry pointer belongs. The same
+          # legacy archives on LINUX run the same scenario 40/40 and score MATCH against the
+          # recovered arm, and the recovered WINDOWS build runs it 40/40 with a trace byte-identical
+          # to recovered Linux — so this is specific to Windows + legacy and looks like a GCC-vs-MSVC
+          # disagreement about the metoolkit structs the engine and the archives share. Undiagnosed.
+          # ⇒ The A/B REFERENCE IS THE LINUX LEGACY ARM. Do not cite this exe as one.
+          - preset: windows-legacykarma
+            bin: ut2004-legacykarma-pixo.exe
+            karma: legacy
+            objdump: i686-w64-mingw32-objdump
+            nm: i686-w64-mingw32-nm
+            sym_prefix: '_'
+            extra_dll: pixomatic.dll
           - preset: windows64
             bin: ut2004.exe
+            karma: recovered
             objdump: x86_64-w64-mingw32-objdump
             nm: x86_64-w64-mingw32-nm
             sym_prefix: ''
@@ -215,13 +265,29 @@ jobs:
       # against cdecl recovered code, and asm labels missing i686-PE's leading underscore. All three
       # produced a CLEAN COMPILE and a broken link or a wrong ABI, so assert the result rather than
       # the exit code.
-      - name: Assert the exe carries the recovered Karma
+      - name: Assert the exe carries the Karma this preset asked for
         run: |
           set -euo pipefail
-          n=$(${{ matrix.nm }} build-${{ matrix.preset }}/Source/SDLLaunch/${{ matrix.bin }} \
-              | grep -cE " [TD] ${{ matrix.sym_prefix }}(McdBoxBoxIntersect|MdtBSJointCreate|McdGjkCgIntersect)$" || true)
+          exe=build-${{ matrix.preset }}/Source/SDLLaunch/${{ matrix.bin }}
+          # ⚠ THE @N SUFFIX IS NOT OPTIONAL HERE AND IT IS NOT COSMETIC. Under WIN32 the metoolkit
+          # headers declare the API __stdcall, so i686-PE decorates these as `_McdBoxBoxIntersect@8`.
+          # A build that lost that convention — ME_FORCE_CDECL leaking onto the legacy arm is the way
+          # it happens — produces the UNDECORATED name instead, links perfectly against the archives'
+          # own decorated ones only by accident, and corrupts the stack at the first Karma call. So
+          # the pattern accepts either spelling and the next step reports which was found.
+          n=$(${{ matrix.nm }} "$exe" \
+              | grep -cE " [TD] ${{ matrix.sym_prefix }}(McdBoxBoxIntersect|MdtBSJointCreate|McdGjkCgIntersect)(@[0-9]+)?$" || true)
           echo "${{ matrix.preset }}: $n of 3 Karma entry points present"
           [ "$n" -eq 3 ] || { echo "::error::${{ matrix.preset }} exe is missing Karma symbols"; exit 1; }
+          # ★ AND WHICH IMPLEMENTATION — see the same check in the linux job for why the count above
+          # cannot answer it and why `_kdbytes` failing loudly is the acceptable kind of fragility.
+          kd=$(${{ matrix.nm }} "$exe" | grep -c '_kdbytes' || true)
+          echo "${{ matrix.preset }}: $kd recovered-Karma (_kdbytes) symbols"
+          if [ "${{ matrix.karma }}" = "legacy" ]; then
+            [ "$kd" -eq 0 ] || { echo "::error::the legacy arm contains RECOVERED Karma symbols — it did not link MathEngine's archives"; exit 1; }
+          else
+            [ "$kd" -gt 0 ] || { echo "::error::${{ matrix.preset }} carries no recovered-Karma symbols (renamed upstream, or this is not the physics it claims)"; exit 1; }
+          fi
 
       # ★ The check that matters for a "drop it somewhere and run it" binary — now width-aware.
       # The allow-list admits exactly one extra DLL, the one this preset is supposed to carry, so a
@@ -247,10 +313,14 @@ jobs:
             [ "$ok" -eq 1 ] || bad="$bad $imp"
           done
           if [ -n "$bad" ]; then echo "::error::non-system DLL imports:$bad"; exit 1; fi
-          if [ -n "$extra" ]; then
-            staged="build-${{ matrix.preset }}/Source/SDLLaunch/$extra"
-            test -f "$staged" || { echo "::error::$extra is a LOAD-TIME import but was not staged beside the exe — the artifact would not start"; exit 1; }
-            echo "staged $extra ($(stat -c%s "$staged") bytes)"
+          # ufront 2026-09-12: use ${{ matrix.extra_dll }} directly, as the allow-list above does.
+          # The bash var $extra was never set, so `set -u` aborted every Pixomatic-arm run here with
+          # "extra: unbound variable" — the exe was fine (it imports pixomatic.dll as intended), the
+          # assertion referenced an undefined variable.
+          if [ -n "${{ matrix.extra_dll }}" ]; then
+            staged="build-${{ matrix.preset }}/Source/SDLLaunch/${{ matrix.extra_dll }}"
+            test -f "$staged" || { echo "::error::${{ matrix.extra_dll }} is a LOAD-TIME import but was not staged beside the exe — the artifact would not start"; exit 1; }
+            echo "staged ${{ matrix.extra_dll }} ($(stat -c%s "$staged") bytes)"
           fi
 
       # ⚠ RETENTION IS LOAD-BEARING, not tidiness. Every job here built and passed its own
@@ -318,3 +388,91 @@ jobs:
           path: Android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # THE ROLLING "latest" RELEASE — the answer to "the 7-day age is fine, but it
+  # must not take the newest build with it" (owner, 2026-09-12).
+  #
+  # ★ IT IS A RELEASE AND NOT A LONGER RETENTION BECAUSE ARTIFACT RETENTION CANNOT
+  # EXPRESS THIS. GitHub expires artifacts purely by age; there is no "keep the
+  # latest" flag, and raising retention-days only moves the cliff — a repository
+  # nobody pushes to for ninety days still ends up with nothing to download, which
+  # is precisely the case where you most want the last good build. RELEASE ASSETS
+  # DO NOT EXPIRE. So per-push artifacts keep their deliberately short 7 days (see
+  # the retention note on every upload above — that limit is what stopped the
+  # quota from turning whole runs red), and the newest build of a tracked branch
+  # is additionally copied here, where it stays until the next one replaces it.
+  #
+  # ⚠ DELETE-THEN-CREATE, ON PURPOSE. A rolling tag has to MOVE, and `gh release
+  # edit --target` does not move a published release's tag. Recreating it also
+  # drops assets that are no longer produced, so a retired build arm cannot leave
+  # a stale binary sitting in "latest" looking current. The cost is a few seconds
+  # where the tag does not exist; the alternative is a release that silently
+  # describes a commit it no longer contains.
+  #
+  # ⚠ `permissions: contents: write` IS LOAD-BEARING. This repository's default
+  # workflow token is READ-ONLY, so without this key every step below succeeds and
+  # the final one fails with HTTP 403.
+  #
+  # ⚠ NOT EVERY BUILD THE OWNER RUNS IS HERE. The WEB target is absent from this
+  # workflow (its link preloads a file from the retail asset tree — see the header),
+  # so "latest" carries the six native/Android builds and says nothing about the
+  # wasm one, which is built and published from the owner's box.
+  latest:
+    name: rolling "latest" release
+    needs: [linux, windows, android]
+    if: github.event_name == 'push' && (github.ref_name == 'main')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # Every artifact this run produced, each in its own directory named after it.
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Pack one zip per build
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          shopt -s nullglob
+          n=0
+          for d in artifacts/*/; do
+            name=$(basename "$d")
+            ( cd "$d" && zip -qr "$GITHUB_WORKSPACE/out/$name.zip" . )
+            n=$((n + 1))
+          done
+          # ⚠ A release that publishes NOTHING is worse than a failed job: it looks
+          # like a successful build whose downloads have quietly gone missing.
+          [ "$n" -gt 0 ] || { echo "::error::no artifacts were downloaded — nothing to publish"; exit 1; }
+          echo "packed $n build(s):"
+          ls -la out/
+
+      - name: Publish (replacing the previous one)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # One rolling tag per tracked branch, so branches cannot overwrite each
+          # other's "latest". The default branch keeps the bare name.
+          if [ "$GITHUB_REF_NAME" = "${{ github.event.repository.default_branch }}" ]; then
+            tag="latest"
+          else
+            tag="latest-$(echo "$GITHUB_REF_NAME" | tr '/' '-')"
+          fi
+          echo "tag: $tag"
+          gh release delete "$tag" --yes --cleanup-tag || true
+          gh release create "$tag" out/*.zip \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "$tag — $(git log -1 --format=%s | cut -c1-72)" \
+            --notes "$(printf '%s\n' \
+              "The newest UT2004 engine build of \`$GITHUB_REF_NAME\`, rebuilt and replaced on every push." \
+              "" \
+              "Commit: \`$GITHUB_SHA\`" \
+              "Built: $(date -u '+%Y-%m-%d %H:%M UTC')" \
+              "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+              "" \
+              "These assets do not expire. The per-push artifacts on the run page do, after 7 days.")"
