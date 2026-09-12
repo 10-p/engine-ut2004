@@ -26,3 +26,11 @@ applied in engine code via the launcher's `#ifdef __EMSCRIPTEN__` overrides; thi
 **When the web config changes, edit `web/` — not the asset tree.** Each file must be complete (that is what
 `--preload-file` ships), so shared values are duplicated between the two sets by design;
 `diff Default.ini web/Default.ini` shows the platform delta.
+
+## Deliberate departures from the retail files
+
+- **`[GUI2K4.UT2K4ServerLoading] Backgrounds` (ufront 2.60)** — retail `DefUser.ini` lists
+  `loadingscreen1, 2, 2, 4`: an Epic typo that made `loadingscreen3` unreachable (it IS exported by
+  `2K4Menus.utx`, checked against the package's export table) and doubled the odds of `2`. Both sets now
+  list `1, 2, 3, 4`. Do not "restore" it from a retail install. ⚠ A player whose `User.ini` already exists
+  keeps the old list — `User.ini` is derived from `DefUser.ini` only when it is absent.
