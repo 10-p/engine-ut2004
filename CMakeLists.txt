@@ -859,6 +859,7 @@ if(ANDROID)
   set(ALSOFT_INSTALL_HRTF_DATA OFF CACHE BOOL "" FORCE)
   set(ALSOFT_INSTALL_AMBDEC_PRESETS OFF CACHE BOOL "" FORCE)
   set(ALSOFT_BACKEND_OPENSL ON CACHE BOOL "" FORCE)       # Android native audio (OpenSL ES)
+  set(ALSOFT_EAX ON CACHE BOOL "" FORCE)                  # ufront 2.61: EAX for ALAudio on every platform
   set(ALSOFT_BACKEND_WAVE OFF CACHE BOOL "" FORCE)
   # openal-soft's cmake_minimum_required predates CMake 4.x's floor; force a modern policy (as GL4ES does).
   set(CMAKE_POLICY_VERSION_MINIMUM 3.10)
@@ -1208,9 +1209,12 @@ if(EMSCRIPTEN)
   set(LIBTYPE STATIC CACHE STRING "" FORCE)
   foreach(_al_opt ALSOFT_UTILS ALSOFT_EXAMPLES ALSOFT_TESTS ALSOFT_INSTALL ALSOFT_INSTALL_CONFIG
           ALSOFT_INSTALL_HRTF_DATA ALSOFT_INSTALL_AMBDEC_PRESETS ALSOFT_BACKEND_WAVE ALSOFT_CPUEXT_NEON
-          ALSOFT_DLOPEN ALSOFT_EAX ALSOFT_UPDATE_BUILD_VERSION)
+          ALSOFT_DLOPEN ALSOFT_UPDATE_BUILD_VERSION)
     set(${_al_opt} OFF CACHE BOOL "" FORCE)
   endforeach()
+  # EAX 2.0-5.0 (ufront 2.61): ALAudio's EAX path now builds on every platform and asks the library at run
+  # time. openal-soft's own default is ON only for Windows -- a CMake default, not a platform limit.
+  set(ALSOFT_EAX ON CACHE BOOL "" FORCE)
   set(ALSOFT_BACKEND_WEB ON CACHE BOOL "" FORCE)
   set(ALSOFT_REQUIRE_SSE4_1 ON CACHE BOOL "" FORCE)  # a build that silently fell back to the C mixers is 2.5x slower
   set(ALSOFT_EMBED_HRTF_DATA ON CACHE BOOL "" FORCE)

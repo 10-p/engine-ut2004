@@ -9,6 +9,8 @@
 #ifndef EAX20_H_INCLUDED
 #define EAX20_H_INCLUDED
 
+// ufront 2.61: `long` -> `int`, for the reason given at the top of eax3.h (32-bit fields on every ABI).
+
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
@@ -68,20 +70,20 @@ typedef enum
 //
 typedef struct _EAX20LISTENERPROPERTIES
 {
-    long lRoom;                    // room effect level at low frequencies
-    long lRoomHF;                  // room effect high-frequency level re. low frequency level
+    int lRoom;                    // room effect level at low frequencies
+    int lRoomHF;                  // room effect high-frequency level re. low frequency level
     float flRoomRolloffFactor;     // like DS3D flRolloffFactor but for room effect
     float flDecayTime;             // reverberation decay time at low frequencies
     float flDecayHFRatio;          // high-frequency to low-frequency decay time ratio
-    long lReflections;             // early reflections level relative to room effect
+    int lReflections;             // early reflections level relative to room effect
     float flReflectionsDelay;      // initial reflection delay time
-    long lReverb;                  // late reverberation level relative to room effect
+    int lReverb;                  // late reverberation level relative to room effect
     float flReverbDelay;           // late reverberation delay time relative to initial reflection
-    unsigned long dwEnvironment;   // sets all listener properties
+    unsigned int dwEnvironment;   // sets all listener properties
     float flEnvironmentSize;       // environment size in meters
     float flEnvironmentDiffusion;  // environment diffusion
     float flAirAbsorptionHF;       // change in level per meter at 5 kHz
-    unsigned long dwFlags;         // modifies the behavior of properties
+    unsigned int dwFlags;         // modifies the behavior of properties
 } EAX20LISTENERPROPERTIES, *LPEAX20LISTENERPROPERTIES;
 
 // used by DSPROPERTY_EAX20LISTENER_ENVIRONMENT
@@ -251,19 +253,19 @@ typedef enum
 //
 typedef struct _EAX20BUFFERPROPERTIES
 {
-    long lDirect;                // direct path level
-    long lDirectHF;              // direct path level at high frequencies
-    long lRoom;                  // room effect level
-    long lRoomHF;                // room effect level at high frequencies
+    int lDirect;                // direct path level
+    int lDirectHF;              // direct path level at high frequencies
+    int lRoom;                  // room effect level
+    int lRoomHF;                // room effect level at high frequencies
     float flRoomRolloffFactor;   // like DS3D flRolloffFactor but for room effect
-    long lObstruction;           // main obstruction control (attenuation at high frequencies) 
+    int lObstruction;           // main obstruction control (attenuation at high frequencies) 
     float flObstructionLFRatio;  // obstruction low-frequency level re. main control
-    long lOcclusion;             // main occlusion control (attenuation at high frequencies)
+    int lOcclusion;             // main occlusion control (attenuation at high frequencies)
     float flOcclusionLFRatio;    // occlusion low-frequency level re. main control
     float flOcclusionRoomRatio;  // occlusion room effect level re. main control
-    long lOutsideVolumeHF;       // outside sound cone level at high frequencies
+    int lOutsideVolumeHF;       // outside sound cone level at high frequencies
     float flAirAbsorptionFactor; // multiplies DSPROPERTY_EAXLISTENER_AIRABSORPTIONHF
-    unsigned long dwFlags;       // modifies the behavior of properties
+    unsigned int dwFlags;       // modifies the behavior of properties
 } EAX20BUFFERPROPERTIES, *LPEAX20BUFFERPROPERTIES;
 
 // Used by DSPROPERTY_EAX20BUFFER_FLAGS

@@ -30,13 +30,27 @@ typedef struct ALCdevice_struct ALCdevice;
 typedef struct ALCcontext_struct ALCcontext;
 #endif
 
-#ifdef WIN32
+// ufront 2.61 -- EAX on EVERY platform. It was Windows-only because EAX used to mean Creative's driver;
+// the OpenAL we ship everywhere (openal-soft) implements EAX 2.0-5.0 itself. Whether it is actually there
+// is decided at run time, by the library: the EAX2.0/EAX3.0 extension strings and EAXSet/EAXGet in
+// alGetProcAddress (see UALAudioSubsystem::Init). A build of it without EAX simply reports neither.
 #define SUPPORTS_EAX 1
-#endif
 
 #define DYNAMIC_BIND 1
 
 #if SUPPORTS_EAX
+// Windows gets GUID from <windows.h>; everywhere else it is the eax3.h layout, declared here first because the
+// EAXSet/EAXGet typedefs below need it (eax3.h's own copy is behind the same GUID_DEFINED guard).
+#if !defined(_WIN32) && !defined(GUID_DEFINED)
+#define GUID_DEFINED
+typedef struct _GUID
+{
+	unsigned int	Data1;
+	unsigned short	Data2;
+	unsigned short	Data3;
+	unsigned char	Data4[8];
+} GUID;
+#endif
 typedef ALenum (*EAXSet)(const GUID*, ALuint, ALuint, ALvoid*, ALuint);
 typedef ALenum (*EAXGet)(const GUID*, ALuint, ALuint, ALvoid*, ALuint);
 #endif

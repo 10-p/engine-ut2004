@@ -27,6 +27,11 @@ Revision history:
 // OpenAL functions.
 #define INITGUID 1
 #undef DEFINE_GUID
+// ufront 2.61 -- the EAX property-set GUIDs get INTERNAL linkage. eax2.h/eax3.h would define them extern,
+// which is fine against an OpenAL DLL/.so but collides with openal-soft's own DSPROPSETID_EAX* objects when
+// it is linked statically (the web). The values are identical; each side keeps its own copy.
+#define DEFINE_GUID(name, l, w1, w2, b1, b2, b3, b4, b5, b6, b7, b8) \
+	static const GUID name = { l, w1, w2, { b1, b2, b3, b4, b5, b6, b7, b8 } }
 #define OPENAL
 
 #if DYNAMIC_BIND
@@ -45,6 +50,10 @@ Revision history:
 // The below two headers are not standard EAX SDK headers!
 #include "eax3.h"
 #include "eax2.h"
+// ufront 2.61: these structs cross into openal-soft's EAXSet, which reads 32-bit fields on every ABI.
+static_assert( sizeof(GUID) == 16, "EAX GUID must be 16 bytes" );
+static_assert( sizeof(((_EAXLISTENERPROPERTIES*)0)->lRoom) == 4, "EAX long fields must be 32-bit" );
+static_assert( sizeof(((_EAXBUFFERPROPERTIES*)0)->ulFlags) == 4, "EAX unsigned long fields must be 32-bit" );
 EAXGet UALAudioSubsystem::alEAXGet = NULL;
 EAXSet UALAudioSubsystem::alEAXSet = NULL;
 #endif
@@ -93,6 +102,10 @@ void UALAudioSubsystem::StaticConstructor()
 	new(GetClass(),TEXT("EnhancedDenoiser"		), RF_Public) UBoolProperty	(CPP_PROPERTY(EnhancedDenoiser		), TEXT("ALAudio"), CPF_Config );
 	new(GetClass(),TEXT("UseSpatializedVoice"	), RF_Public) UBoolProperty	(CPP_PROPERTY(UseSpatializedVoice	), TEXT("ALAudio"), CPF_Config );
 	new(GetClass(),TEXT("UseHRTF"				), RF_Public) UBoolProperty	(CPP_PROPERTY(UseHRTF				), TEXT("ALAudio"), CPF_Config );
+	// ufront 2.61 -- compiled defaults for an ini that lacks the keys. EAX is on (every platform has it now
+	// through openal-soft, and the stock menu cannot turn it on); HRTF stays the player's explicit choice.
+	UseEAX	= 1;
+	UseHRTF	= 0;
 	unguard;
 }
 
@@ -470,14 +483,17 @@ UBOOL UALAudioSubsystem::Init()
 					ALuint Environment = EAX20_ENVIRONMENT_PLAIN;
 					alEAXSet(&DSPROPSETID_EAX20_ListenerProperties,DSPROPERTY_EAX20LISTENER_ENVIRONMENT,NULL, &Environment, sizeof(ALuint));
 				}
-				debugf(NAME_Init,TEXT("ALAudio: using EAX"));
+				debugf(NAME_Init,TEXT("ALAudio: using EAX %i.0"), EAXVersion);
 			}
 			else
 			{
+				debugf(NAME_Init,TEXT("ALAudio: EAX %i.0 advertised but EAXSet/EAXGet not found - EAX off"), EAXVersion);
 				alEAXSet	= NULL;
 				alEAXGet	= NULL;
 			}
 		}
+		else
+			debugf(NAME_Init,TEXT("ALAudio: EAX off (%s)"), !UseEAX ? TEXT("UseEAX=False") : TEXT("this OpenAL has no EAX"));
 		unguard;
 	#endif
 
@@ -646,7 +662,7 @@ void UALAudioSubsystem::PlaySound( FSoundSource* InSource )
 	// Set EAX occlusion.
 	if( alEAXSet != NULL )
 	{
-		long Occlusion = Source->Flags & SF_No3D ? 0 : (long) ( 868.589f * log( Max( Source->UsedRadius / Source->Radius, 0.00001f) ) ) ;
+		INT Occlusion = Source->Flags & SF_No3D ? 0 : (INT) ( 868.589f * log( Max( Source->UsedRadius / Source->Radius, 0.00001f) ) ) ;	// INT, not long: 32-bit on every ABI, as EAXSet reads it
 		if( EAXVersion >= 3 )
             alEAXSet(&DSPROPSETID_EAX30_BufferProperties, DSPROPERTY_EAXBUFFER_OCCLUSION, sid, &Occlusion, sizeof(Occlusion));
 		else
@@ -1349,6 +1365,8 @@ void UALAudioSubsystem::SetEAXEffect()
 	if( !GIsEditor && (Listener->EAXEffect == Listener->LastEAXEffect) )
 		return;
 
+	ALenum EAXResult = AL_NO_ERROR;	// ufront 2.61: checked below, logged once
+
 	if( EAXVersion >= 3 )
 	{
 		if( !Listener->EAXEffect )
@@ -1388,7 +1406,7 @@ void UALAudioSubsystem::SetEAXEffect()
 													| EAXLISTENERFLAGS_REVERBDELAYSCALE
 													| EAXLISTENERFLAGS_DECAYHFLIMIT;			
 
-			alEAXSet(&DSPROPSETID_EAX30_ListenerProperties,DSPROPERTY_EAXLISTENER_ALLPARAMETERS, NULL, &EAXProperties, sizeof(EAXProperties));
+			EAXResult = alEAXSet(&DSPROPSETID_EAX30_ListenerProperties,DSPROPERTY_EAXLISTENER_ALLPARAMETERS, NULL, &EAXProperties, sizeof(EAXProperties));
 		}
 		else
 		{
@@ -1439,7 +1457,7 @@ void UALAudioSubsystem::SetEAXEffect()
 			EAXProperties.flRoomRolloffFactor		= Listener->EAXEffect->RoomRolloffFactor;
 			EAXProperties.ulFlags					= Flags;
 
-			alEAXSet(&DSPROPSETID_EAX30_ListenerProperties,DSPROPERTY_EAXLISTENER_ALLPARAMETERS, NULL, &EAXProperties, sizeof(EAXProperties));
+			EAXResult = alEAXSet(&DSPROPSETID_EAX30_ListenerProperties,DSPROPERTY_EAXLISTENER_ALLPARAMETERS, NULL, &EAXProperties, sizeof(EAXProperties));
 		}
 	}
 	else
@@ -1471,7 +1489,7 @@ void UALAudioSubsystem::SetEAXEffect()
 				| EAX20LISTENERFLAGS_REVERBDELAYSCALE
 				| EAX20LISTENERFLAGS_DECAYHFLIMIT;			
 
-			alEAXSet(&DSPROPSETID_EAX20_ListenerProperties,DSPROPERTY_EAX20LISTENER_ALLPARAMETERS, NULL, &EAXProperties, sizeof(EAXProperties));
+			EAXResult = alEAXSet(&DSPROPSETID_EAX20_ListenerProperties,DSPROPERTY_EAX20LISTENER_ALLPARAMETERS, NULL, &EAXProperties, sizeof(EAXProperties));
 		}
 		else
 		{
@@ -1508,8 +1526,23 @@ void UALAudioSubsystem::SetEAXEffect()
 			EAXProperties.flRoomRolloffFactor		= Listener->EAXEffect->RoomRolloffFactor;
 			EAXProperties.dwFlags					= Flags;
 
-			alEAXSet(&DSPROPSETID_EAX20_ListenerProperties,DSPROPERTY_EAX20LISTENER_ALLPARAMETERS, NULL, &EAXProperties, sizeof(EAXProperties));
+			EAXResult = alEAXSet(&DSPROPSETID_EAX20_ListenerProperties,DSPROPERTY_EAX20LISTENER_ALLPARAMETERS, NULL, &EAXProperties, sizeof(EAXProperties));
 		}
+	}
+
+	// ufront 2.61 -- EAX used to be unreachable outside Windows, so say once that it really works here: the
+	// first zone room effect the library accepted, or the first one it refused (and why).
+	static UBOOL LoggedRoom = 0, LoggedFailure = 0;
+	if( EAXResult != AL_NO_ERROR )
+	{
+		if( !LoggedFailure )
+			debugf( NAME_Warning, TEXT("ALAudio: EAX room effect REFUSED by the library (AL error 0x%x)"), EAXResult );
+		LoggedFailure = 1;
+	}
+	else if( Listener->EAXEffect && !LoggedRoom )
+	{
+		debugf( TEXT("ALAudio: EAX %i.0 room effect applied (%s)"), EAXVersion, Listener->EAXEffect->GetName() );
+		LoggedRoom = 1;
 	}
 #endif
 	unguard;
@@ -1621,7 +1654,7 @@ UBOOL FALSoundSource::Update( FLOAT DeltaTime )
 #if SUPPORTS_EAX
 		if( AudioSubsystem->alEAXSet != NULL )
 		{
-			long Occlusion = (long) (868.589f * log( Max( UsedRadius / Radius, 0.00001f) ) ) ;
+			INT Occlusion = (INT) (868.589f * log( Max( UsedRadius / Radius, 0.00001f) ) ) ;	// INT: 32-bit on every ABI, as EAXSet reads it
 			if( AudioSubsystem->EAXVersion >= 3 )
 		        UALAudioSubsystem::alEAXSet(&DSPROPSETID_EAX30_BufferProperties, DSPROPERTY_EAXBUFFER_OCCLUSION, SourceId, &Occlusion, sizeof(Occlusion));
 			else

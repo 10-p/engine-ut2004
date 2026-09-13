@@ -8,6 +8,10 @@
 #ifndef EAX30_H_INCLUDED
 #define EAX30_H_INCLUDED
 
+// ufront 2.61: every `long` in this header was the 32-bit Windows LONG, and the OpenAL that receives these
+// structs (openal-soft's EAXSet) reads 32-bit fields on every ABI. They are spelled `int` now, because a C
+// `long` is 64-bit on LP64 (linux64, Android arm64) and would shift every field after the first.
+
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
@@ -52,7 +56,7 @@ extern "C" {
 		#define GUID_DEFINED
 		typedef struct _GUID
 		{
-			unsigned long Data1;
+			unsigned int Data1;
 			unsigned short Data2;
 			unsigned short Data3;
 			unsigned char Data4[8];
@@ -152,19 +156,19 @@ typedef struct _EAXVECTOR {
 //
 typedef struct _EAXLISTENERPROPERTIES
 {
-    unsigned long ulEnvironment;   // sets all listener properties
+    unsigned int ulEnvironment;   // sets all listener properties
     float flEnvironmentSize;       // environment size in meters
     float flEnvironmentDiffusion;  // environment diffusion
-    long lRoom;                    // room effect level (at mid frequencies)
-    long lRoomHF;                  // relative room effect level at high frequencies
-    long lRoomLF;                  // relative room effect level at low frequencies  
+    int lRoom;                    // room effect level (at mid frequencies)
+    int lRoomHF;                  // relative room effect level at high frequencies
+    int lRoomLF;                  // relative room effect level at low frequencies  
     float flDecayTime;             // reverberation decay time at mid frequencies
     float flDecayHFRatio;          // high-frequency to mid-frequency decay time ratio
     float flDecayLFRatio;          // low-frequency to mid-frequency decay time ratio   
-    long lReflections;             // early reflections level relative to room effect
+    int lReflections;             // early reflections level relative to room effect
     float flReflectionsDelay;      // initial reflection delay time
     EAXVECTOR vReflectionsPan;     // early reflections panning vector
-    long lReverb;                  // late reverberation level relative to room effect
+    int lReverb;                  // late reverberation level relative to room effect
     float flReverbDelay;           // late reverberation delay time relative to initial reflection
     EAXVECTOR vReverbPan;          // late reverberation panning vector
     float flEchoTime;              // echo time
@@ -175,7 +179,7 @@ typedef struct _EAXLISTENERPROPERTIES
     float flHFReference;           // reference high frequency
     float flLFReference;           // reference low frequency 
     float flRoomRolloffFactor;     // like DS3D flRolloffFactor but for room effect
-    unsigned long ulFlags;         // modifies the behavior of properties
+    unsigned int ulFlags;         // modifies the behavior of properties
 } EAXLISTENERPROPERTIES, *LPEAXLISTENERPROPERTIES;
 
 // used by DSPROPERTY_EAXLISTENER_ENVIRONMENT
@@ -394,24 +398,24 @@ typedef enum
 //
 typedef struct _EAXBUFFERPROPERTIES
 {
-    long lDirect;                 // direct path level (at low and mid frequencies)
-    long lDirectHF;               // relative direct path level at high frequencies
-    long lRoom;                   // room effect level (at low and mid frequencies)
-    long lRoomHF;                 // relative room effect level at high frequencies
-    long lObstruction;            // main obstruction control (attenuation at high frequencies) 
+    int lDirect;                 // direct path level (at low and mid frequencies)
+    int lDirectHF;               // relative direct path level at high frequencies
+    int lRoom;                   // room effect level (at low and mid frequencies)
+    int lRoomHF;                 // relative room effect level at high frequencies
+    int lObstruction;            // main obstruction control (attenuation at high frequencies) 
     float flObstructionLFRatio;   // obstruction low-frequency level re. main control
-    long lOcclusion;              // main occlusion control (attenuation at high frequencies)
+    int lOcclusion;              // main occlusion control (attenuation at high frequencies)
     float flOcclusionLFRatio;     // occlusion low-frequency level re. main control
     float flOcclusionRoomRatio;   // relative occlusion control for room effect
     float flOcclusionDirectRatio; // relative occlusion control for direct path
-    long lExclusion;              // main exlusion control (attenuation at high frequencies)
+    int lExclusion;              // main exlusion control (attenuation at high frequencies)
     float flExclusionLFRatio;     // exclusion low-frequency level re. main control
-    long lOutsideVolumeHF;        // outside sound cone level at high frequencies
+    int lOutsideVolumeHF;        // outside sound cone level at high frequencies
     float flDopplerFactor;        // like DS3D flDopplerFactor but per source
     float flRolloffFactor;        // like DS3D flRolloffFactor but per source
     float flRoomRolloffFactor;    // like DS3D flRolloffFactor but for room effect
     float flAirAbsorptionFactor;  // multiplies DSPROPERTY_EAXLISTENER_AIRABSORPTIONHF
-    unsigned long ulFlags;        // modifies the behavior of properties
+    unsigned int ulFlags;        // modifies the behavior of properties
 } EAXBUFFERPROPERTIES, *LPEAXBUFFERPROPERTIES;
 
 // Use this structure for DSPROPERTY_EAXBUFFER_OBSTRUCTION,
@@ -419,7 +423,7 @@ typedef struct _EAXBUFFERPROPERTIES
 #define EAX_OBSTRUCTIONPROPERTIES_DEFINED
 typedef struct _EAXOBSTRUCTIONPROPERTIES
 {
-    long lObstruction;
+    int lObstruction;
     float flObstructionLFRatio;
 } EAXOBSTRUCTIONPROPERTIES, *LPEAXOBSTRUCTIONPROPERTIES;
 #endif
@@ -429,7 +433,7 @@ typedef struct _EAXOBSTRUCTIONPROPERTIES
 #define EAX_OCCLUSIONPROPERTIES_DEFINED
 typedef struct _EAXOCCLUSIONPROPERTIES
 {
-    long lOcclusion;
+    int lOcclusion;
     float flOcclusionLFRatio;
     float flOcclusionRoomRatio;
     float flOcclusionDirectRatio;
@@ -441,7 +445,7 @@ typedef struct _EAXOCCLUSIONPROPERTIES
 #define EAX_EXCLUSIONPROPERTIES_DEFINED
 typedef struct _EAXEXCLUSIONPROPERTIES
 {
-    long lExclusion;
+    int lExclusion;
     float flExclusionLFRatio;
 } EAXEXCLUSIONPROPERTIES, *LPEAXEXCLUSIONPROPERTIES;
 #endif
