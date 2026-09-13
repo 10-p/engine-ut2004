@@ -92,6 +92,7 @@ void UALAudioSubsystem::StaticConstructor()
 	new(GetClass(),TEXT("UseVAD"				), RF_Public) UBoolProperty	(CPP_PROPERTY(UseVAD				), TEXT("ALAudio"), CPF_Config );
 	new(GetClass(),TEXT("EnhancedDenoiser"		), RF_Public) UBoolProperty	(CPP_PROPERTY(EnhancedDenoiser		), TEXT("ALAudio"), CPF_Config );
 	new(GetClass(),TEXT("UseSpatializedVoice"	), RF_Public) UBoolProperty	(CPP_PROPERTY(UseSpatializedVoice	), TEXT("ALAudio"), CPF_Config );
+	new(GetClass(),TEXT("UseHRTF"				), RF_Public) UBoolProperty	(CPP_PROPERTY(UseHRTF				), TEXT("ALAudio"), CPF_Config );
 	unguard;
 }
 
@@ -322,7 +323,19 @@ UBOOL UALAudioSubsystem::Init()
 		return 0;
 	}
 
-	ALint Caps[] = { ALC_FREQUENCY, 44100, 0 };
+	// ufront 2.61 -- HRTF is asked for EXPLICITLY, on or off, whenever the library knows the attribute
+	// (ALC_SOFT_HRTF: openal-soft on every platform we ship). Left to itself openal-soft decides from
+	// whether the output "is headphones", which a browser can never tell it and a desktop only sometimes
+	// can -- and HRTF played over speakers sounds wrong. So it is the player's setting, off by default.
+	// 0x1992 is ALC_HRTF_SOFT; spelled out because the native headers here predate <AL/alext.h>.
+	ALint Caps[] = { ALC_FREQUENCY, 44100, 0, 0, 0 };
+	const UBOOL HasHRTF = alcIsExtensionPresent( SoundDevice, (ALubyte*)"ALC_SOFT_HRTF" );
+	if( HasHRTF )
+	{
+		Caps[2] = 0x1992;
+		Caps[3] = UseHRTF ? 1 : 0;
+	}
+	debugf( TEXT("ALAudio: HRTF %s"), !HasHRTF ? TEXT("not supported by this OpenAL") : UseHRTF ? TEXT("requested (UseHRTF=True)") : TEXT("off (UseHRTF=False)") );
 	guard(alcCreateContext);
 	SoundContext = alcCreateContext( SoundDevice, Caps );
 	unguard;
@@ -330,6 +343,14 @@ UBOOL UALAudioSubsystem::Init()
 	{
 		debugf(NAME_Warning, TEXT("ALAudio: context creation failed."));
 		return 0;
+	}
+	if( HasHRTF )
+	{
+		// Read back what the library actually did: a request is not a result (no HRTF data set, a mono
+		// device, or a layout HRTF cannot drive all leave it off). 0x1992 = ALC_HRTF_SOFT.
+		ALint HRTFActive = 0;
+		alcGetIntegerv( SoundDevice, 0x1992, 1, &HRTFActive );
+		debugf( TEXT("ALAudio: HRTF is %s"), HRTFActive ? TEXT("ACTIVE") : TEXT("inactive") );
 	}
 
 	guard(alGetError);

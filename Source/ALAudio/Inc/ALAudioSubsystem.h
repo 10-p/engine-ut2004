@@ -266,7 +266,8 @@ protected:
 								UseLowQualitySound,
 								UseVAD,
 								EnhancedDenoiser,
-								UseSpatializedVoice;
+								UseSpatializedVoice,
+								UseHRTF;			// ufront 2.61: headphone virtualisation; the player's choice, off by default
 
 	friend class FALSoundSource;
 	friend class FALSoundBuffer;
