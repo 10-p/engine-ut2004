@@ -16,6 +16,32 @@
 
 #include "SDL2Drv.h"
 
+#if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
+#include <math.h>
+// ufront 2.71 (pixel-perfect canvas): the canvas backing store must be the canvas's DEVICE-pixel size.
+// SDL2's Emscripten backend measures and sets the CSS size of #canvas (its pixel_ratio is pinned to 1
+// without SDL_WINDOW_ALLOW_HIGHDPI) and reports that in WINDOWEVENT_RESIZED, so on a 125% desktop the
+// game rendered 4096x1728 on a 5120x2160 panel and the browser resampled it: every glyph blurred
+// (measured: web glyph widths exactly 1.25x native). Passing the device size on to SetRes ->
+// ResizeViewport -> SDL_SetWindowSize makes SDL set the backing store to exactly that (CSS untouched),
+// report it from SDL_GetWindowSize and rescale menu mouse coordinates into it by itself. Both calls
+// are sync-proxied to the main thread; SDL already makes the first from this thread on every mouse
+// move. Returns false when the box reads 0x0 (display:none) so the caller keeps SDL's own numbers.
+static UBOOL ufrontCanvasDevicePixelSize( INT& OutW, INT& OutH )
+{
+    double CssW = 0.0, CssH = 0.0;
+    if( emscripten_get_element_css_size( "#canvas", &CssW, &CssH ) != EMSCRIPTEN_RESULT_SUCCESS )
+        return 0;
+    const double Dpr = emscripten_get_device_pixel_ratio();
+    // lround, not floor: a 1000.8 css box at 1.25 is 1251 device pixels.
+    const INT W = (INT)lround( CssW * Dpr ), H = (INT)lround( CssH * Dpr );
+    if( W <= 0 || H <= 0 )
+        return 0;
+    OutW = W; OutH = H;
+    return 1;
+}
+#endif
+
 #if defined(__ANDROID__)
 // Android touch overlay glue (2.10d). The Java on-screen overlay runs on the UI
 // thread and cannot touch the engine directly; it writes intent through the JNI
@@ -536,8 +562,12 @@ void USDL2Viewport::OpenWindow( PTRINT InParentWindow, UBOOL IsTemporary, INT Ne
     UBOOL DoRepaint=0, DoSetActive=0;
     USDL2Client* C = GetOuterUSDL2Client();
 
+#if !defined(__EMSCRIPTEN__)
+    // ufront 2.71: not on the web — Align rounds up, and a backing store 1 px wider than the canvas box
+    // is a fractional rescale in the browser (blur). PixoDrv, the only even-width consumer, is off there.
     if( NewX!=INDEX_NONE )
         NewX = Align( NewX, 2 );
+#endif
 
     // Create frame buffer.
     if( IsTemporary )
@@ -787,7 +817,9 @@ UBOOL USDL2Viewport::ResizeViewport( DWORD NewBlitFlags, INT InNewX, INT InNewY,
     // Align NewX.
     check(NewX>=0);
     check(NewY>=0);
-    NewX = Align(NewX,2);
+#if !defined(__EMSCRIPTEN__)
+    NewX = Align(NewX,2); // ufront 2.71: not on the web — see OpenWindow.
+#endif
 
     if( !(NewBlitFlags & BLIT_Temporary) )
     {
@@ -851,6 +883,23 @@ UBOOL USDL2Viewport::ResizeViewport( DWORD NewBlitFlags, INT InNewX, INT InNewY,
             SizeX = NewX;
             SizeY = NewY;
         }
+#if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
+        // ufront 2.71: adopt the canvas's device-pixel size right here, the way NSDLDrv does. SDL sends its
+        // create-time RESIZED(css) only when the CSS box differs from the requested size, so an ini size
+        // equal to the box (1024x768 on the E2E viewport) never reached the RESIZED handler and the backing
+        // store stayed in CSS pixels (measured). SDL_SetWindowSize sizes the backing store to exactly this.
+        {
+            INT DevX = 0, DevY = 0;
+            if( ufrontCanvasDevicePixelSize( DevX, DevY ) && ( DevX != NewX || DevY != NewY ) )
+            {
+                NewX = DevX;
+                NewY = DevY;
+                SDL_SetWindowSize( Window, NewX, NewY );
+                SizeX = NewX;
+                SizeY = NewY;
+            }
+        }
+#endif
     }
     else
     {
@@ -1116,6 +1165,10 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
             case SDL_WINDOWEVENT_RESIZED:
                 SizeX = Ev.window.data1;
                 SizeY = Ev.window.data2;
+#if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
+                // ufront 2.71: the canvas's device-pixel size, not the CSS size SDL reports.
+                ufrontCanvasDevicePixelSize( SizeX, SizeY );
+#endif
                 // Resize the GL framebuffer to match the new window size.
                 if( RenDev && SizeX > 0 && SizeY > 0 )
                     RenDev->SetRes( this, SizeX, SizeY, BlitFlags & BLIT_Fullscreen );
