@@ -19,8 +19,8 @@ Revision history:
 #endif
 
 #ifdef __EMSCRIPTEN__
-// Emscripten provides OpenAL via -lopenal port; include standard headers
-// for function declarations used by FindProc's alGetProcAddress fallback.
+// Emscripten links openal-soft statically (ufront 2.61; was the -lopenal port); include its headers
+// for the function declarations FindProcs binds to directly.
 #include <AL/al.h>
 #include <AL/alc.h>
 #else

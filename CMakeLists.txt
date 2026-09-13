@@ -1163,6 +1163,64 @@ if(USE_KARMA_DECOMP OR BUILD_KARMA_REF)
   )
 endif()
 
+#-----------------------------------------------------------------------------
+# openal-soft on the WEB (ufront 2.61) -- replaces Emscripten's built-in OpenAL (-lopenal / libopenal.js).
+#
+# Why: libopenal.js is stereo-only by construction (every source goes through a PannerNode), has no EFX,
+# and all 93 of its functions are __proxy:'sync', so every AL call from the engine thread is a blocking
+# round trip to the browser main thread. openal-soft is the same API, mixed in wasm on its own pthread
+# and played by an AudioWorklet (the `web` backend on the ufront/web branch, alc/backends/web.cpp).
+#
+# Placed here, after the global -pthread compile option and before the modules, for the same reason as
+# Karma above: an object without the atomics/bulk-memory features is a shared-memory link mismatch.
+#
+# ★ THREE THINGS THIS BLOCK HAS TO GET RIGHT (ufront 2.61 §1):
+#  1. The engine's C++ flags are not openal-soft's. -fdelayed-template-parsing miscompiled 1.23.1's static
+#     init on Android (see the Android block above); openal-soft pins its own CXX_STANDARD 20 per target.
+#  2. EXCEPTIONS. openal-soft reports every AL error by THROWING and catching it at the API boundary
+#     (context->throw_error). The shipping link had catching disabled, which turns the first AL error into
+#     an abort -- measured on a 20-line repro. Wasm-native exceptions cannot be used: Binaryen's Asyncify
+#     pass fails the link ("__asyncify_get_call_index does not exist"). So openal-soft alone is compiled
+#     with Emscripten's JS exceptions (-fexceptions) and SDLLaunch links with catching enabled; the engine's
+#     own objects stay -fignore-exceptions and gain no invoke_ trampolines.
+#  3. SIMD. Its hand-written SSE mixers compile through Emscripten's translation headers with
+#     -msimd128 -msse4.1: HRTF costs 1.04x native instead of 2.55x (2.61 §0.2). NEON must be OFF -- its
+#     header check passes on Emscripten and the runtime would then prefer the NEON path.
+#-----------------------------------------------------------------------------
+if(EMSCRIPTEN)
+  set(OPENALSOFT_GIT_REPOSITORY "https://github.com/10-p/openal-soft.git"
+      CACHE STRING "openal-soft git remote; its ufront/web branch carries the Web Audio backend")
+  set(OPENALSOFT_GIT_TAG "ufront/web" CACHE STRING "openal-soft git ref")
+  FetchContent_Declare(
+    OpenALSoft
+    GIT_REPOSITORY ${OPENALSOFT_GIT_REPOSITORY}
+    GIT_TAG        ${OPENALSOFT_GIT_TAG}
+    GIT_SHALLOW    TRUE
+  )
+  # Directory-scoped: a FetchContent subproject takes CMAKE_<LANG>_FLAGS as they are when it is added,
+  # and its feature checks (xmmintrin.h & co.) compile with them too. Restored right after.
+  set(_UT_SAVED_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+  set(_UT_SAVED_C_FLAGS "${CMAKE_C_FLAGS}")
+  string(REGEX REPLACE "-fdelayed-template-parsing|-Wno-writable-strings|-Wno-reserved-user-defined-literal|-Wno-incompatible-pointer-types"
+         "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+  string(APPEND CMAKE_CXX_FLAGS " -msimd128 -msse4.1 -fexceptions")
+  string(APPEND CMAKE_C_FLAGS " -msimd128 -msse4.1")
+  set(LIBTYPE STATIC CACHE STRING "" FORCE)
+  foreach(_al_opt ALSOFT_UTILS ALSOFT_EXAMPLES ALSOFT_TESTS ALSOFT_INSTALL ALSOFT_INSTALL_CONFIG
+          ALSOFT_INSTALL_HRTF_DATA ALSOFT_INSTALL_AMBDEC_PRESETS ALSOFT_BACKEND_WAVE ALSOFT_CPUEXT_NEON
+          ALSOFT_DLOPEN ALSOFT_EAX ALSOFT_UPDATE_BUILD_VERSION)
+    set(${_al_opt} OFF CACHE BOOL "" FORCE)
+  endforeach()
+  set(ALSOFT_BACKEND_WEB ON CACHE BOOL "" FORCE)
+  set(ALSOFT_REQUIRE_SSE4_1 ON CACHE BOOL "" FORCE)  # a build that silently fell back to the C mixers is 2.5x slower
+  set(ALSOFT_EMBED_HRTF_DATA ON CACHE BOOL "" FORCE)
+  set(CMAKE_POLICY_VERSION_MINIMUM 3.10)
+  FetchContent_MakeAvailable(OpenALSoft)
+  unset(CMAKE_POLICY_VERSION_MINIMUM)
+  set(CMAKE_CXX_FLAGS "${_UT_SAVED_CXX_FLAGS}")
+  set(CMAKE_C_FLAGS "${_UT_SAVED_C_FLAGS}")
+endif()
+
 add_subdirectory(Thirdparty/zlib)
 add_subdirectory(Thirdparty/Vorbis/ogg)
 add_subdirectory(Thirdparty/Vorbis/vorbis)

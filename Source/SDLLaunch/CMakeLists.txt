@@ -153,6 +153,11 @@ endif()
 target_link_libraries(${PROJECT_NAME}
   -Wl,--whole-archive ${LINK_PACKAGES} -Wl,--no-whole-archive
 )
+if(EMSCRIPTEN)
+  # ufront 2.61: openal-soft (root CMakeLists) instead of Emscripten's -lopenal. Not whole-archive: its
+  # backends are a static table, not self-registering objects, so ordinary archive resolution is right.
+  target_link_libraries(${PROJECT_NAME} OpenAL)
+endif()
 
 #-----------------------------------------------------------------------------
 # System libraries and linker flags
@@ -181,7 +186,11 @@ if(EMSCRIPTEN)
       --emit-symbol-map
       -sASSERTIONS=0
       -sSTACK_OVERFLOW_CHECK=0
-      -sDISABLE_EXCEPTION_CATCHING=1
+      # ufront 2.61 — catching is ON in the shipping build too, because openal-soft reports every AL error
+      # by throwing and catching it internally; with catching off the first AL error aborts the game. Only
+      # objects compiled with -fexceptions (openal-soft's, see the root CMakeLists) carry landing pads, so the
+      # engine's own code is unchanged: it is still compiled -fignore-exceptions and gains no invoke_ calls.
+      -sNO_DISABLE_EXCEPTION_CATCHING
     )
   else()
     # Dev/debug: assertions, stack-overflow checks, DWARF + source maps, exception catching ON.
@@ -276,20 +285,23 @@ if(EMSCRIPTEN)
     # proxies EGL to a main thread that can no longer see the transferred canvas — Emscripten #24792).
     #
     # -sASYNCIFY deliberately STAYS this step: dropping it is 2.13.3, after the worker move is proven.
-    # Audio needs nothing here — Emscripten's OpenAL library is already __proxy:'sync' throughout, so
-    # its Web Audio calls run on the main thread by themselves.
+    # Audio (ufront 2.61): openal-soft mixes on its own pthread and hands the AudioContext work to the
+    # main thread itself (MAIN_THREAD_EM_ASM in its web backend), so nothing is needed here either.
     -pthread
     -sPROXY_TO_PTHREAD
     -sOFFSCREENCANVAS_SUPPORT
     # QUOTED: CMake treats an unquoted '#' as a comment, which silently truncates this to
     # "OFFSCREENCANVASES_TO_PTHREAD=" and fails the link with "string index out of range".
     "-sOFFSCREENCANVASES_TO_PTHREAD=#canvas"
-    # main() itself is one of these. The engine spawns no other threads on the web (IpDrv's host-resolve
-    # pthread_create is __EMSCRIPTEN__-guarded off, see UnIpDrv.h), so a small pool avoids paying for
-    # workers nothing will use.
-    -sPTHREAD_POOL_SIZE=2
+    # main() itself is one of these. IpDrv's host-resolve pthread_create is __EMSCRIPTEN__-guarded off
+    # (UnIpDrv.h). ufront 2.61: openal-soft adds TWO — its mixer thread (the web backend) and the event
+    # thread every context starts — so 2 -> 4. A thread created with the pool empty still starts, but only
+    # after the main thread has spun up a worker for it, which is exactly the start-up delay the audio
+    # ring would then absorb as an underrun.
+    -sPTHREAD_POOL_SIZE=4
     "SHELL:--js-library ${CMAKE_SOURCE_DIR}/vendor/glue/wasmfs-shim.js"
-    -lopenal
+    # ufront 2.61: no -lopenal. openal-soft (the OpenAL target, linked above) replaces Emscripten's
+    # libopenal.js; linking both would put two definitions of every al* symbol in one module.
     # 1.6a (ufront): the host PAGE is NO LONGER baked here. The engine emits a BARE LOADER —
     # SDLLaunch.{js,wasm,data}, loaderStyle=global-module — and the host page lives in the public
     # monorepo (packages/frontend/index.html; → Vite+Vue in 1.6b), which pre-defines the global

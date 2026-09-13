@@ -1275,7 +1275,7 @@ void UALAudioSubsystem::FindProcs( UBOOL AllowExt )
 {
 	guard(UALAudioSubsystem::FindProcs);
 #ifdef __EMSCRIPTEN__
-	// Emscripten statically links OpenAL via the -lopenal port. dlopen/dlsym
+	// Emscripten statically links OpenAL (openal-soft since ufront 2.61; the -lopenal port before). dlopen/dlsym
 	// (appGetDllExport -> dlsym(RTLD_DEFAULT,...)) cannot see the in-binary AL
 	// symbols, so the normal FindProc path reports "Missing function 'alEnable'"
 	// and Init() fails. Bind each member entry point straight to the real,
