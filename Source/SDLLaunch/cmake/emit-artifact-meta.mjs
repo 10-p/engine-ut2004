@@ -43,6 +43,15 @@ const checksums = { wasm: sha('SDLLaunch.wasm'), js: sha('SDLLaunch.js') };
 const dataSha = sha('SDLLaunch.data');           // optional (only if --preload-file produced it)
 if (dataSha) checksums.data = dataSha;
 
+// ufront 2.70: every fetched library as `<repo>@<branch|tag>` — never a commit, because the branch tip is
+// what a rebuild takes — handed over as --dep-<label>=… from the same cache variables FetchContent read
+// (cmake/ArtifactDeps.cmake). A GitHub URL is shortened to owner/name; a local checkout override arrives as
+// `local:<path>` and is kept verbatim, so such an artifact never claims a provenance it does not have.
+const depSpec = (v) => v.replace(/^https:\/\/github\.com\/([^/]+)\/([^/@]+?)(?:\.git)?(@.*)$/, '$1/$2$3');
+const deps = Object.fromEntries(
+  Object.entries(args).filter(([k]) => k.startsWith('dep-')).map(([k, v]) => [k.slice(4), depSpec(v)])
+);
+
 const meta = {
   targetId: args.target || 'ut2004',
   engineFamily: 'UE2',
@@ -50,7 +59,7 @@ const meta = {
   abiVersion: Number(args.abi),                  // from the vendored frozen ue_abi.h UE_ABI_VERSION
   loaderStyle: 'global-module',                  // today's shell loads a classic <script> + bare globals
   provenance: { repo: 'engine-ut2004', gitSha, builtAt },
-  toolchain: { emscripten: args.emcc || 'unknown', gl4es: args.gl4es || '10-p/gl4es@fix/cubemap-bind-active-unit' },
+  toolchain: { emscripten: args.emcc || 'unknown', ...deps },
   buildFlags: [
     // Descriptive, hand-maintained: keep it in step with the linker block or the descriptor
     // quietly misstates what shipped. -sWASMFS landed in 2.13.1 and the threading set in 2.13.2,

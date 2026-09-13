@@ -157,6 +157,37 @@ native stack* below) and any script still calling them will fail with "no such p
 | `windows-nokarma` | `windows` + `USE_KARMA_DECOMP=OFF` — the control that established the line above. | `build-windows-nokarma/` | `.../ut2004-nokarma.exe` |
 | *(no preset)* **Windows x64** | The 64-bit Windows cross-build, and the LAST target to be exercised at all. Not a preset because it is not a shipping configuration — see the section below for the one-liner. | `build-windows64/` | `Source/SDLLaunch/ut2004.exe` (PE32+ x86-64) |
 
+### `meta.json` records what was fetched (ufront 2.70)
+
+`toolchain` names every repository FetchContent pulled for the web artifact, as `<repo>@<branch|tag>` —
+never a commit: `gl4es` (`10-p/gl4es@fix/cubemap-bind-active-unit`), `karma`
+(`10-p/metoolkit-karma-decomp@main`) and `openal-soft` (`10-p/openal-soft-web@ufront/web`) are consumed at
+their branch tip so a rebuild takes the latest of each ("everything is made for this project"). The values
+come from the same cache variables the `FetchContent_Declare`s read (`cmake/ArtifactDeps.cmake`:
+`GL4ES_GIT_*`, `KARMA_DECOMP_GIT_*`, `OPENALSOFT_GIT_*`), so the descriptor cannot drift from the fetch; a
+local checkout override (`FETCHCONTENT_SOURCE_DIR_<NAME>`) shows up as `local:<path>` and marks the artifact
+as not reproducible from its descriptor. `emscripten` is read from the toolchain's own version file (it used
+to say `unknown` because `emcc` is not on PATH in a preset build). ⚠ A branch ref is re-fetched on every
+**configure** (`cmake --preset …`), never by a plain `cmake --build`: an old build directory rebuilt without
+re-configuring still holds the dependency it fetched last time; `publish-all` always configures first.
+
+### openal-soft on Android and native Linux (ufront 2.61 / 2.70)
+
+One fork everywhere: `10-p/openal-soft-web` `ufront/web` (openal-soft 1.25.2 + the Web Audio backend + the
+wasm build patches). The web links it static; Android (2.61, converged from an upstream 1.23.1 pin in 2.70)
+and native Linux (2.70) build it SHARED with `ALSOFT_EAX=ON` — the root `CMakeLists.txt` block declares the
+`OPENALSOFT_GIT_*` cache variables once for all three. ALAudio **dlopens** `libopenal.so` at audio-init and
+the library is never DT_NEEDED (the engine exports its global `operator new` and `GMalloc` does not exist at
+process start; a load-time openal crashed in its static initialisers on Android). On Linux, SDLLaunch's
+POST_BUILD copies it beside the binary as `libopenal.so`, found through the executable's rpath `.` from the
+`System/` cwd: **a run tree that takes the binary must take `libopenal.so` with it**, or the game silently
+falls back to the distro's `libopenal` (Ubuntu's has no EAX → `ALAudio: EAX off`). Backends are whatever the
+host's headers allowed at configure time, each dlopen'd at run time; the configure log says which. ⚠ On this
+box the 64-bit `native64` tree gets only `OSS, Null` — the ALSA/PulseAudio dev packages are installed for
+i386 only — so the 64-bit binary opens no device (`ALAudio: no OpenAL devices found`); `libasound2-dev:amd64`
+fixes that, the 32-bit shipping build gets `PulseAudio, ALSA, OSS, Null`. `-DUT_BUNDLED_OPENAL=OFF` restores
+the old behaviour (dlopen of the system library).
+
 **The binary name says WHICH PHYSICS it contains**: `ut2004`, plus `-legacykarma` when
 `BUILD_KARMA_REF=ON` or `-nokarma` when `USE_KARMA_DECOMP=OFF` (the recovered Karma is the default
 and so goes unmarked), plus `-pixo` if Pixomatic. Emscripten keeps

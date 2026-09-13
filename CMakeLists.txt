@@ -440,7 +440,7 @@ else()
   #
   # UNPINNED, DELIBERATELY. GIT_TAG is `main`: any new version of that repository is an improvement
   # in decompilation accuracy and this build wants it. If you need a fixed revision for a bisect,
-  # set GIT_TAG on the command line, or point FETCHCONTENT_SOURCE_DIR_METOOLKITKARMADECOMP at a
+  # set -DKARMA_DECOMP_GIT_TAG=<sha>, or point FETCHCONTENT_SOURCE_DIR_METOOLKITKARMADECOMP at a
   # local checkout — which is also how you build offline, and how you test a change to the
   # recovered sources without pushing it.
   #
@@ -455,10 +455,15 @@ else()
   # passed its whole suite with the Karma objects missing -pthread, which is the
   # kind of mismatch that works until it does not.
   include(FetchContent)
+  # ufront 2.70: cache variables, so meta.json records the same repo@ref this configure fetched
+  # (cmake/ArtifactDeps.cmake) and a bisect pins the ref with -DKARMA_DECOMP_GIT_TAG=<sha>.
+  set(KARMA_DECOMP_GIT_REPOSITORY "https://github.com/10-p/metoolkit-karma-decomp.git"
+      CACHE STRING "metoolkit-karma-decomp git remote (the recovered Karma + its SDK)")
+  set(KARMA_DECOMP_GIT_TAG "main" CACHE STRING "metoolkit-karma-decomp git ref (a branch: UNPINNED, deliberately)")
   FetchContent_Declare(
     MetoolkitKarmaDecomp
-    GIT_REPOSITORY https://github.com/10-p/metoolkit-karma-decomp.git
-    GIT_TAG        main
+    GIT_REPOSITORY ${KARMA_DECOMP_GIT_REPOSITORY}
+    GIT_TAG        ${KARMA_DECOMP_GIT_TAG}
     GIT_SHALLOW    TRUE
   )
 
@@ -833,21 +838,45 @@ endif()
 # system libopenal -- neither path reaches this block. Linked into libUT2004.so (SDLLaunch) below so the
 # APK packages it per-ABI and it loads at startup; ALAudio's dlopen then returns the already-loaded handle.
 #-----------------------------------------------------------------------------
-if(ANDROID)
-  # openal-soft is modern C++ whose static-init filter tables (core/bsinc_tables.cpp) use a C++17
-  # construct (a reference non-type template parameter whose member sizes a std::array). The engine
-  # forces CMAKE_CXX_STANDARD 14 (legacy UT2004 tree) + -fdelayed-template-parsing (clang MSVC-compat),
-  # both of which openal-soft inherits -> that C++17 code miscompiles to garbage array sizes -> a
-  # null-deref (memset) crash in openal's global constructors at dlopen. Build openal-soft as C++17
-  # with the compat flag dropped; save/restore so the rest of the engine keeps gnu++14.
+# openal-soft (ufront 2.61 / 2.70) — ONE fork on every platform that builds it:
+# https://github.com/10-p/openal-soft-web `ufront/web` = openal-soft 1.25.2 + the Web Audio backend + the
+# wasm build patches. The web block further down builds it STATIC into the wasm; Android (2.61) and native
+# Linux (2.70) build it SHARED and load it late. The cache variables are declared once, here, so the three
+# fetches cannot drift apart and meta.json records exactly what was fetched (cmake/ArtifactDeps.cmake).
+set(OPENALSOFT_GIT_REPOSITORY "https://github.com/10-p/openal-soft-web.git"
+    CACHE STRING "openal-soft git remote; its ufront/web branch carries the Web Audio backend")
+set(OPENALSOFT_GIT_TAG "ufront/web" CACHE STRING "openal-soft git ref (a branch: a rebuild takes its tip)")
+
+# ufront 2.70 — native Linux ships its own openal-soft too. The Ubuntu libopenal (1.25.1) is built without
+# EAX, so ALAudio's EAX path — on everywhere since 2.61 — logged "EAX off (this OpenAL has no EAX)" on the
+# one platform where the library was not ours. Same shape as Android: a SHARED libopenal.so that ALAudio
+# dlopens at audio-init (never DT_NEEDED: the engine's global operator new is exported and GMalloc does not
+# exist yet at process start), copied beside the binary by SDLLaunch's POST_BUILD, found through the
+# executable's rpath '.' when run from a System/ directory.
+option(UT_BUNDLED_OPENAL "Native Linux: build openal-soft (the ufront fork, EAX on) and put libopenal.so beside the binary, instead of dlopen'ing whatever libopenal the system has" ON)
+set(UT_LINUX_OPENALSOFT OFF)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID AND NOT EMSCRIPTEN AND UT_BUNDLED_OPENAL)
+  set(UT_LINUX_OPENALSOFT ON)
+endif()
+
+if(ANDROID OR UT_LINUX_OPENALSOFT)
+  # openal-soft is modern C++ (1.25.2: C++20) whose static-init filter tables (core/bsinc_tables.cpp) use
+  # constructs the engine's global build environment miscompiles: the engine forces CMAKE_CXX_STANDARD 14
+  # (legacy UT2004 tree) + -fdelayed-template-parsing (clang MSVC-compat), both of which a FetchContent'd
+  # subproject inherits -> garbage array sizes -> a null-deref (memset) crash in openal's global
+  # constructors at dlopen (Android, 2.10). Build openal-soft as C++20 with the compat flag dropped;
+  # save/restore so the rest of the engine keeps gnu++14. openal-soft pins CXX_STANDARD 20 on its own
+  # targets (that is what its objects compile as); the directory-level standard covers its configure-time
+  # feature checks. ufront 2.70: Android converged onto the fork from an upstream 1.23.1 pin, so it runs the
+  # same library as the web — with EAX, which the pin had but which was never built or run there.
   set(_UT_SAVED_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
   set(_UT_SAVED_CXX_STANDARD "${CMAKE_CXX_STANDARD}")
   string(REGEX REPLACE "-fdelayed-template-parsing" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
-  set(CMAKE_CXX_STANDARD 17)
+  set(CMAKE_CXX_STANDARD 20)
   FetchContent_Declare(
     OpenALSoft
-    GIT_REPOSITORY https://github.com/kcat/openal-soft.git
-    GIT_TAG        1.23.1
+    GIT_REPOSITORY ${OPENALSOFT_GIT_REPOSITORY}
+    GIT_TAG        ${OPENALSOFT_GIT_TAG}
     GIT_SHALLOW    TRUE
   )
   set(LIBTYPE SHARED CACHE STRING "" FORCE)              # -> libopenal.so (not a static archive)
@@ -858,23 +887,24 @@ if(ANDROID)
   set(ALSOFT_INSTALL_CONFIG OFF CACHE BOOL "" FORCE)
   set(ALSOFT_INSTALL_HRTF_DATA OFF CACHE BOOL "" FORCE)
   set(ALSOFT_INSTALL_AMBDEC_PRESETS OFF CACHE BOOL "" FORCE)
-  set(ALSOFT_BACKEND_OPENSL ON CACHE BOOL "" FORCE)       # Android native audio (OpenSL ES)
+  set(ALSOFT_UPDATE_BUILD_VERSION OFF CACHE BOOL "" FORCE)
+  if(ANDROID)
+    set(ALSOFT_BACKEND_OPENSL ON CACHE BOOL "" FORCE)     # Android native audio (OpenSL ES)
+  endif()
+  # Linux: the backends are whatever the host's headers allow (PulseAudio and ALSA here; PipeWire when its
+  # headers are present), each dlopen'd at run time (ALSOFT_DLOPEN), so the .so has no audio DT_NEEDED.
   set(ALSOFT_EAX ON CACHE BOOL "" FORCE)                  # ufront 2.61: EAX for ALAudio on every platform
   set(ALSOFT_BACKEND_WAVE OFF CACHE BOOL "" FORCE)
   # openal-soft's cmake_minimum_required predates CMake 4.x's floor; force a modern policy (as GL4ES does).
   set(CMAKE_POLICY_VERSION_MINIMUM 3.10)
   FetchContent_MakeAvailable(OpenALSoft)
   unset(CMAKE_POLICY_VERSION_MINIMUM)
-  # openal-soft pins CXX_STANDARD 14 on its own targets (DEFAULT_TARGET_PROPS), which overrides the
-  # directory-level standard above. Force its targets to C++17 so the bsinc_tables static-init code
-  # (compiled into OpenAL via CORE_OBJS) is not miscompiled.
-  foreach(_al_tgt OpenAL common)
-    if(TARGET ${_al_tgt})
-      set_target_properties(${_al_tgt} PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
-    endif()
-  endforeach()
   set(CMAKE_CXX_FLAGS "${_UT_SAVED_CXX_FLAGS}")
   set(CMAKE_CXX_STANDARD "${_UT_SAVED_CXX_STANDARD}")
+  if(NOT TARGET OpenAL)
+    message(FATAL_ERROR "openal-soft: expected target 'OpenAL' was not created")
+  endif()
+  message(STATUS "openal-soft (shared, EAX): ${OPENALSOFT_GIT_REPOSITORY}@${OPENALSOFT_GIT_TAG}")
 endif()
 
 #-----------------------------------------------------------------------------
@@ -1189,9 +1219,7 @@ endif()
 #     header check passes on Emscripten and the runtime would then prefer the NEON path.
 #-----------------------------------------------------------------------------
 if(EMSCRIPTEN)
-  set(OPENALSOFT_GIT_REPOSITORY "https://github.com/10-p/openal-soft-web.git"
-      CACHE STRING "openal-soft git remote; its ufront/web branch carries the Web Audio backend")
-  set(OPENALSOFT_GIT_TAG "ufront/web" CACHE STRING "openal-soft git ref")
+  # OPENALSOFT_GIT_REPOSITORY / OPENALSOFT_GIT_TAG: declared once above, shared with Android and Linux.
   FetchContent_Declare(
     OpenALSoft
     GIT_REPOSITORY ${OPENALSOFT_GIT_REPOSITORY}

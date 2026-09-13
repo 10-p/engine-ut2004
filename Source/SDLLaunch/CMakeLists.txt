@@ -387,9 +387,21 @@ if(EMSCRIPTEN)
   execute_process(COMMAND git -C ${CMAKE_SOURCE_DIR} rev-parse --short HEAD
     OUTPUT_VARIABLE META_GIT_SHA OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
   string(TIMESTAMP META_BUILT_AT "%Y-%m-%dT%H:%M:%SZ" UTC)
-  execute_process(COMMAND emcc --version
-    OUTPUT_VARIABLE _emcc_ver OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
-  string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+" META_EMCC "${_emcc_ver}")
+  # ufront 2.70: the toolchain file knows where Emscripten is; `emcc --version` on PATH did not (a preset
+  # build has only $EMSDK set), so every shipped descriptor said "unknown".
+  set(META_EMCC "unknown")
+  if(EXISTS "${EMSCRIPTEN_ROOT_PATH}/emscripten-version.txt")
+    file(READ "${EMSCRIPTEN_ROOT_PATH}/emscripten-version.txt" _emcc_ver)
+    string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+" META_EMCC "${_emcc_ver}")
+  endif()
+  # ufront 2.70: every fetched library as repo@branch|tag, from the cache variables the fetch itself read.
+  include(${CMAKE_SOURCE_DIR}/cmake/ArtifactDeps.cmake)
+  set(META_DEPS)
+  ufront_artifact_dep(META_DEPS gl4es GL4ES "${GL4ES_GIT_REPOSITORY}" "${GL4ES_GIT_TAG}")
+  if(USE_KARMA_DECOMP)
+    ufront_artifact_dep(META_DEPS karma MetoolkitKarmaDecomp "${KARMA_DECOMP_GIT_REPOSITORY}" "${KARMA_DECOMP_GIT_TAG}")
+  endif()
+  ufront_artifact_dep(META_DEPS openal-soft OpenALSoft "${OPENALSOFT_GIT_REPOSITORY}" "${OPENALSOFT_GIT_TAG}")
   find_program(NODE_EXECUTABLE node REQUIRED)
   # ufront 2.13.2 — the emitter is an INPUT to the artifact, and CMake cannot infer that from a
   # POST_BUILD COMMAND: editing it changes nothing the build watches, so the target does not relink,
@@ -403,6 +415,7 @@ if(EMSCRIPTEN)
       --out=$<TARGET_FILE_DIR:${PROJECT_NAME}>
       --target=ut2004 --abi=${UE_ABI_VERSION}
       --gitSha=${META_GIT_SHA} --builtAt=${META_BUILT_AT} --emcc=${META_EMCC}
+      ${META_DEPS}
     COMMENT "Emitting artifact meta.json (step 1.5)"
     VERBATIM
   )
@@ -447,6 +460,16 @@ else()
       target_link_options(${PROJECT_NAME} PRIVATE -m32)
     endif()
     target_link_options(${PROJECT_NAME} PRIVATE -Wl,-export-dynamic -Wl,-rpath,.)
+  endif()
+  # ufront 2.70: our own openal-soft (root CMakeLists, EAX on) beside the binary, as `libopenal.so` — the
+  # exact name ALAudio dlopens (AL_DLL), resolved through the rpath '.' above from the System/ cwd. Copied,
+  # never linked (see the Android note above for why DT_NEEDED would crash before appInit). A run tree that
+  # takes the binary must take this file with it, or the game falls back to the system libopenal.
+  if(UT_LINUX_OPENALSOFT)
+    add_dependencies(${PROJECT_NAME} OpenAL)
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:OpenAL> $<TARGET_FILE_DIR:${PROJECT_NAME}>/libopenal.so
+      COMMENT "Copying libopenal.so (openal-soft, EAX) beside the binary; ALAudio dlopens it")
   endif()
 endif()
 
