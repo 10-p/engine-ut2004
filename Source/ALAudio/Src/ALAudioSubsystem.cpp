@@ -328,12 +328,24 @@ UBOOL UALAudioSubsystem::Init()
 	// whether the output "is headphones", which a browser can never tell it and a desktop only sometimes
 	// can -- and HRTF played over speakers sounds wrong. So it is the player's setting, off by default.
 	// 0x1992 is ALC_HRTF_SOFT; spelled out because the native headers here predate <AL/alext.h>.
-	ALint Caps[] = { ALC_FREQUENCY, 44100, 0, 0, 0 };
+	//
+	// ★ HRTF IS A STEREO RENDERING. Asked for on its own it only changes how STEREO output is encoded: on a
+	// 5.1/7.1 device openal-soft renders surround and reports ALC_HRTF_UNSUPPORTED_FORMAT_SOFT, so the
+	// setting silently does nothing. That is a real player, not a corner: Firefox reports a 5.1 device's six
+	// channels to the page (measured, ufront 2.61 §3.1). So UseHRTF=True also asks for the output mode
+	// ALC_STEREO_HRTF_SOFT (0x19AC = ALC_OUTPUT_MODE_SOFT, 0x19B2 = ALC_STEREO_HRTF_SOFT), which makes the
+	// device stereo. The player who ticked "headphones" gets headphone audio whatever the OS speaker setup.
+	ALint Caps[] = { ALC_FREQUENCY, 44100, 0, 0, 0, 0, 0 };
 	const UBOOL HasHRTF = alcIsExtensionPresent( SoundDevice, (ALubyte*)"ALC_SOFT_HRTF" );
 	if( HasHRTF )
 	{
 		Caps[2] = 0x1992;
 		Caps[3] = UseHRTF ? 1 : 0;
+		if( UseHRTF && alcIsExtensionPresent( SoundDevice, (ALubyte*)"ALC_SOFT_output_mode" ) )
+		{
+			Caps[4] = 0x19AC;
+			Caps[5] = 0x19B2;
+		}
 	}
 	debugf( TEXT("ALAudio: HRTF %s"), !HasHRTF ? TEXT("not supported by this OpenAL") : UseHRTF ? TEXT("requested (UseHRTF=True)") : TEXT("off (UseHRTF=False)") );
 	guard(alcCreateContext);
