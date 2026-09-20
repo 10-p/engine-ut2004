@@ -142,6 +142,13 @@ or to test an unpushed change to the recovered sources, point
   resolver thread. ⚠ Nothing may follow `DownloadDone()` in `WebTick`: it can start the next download, which
   deletes the object. Verified through the real proxy (2026-09-20): DM-SakuraGarden's two `.uz2` files
   fetched, decompressed and GUID-checked, level up 0.5 s after the first fetch began (in-band: 20.7 s).
+  **`PendingLevel: server sends N file(s): <names>` (2.79g)** — ONE log line at WELCOME
+  (`Engine/Src/UnPenLev.cpp`), naming the files this client must be SENT. The per-package `USES` trail is
+  commented out and `DevNet` is suppressed, so without it nothing in the log says what a server pushes, and
+  the host page could not warn a player about a server's native libraries or anti-cheat package (ufrontend
+  matches it with target DATA; it warns, never blocks). General engine code, log only, and deliberately not
+  behind `__EMSCRIPTEN__`. It goes through `GLog->Log`, not `debugf`: a long list must not meet a format
+  buffer. ⚠ The host's patterns key on this exact wording — change both together.
 - **Engine differences are DATA, not code** (the project-wide rule for the multi-engine future).
 
 ## Do NOT

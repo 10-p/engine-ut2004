@@ -297,6 +297,7 @@ void UNetPendingLevel::NotifyReceivedText( UNetConnection* Connection, const TCH
 		URL.AddOption( *FString::Printf(TEXT("GAME=%s"),*gametype) );
 
 		// Make sure all packages we need are downloadable.
+		FString SentFiles;
 		for( INT i=0; i<Connection->PackageMap->List.Num(); i++ )
 		{
 			TCHAR Filename[256];
@@ -309,6 +310,7 @@ void UNetPendingLevel::NotifyReceivedText( UNetConnection* Connection, const TCH
 					// We need to download this package.
 					FilesNeeded++;
 					Info.PackageFlags |= PKG_Need;
+					SentFiles += FString(TEXT(" ")) + ( Info.URL.Len() ? *Info.URL : Info.Parent->GetName() );
 
 #if !DEMOVERSION
 					if( !NetDriver->AllowDownloads || !(Info.PackageFlags & PKG_AllowDownload) )
@@ -321,6 +323,13 @@ void UNetPendingLevel::NotifyReceivedText( UNetConnection* Connection, const TCH
 				}
 			}
 		}
+
+		// What this server is about to send us, in ONE line. The per-package USES trail above is
+		// commented out and DevNet is suppressed, so without this nothing in the log says what a server
+		// pushes - and a host page can only warn a player about content it can see named (a server's
+		// own native libraries, an anti-cheat package). Through GLog->Log: no format buffer to overflow.
+		if( FilesNeeded > 0 )
+			GLog->Log( NAME_Log, *( FString::Printf( TEXT("PendingLevel: server sends %i file(s):"), FilesNeeded ) + SentFiles ) );
 
 #if !DEMOVERSION
 		// Send first download request.
