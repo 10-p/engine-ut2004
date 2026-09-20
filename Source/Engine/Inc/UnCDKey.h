@@ -75,12 +75,13 @@ inline FString CDKeyMapToHex( const TCHAR* ch )
 	return Map;
 }
 
-inline UBOOL ValidateCDKey( const TCHAR* CDKey, const TCHAR* AppendString=CDKEYAPPENDSTRING_UT2004 )
+//
+// The 6-symbol check that belongs to a key's 14 random symbols. This IS the validator's maths, lifted
+// out unchanged so the per-install key generator (UnCDKey.cpp, ufront 2.79h) computes a check with the
+// same code that will later verify it, instead of a second copy that could drift.
+//
+inline FString CDKeyCheckFor( const FString& Random, const TCHAR* AppendString=CDKEYAPPENDSTRING_UT2004 )
 {
-	FString CDKeyStr = CDKey;
-	FString FullKey = CDKeyStr.Mid(12,5)+CDKeyStr.Mid(6,5)+CDKeyStr.Mid(0,5)+CDKeyStr.Mid(18,5);
-	FString Random = FullKey.Left(14);
-
 	QWORD Seed = appStrtoq( *CDKeyMapToHex(*Random), NULL, CDKEYBASE );
 	
 	TCHAR buf[128];
@@ -112,7 +113,14 @@ inline UBOOL ValidateCDKey( const TCHAR* CDKey, const TCHAR* AppendString=CDKEYA
 	while( CheckOutput.Len() < 6 )
 		CheckOutput = FString::Printf( TEXT("%c%s"), CDKEYBASEMAP[0], *CheckOutput );
 
-	return CheckOutput == FullKey.Mid(14);
+	return CheckOutput;
+}
+
+inline UBOOL ValidateCDKey( const TCHAR* CDKey, const TCHAR* AppendString=CDKEYAPPENDSTRING_UT2004 )
+{
+	FString CDKeyStr = CDKey;
+	FString FullKey = CDKeyStr.Mid(12,5)+CDKeyStr.Mid(6,5)+CDKeyStr.Mid(0,5)+CDKeyStr.Mid(18,5);
+	return CDKeyCheckFor( FullKey.Left(14), AppendString ) == FullKey.Mid(14);
 }
 
 /*-----------------------------------------------------------------------------

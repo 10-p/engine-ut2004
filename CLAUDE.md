@@ -149,6 +149,17 @@ or to test an unpushed change to the recovered sources, point
   matches it with target DATA; it warns, never blocks). General engine code, log only, and deliberately not
   behind `__EMSCRIPTEN__`. It goes through `GLog->Log`, not `debugf`: a long list must not meet a format
   buffer. ⚠ The host's patterns key on this exact wording — change both together.
+- **★ An install with no `cdkey` file GENERATES its own key (ufront 2.79h, `Engine/Src/UnCDKey.cpp`).** A
+  server knows a player by a hash of the key — it is the identity a ban lands on — and every key-less install
+  (every web player) hashed the same empty placeholder: ONE identity, so one ban hit them all. `GetRealCDKey`
+  now draws 63 bits of OS entropy (`getentropy` on the web, `/dev/urandom` natively), writes 14 symbols and
+  appends the check computed by **`CDKeyCheckFor` (`Inc/UnCDKey.h`) — the validator's own maths, lifted out
+  of `ValidateCDKey` so the two SHARE it**; the result goes through the real validator and is never written
+  if it fails, and the key is never logged. 63 bits, not 14 free symbols: the alphabet has 30, so 14 can
+  exceed the 64-bit number the validator parses them into. An install WITH a key file is untouched.
+  **The alphabet and append string are proprietary — never copy them into ufrontend (public) or into any
+  log, doc or commit message.** ufrontend persists the file with one `userFiles` line (`System/cdkey`).
+  Verified on a stock 3374 server: two fresh browser profiles → two ids, a reloaded profile keeps its own.
 - **Engine differences are DATA, not code** (the project-wide rule for the multi-engine future).
 
 ## Do NOT

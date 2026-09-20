@@ -52,6 +52,76 @@ static inline LONG RegQueryValueExX( HKEY hKey, LPCTSTR lpValueName, LPDWORD lpR
 #endif
 
 /*-----------------------------------------------------------------------------
+	A key for an install that has none (ufront 2.79h).
+
+	WHY: a server identifies a player by a hash of the CD key - it is the identity a ban lands on.
+	An install with no `cdkey` file hashes the same empty placeholder, so every such player is ONE identity
+	(measured against a stock 3374 server: three players, three fresh browser profiles, one id),
+	and banning one bans them all. A web install never has a key file to begin with.
+
+	WHAT: 14 random symbols plus the 6-symbol check the validator in UnCDKey.h computes - with
+	the validator's own code (CDKeyCheckFor), not a copy - written to `cdkey` so the install
+	keeps its identity. A server only ever sees a hash, so nothing about how the key was made
+	is observable on the wire, and a ban can only spill onto an install whose key is EQUAL:
+	63 random bits.
+
+	ENGINE-SIDE ON PURPOSE: the alphabet and the append string are proprietary. They stay in
+	this private repo and must never be reimplemented in the public host page.
+-----------------------------------------------------------------------------*/
+
+#if __UNIX__
+#ifdef __EMSCRIPTEN__
+#include <unistd.h>		// getentropy(): crypto.getRandomValues in a browser
+#endif
+
+static UBOOL CDKeyEntropy( QWORD& Out )
+{
+#ifdef __EMSCRIPTEN__
+	return getentropy( &Out, sizeof(Out) )==0;
+#else
+	FILE* Urandom = fopen( "/dev/urandom", "rb" );
+	if( !Urandom )
+		return 0;
+	UBOOL Ok = fread( &Out, sizeof(Out), 1, Urandom )==1;
+	fclose( Urandom );
+	return Ok;
+#endif
+}
+
+static FString GenerateCDKey()
+{
+	guard(GenerateCDKey);
+	QWORD Value = 0;
+	if( !CDKeyEntropy( Value ) )
+		return TEXT("");
+
+	// 63 bits: the validator reads the 14 symbols back as ONE 64-bit number and formats it SIGNED.
+	// 14 symbols of this alphabet can hold more than 64 bits, so a free draw could overflow that
+	// parse - and how an overflow is handled is a property of the C library, not of the key.
+	Value &= (QWORD)0x7FFFFFFFFFFFFFFFLL;
+
+	const INT Base = CDKEYBASE;
+	TCHAR Random[15];
+	for( INT i=13; i>=0; i-- )
+	{
+		Random[i] = CDKEYBASEMAP[ (INT)(Value % Base) ];
+		Value /= Base;
+	}
+	Random[14] = 0;
+
+	// The validator reads the four groups as  [2][1][0][3]  =  random(14) + check(6).
+	FString Full = FString(Random) + CDKeyCheckFor( FString(Random) );
+	FString Key  = Full.Mid(10,5) + TEXT("-") + Full.Mid(5,5) + TEXT("-") + Full.Left(5) + TEXT("-") + Full.Mid(15,5);
+
+	// Never write a key the validator itself would turn away.
+	if( Key.Len()!=23 || !ValidateCDKey( *Key ) )
+		return TEXT("");
+	return Key;
+	unguard;
+}
+#endif
+
+/*-----------------------------------------------------------------------------
 	GetRealCDKey
 -----------------------------------------------------------------------------*/
 
@@ -111,7 +181,24 @@ static FString GetRealCDKey()
     FArchive *in = GFileManager->CreateFileReader(TEXT("cdkey"));
     if (in == NULL)
     {
-        debugf(TEXT("Couldn't open cdkey file."));
+        // No key file: give this install an identity of its own and keep it (ufront 2.79h, above).
+        // The key itself is never logged.
+        cdkey = GenerateCDKey();
+        FArchive *out = cdkey.Len() ? GFileManager->CreateFileWriter(TEXT("cdkey")) : NULL;
+        if (out != NULL)
+        {
+            out->Serialize((void *) appToAnsi(*cdkey), cdkey.Len());
+            delete out;
+            debugf(TEXT("No cdkey file: generated a key for this install and saved it."));
+        }
+        else if (cdkey.Len())
+        {
+            debugf(TEXT("No cdkey file: generated a key for this install, but could not save it."));
+        }
+        else
+        {
+            debugf(TEXT("Couldn't open cdkey file."));
+        }
     }
     else
     {
