@@ -63,6 +63,14 @@ class UHTTPDownload : public UDownload
 
 	// UHTTPDownload Interface.
 	UBOOL FetchData();
+
+#ifdef __EMSCRIPTEN__
+	// A browser has no sockets: the fetch goes through the registered web-HTTP hook (WebHttp.h).
+	INT WebHandle;			// from GWebHttp->Open(); -1 = none
+	void WebReceiveFile();
+	void WebTick();
+	void WebClose();
+#endif
 };
 
 #if FORCE_EXTREME_PACKING

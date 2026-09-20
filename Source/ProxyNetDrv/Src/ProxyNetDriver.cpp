@@ -10,6 +10,7 @@
 #include "Engine.h"
 #include "UnNet.h"
 #include "ProxyNetDrv.h"
+#include "WebHttp.h"
 
 /*-----------------------------------------------------------------------------
 	Declarations.
@@ -128,6 +129,7 @@ UBOOL UProxyNetDriver::InitConnect( FNetworkNotify* InNotify, FURL& ConnectURL, 
 		Error = TEXT("Proxy networking needs a server address (host:port).");
 		return 0;
 	}
+	RegisterWebHttp();
 
 	// Connect to remote — through the game proxy. A NEW connection id every time.
 	INT NewConnId = ue_proxynet_connect( TCHAR_TO_ANSI(*ConnectURL.Host), ConnectURL.Port );
@@ -228,6 +230,50 @@ void UProxyNetDriver::LowLevelDestroy()
 UProxyNetConnection* UProxyNetDriver::GetServerConnection()
 {
 	return (UProxyNetConnection*)ServerConnection;
+}
+
+/*-----------------------------------------------------------------------------
+	Redirect downloads.
+
+	A native server names an HTTP redirect (`DLMGR CLASS=IpDrv.HTTPDownload`). In a browser
+	IpDrv's UHTTPDownload cannot open a socket, so it asks the table in IpDrv/Inc/WebHttp.h —
+	and this package, which owns the `ue_proxynet_http_*` imports, is what fills it. The game
+	proxy does the fetch for a LIVE session and pays for it from that session's download
+	allowance; any refusal is simply FAILED and the engine falls back to the in-band download.
+-----------------------------------------------------------------------------*/
+
+// The hook's status values ARE the ABI's: they cross unconverted.
+static_assert( WEBHTTP_Pending==PROXYNET_HTTP_PENDING && WEBHTTP_Receiving==PROXYNET_HTTP_RECEIVING
+	&& WEBHTTP_Done==PROXYNET_HTTP_DONE && WEBHTTP_Failed==PROXYNET_HTTP_FAILED, "WebHttp.h and ue_proxynet_abi.h disagree" );
+
+static INT ProxyNetHttpOpen( UNetConnection* Connection, const ANSICHAR* Url )
+{
+	// Only for a download that belongs to one of OUR connections: its session is what the proxy
+	// charges. Anything else (a P2P connection in the same build) gets -1 and falls back at once.
+	UProxyNetConnection* Conn = Cast<UProxyNetConnection>( Connection );
+	if( !Conn || Conn->ConnId < 0 )
+		return -1;
+	return ue_proxynet_http_open( Conn->ConnId, Url );
+}
+static INT ProxyNetHttpPoll( INT Handle, INT* Status, INT* Received, INT* Total )
+{
+	return ue_proxynet_http_poll( Handle, Status, Received, Total );
+}
+static INT ProxyNetHttpRead( INT Handle, BYTE* Buffer, INT MaxLen )
+{
+	return ue_proxynet_http_read( Handle, Buffer, MaxLen );
+}
+static void ProxyNetHttpClose( INT Handle )
+{
+	ue_proxynet_http_close( Handle );
+}
+static FWebHttpHooks GProxyNetHttpHooks = { ProxyNetHttpOpen, ProxyNetHttpPoll, ProxyNetHttpRead, ProxyNetHttpClose };
+
+void UProxyNetDriver::RegisterWebHttp()
+{
+	// Registered on the first Proxy connection and left in place: the functions are static, and Open()
+	// turns away every connection that is not ours.
+	GWebHttp = &GProxyNetHttpHooks;
 }
 
 void UProxyNetDriver::NormalizeConfigDefaults()

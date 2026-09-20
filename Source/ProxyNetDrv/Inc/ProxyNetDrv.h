@@ -30,11 +30,19 @@
 #define PROXYNET_STATE_CONNECTING 1
 #define PROXYNET_STATE_OPEN       2
 #define PROXYNET_STATE_CLOSED     3
+#define PROXYNET_HTTP_PENDING     0
+#define PROXYNET_HTTP_RECEIVING   1
+#define PROXYNET_HTTP_DONE        2
+#define PROXYNET_HTTP_FAILED      3
 inline int  ue_proxynet_connect( const char*, int ) { return -1; }
 inline int  ue_proxynet_state( int ) { return PROXYNET_STATE_CLOSED; }
 inline int  ue_proxynet_send( int, const void*, int ) { return 0; }
 inline int  ue_proxynet_recv( int, void*, int ) { return 0; }
 inline void ue_proxynet_close( int ) {}
+inline int  ue_proxynet_http_open( int, const char* ) { return -1; }
+inline int  ue_proxynet_http_poll( int, int*, int*, int* ) { return -1; }
+inline int  ue_proxynet_http_read( int, void*, int ) { return 0; }
+inline void ue_proxynet_http_close( int ) {}
 #endif
 
 /*-----------------------------------------------------------------------------
@@ -89,6 +97,8 @@ class UProxyNetDriver : public UNetDriver
 
 	// UProxyNetDriver interface.
 	UProxyNetConnection* GetServerConnection();
+	// Redirect downloads: hand IpDrv's UHTTPDownload the means to fetch through the game proxy.
+	static void RegisterWebHttp();
 	// A player whose saved ini predates this driver has no [ProxyNetDrv.ProxyNetDriver] section, so every
 	// CPF_Config property arrives as zero — and a zero ConnectionTimeout closes the connection on its first
 	// tick. Substitute the stock TcpNetDriver values for whatever is missing, and say so in the log.

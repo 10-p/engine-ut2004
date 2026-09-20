@@ -131,6 +131,17 @@ or to test an unpushed change to the recovered sources, point
   stock `IpDrv.TcpNetDriver`, so naming it simply works. The UE connection stays `USOCK_Pending` through the
   whole handshake (only `HandleClientPlayer` opens it); the driver only ever CLOSES. Verified against a stock
   OldUnreal 3374 server (2026-09-20): WELCOME, `files needed=0`, in the match.
+  **Redirect downloads (2.79f).** A native server names `IpDrv.HTTPDownload` in `DLMGR`, so that class keeps
+  its name — but a browser has no sockets (`-sWASMFS`: every socket syscall is `-ENOSYS`). On `__EMSCRIPTEN__`
+  `UHTTPDownload` therefore hands the URL to the GENERIC hook table `GWebHttp` (`IpDrv/Inc/WebHttp.h`:
+  open/poll/read/close) and polls it; the native state machine is untouched. **IpDrv imports nothing from
+  JavaScript**: `ProxyNetDrv` owns the `ue_proxynet_http_*` imports and registers the table at `InitConnect`,
+  and its `Open` turns away any connection that is not a `UProxyNetConnection`. **No hook (P2P mode, or
+  `UT_WITH_PROXYNET=OFF`) = an immediate `DownloadError`** and the next manager (`Engine.ChannelDownload`)
+  takes over — what a web build always did, minus the doomed `socket()` and, for a host NAME, the doomed
+  resolver thread. ⚠ Nothing may follow `DownloadDone()` in `WebTick`: it can start the next download, which
+  deletes the object. Verified through the real proxy (2026-09-20): DM-SakuraGarden's two `.uz2` files
+  fetched, decompressed and GUID-checked, level up 0.5 s after the first fetch began (in-band: 20.7 s).
 - **Engine differences are DATA, not code** (the project-wide rule for the multi-engine future).
 
 ## Do NOT
