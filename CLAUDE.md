@@ -119,7 +119,18 @@ or to test an unpushed change to the recovered sources, point
   `-GL4ESRENDERER` / `-OPENGLRENDERER` / `-SOFTWARERENDERER` / `-NULLRENDERER`. The old "hard backend
   split, one binary per build dir" rule is gone with the presets that implemented it.
 - **Drivers are selected by `.ini`, not compiled in** (`ViewportManager`/`GameRenderDevice`/
-  `AudioDevice`/`NetworkDevice`). The web build's one engine-specific addition is `WebRTCDrv`.
+  `AudioDevice`/`NetworkDevice`). The web build's engine-specific additions are `WebRTCDrv` (P2P) and
+  — ufront 2.79, **experimental** — `ProxyNetDrv`: a client-only net driver that joins an ordinary NATIVE
+  server through a WSS<->UDP game proxy. It is modelled function-for-function on `IpDrv`'s `TcpNetDriver`
+  (same `open host:port`, same ini keys under `[ProxyNetDrv.ProxyNetDriver]`) with the socket calls swapped
+  for the OPTIONAL `proxynet` ABI module (`vendor/glue/ue_proxynet_abi.h` + `proxynet-shim.js`).
+  **The two are DETACHED on purpose** (ufrontend `docs/12` ADR-16): `ProxyNetDrv` shares nothing with
+  `WebRTCDrv` and must never edit its files; `vendor/glue/webrtc-shim.js` stays byte-identical across all
+  engine repos; `-DUT_WITH_PROXYNET=OFF` removes the package, its shim and its registration. It is selected
+  by `NetworkDevice=ProxyNetDrv.ProxyNetDriver` — the launcher only rewrites `NetworkDevice` when it is the
+  stock `IpDrv.TcpNetDriver`, so naming it simply works. The UE connection stays `USOCK_Pending` through the
+  whole handshake (only `HandleClientPlayer` opens it); the driver only ever CLOSES. Verified against a stock
+  OldUnreal 3374 server (2026-09-20): WELCOME, `files needed=0`, in the match.
 - **Engine differences are DATA, not code** (the project-wide rule for the multi-engine future).
 
 ## Do NOT

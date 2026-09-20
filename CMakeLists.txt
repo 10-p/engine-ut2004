@@ -1280,6 +1280,13 @@ if(EMSCRIPTEN)
   add_subdirectory(Source/SDL2Drv)
   add_subdirectory(Source/GL4ESDrv)
   add_subdirectory(Source/WebRTCDrv)
+  # "Proxy networking" (ufront 2.79): a client-only net driver that joins an ordinary NATIVE server through
+  # a WSS<->UDP game proxy. EXPERIMENTAL, and a package of its own — it shares nothing with WebRTCDrv.
+  # -DUT_WITH_PROXYNET=OFF removes the package, its JS shim and its registration; P2P is unaffected.
+  option(UT_WITH_PROXYNET "Build ProxyNetDrv (join native servers through a game proxy; web only)" ON)
+  if(UT_WITH_PROXYNET)
+    add_subdirectory(Source/ProxyNetDrv)
+  endif()
   set(UT_HAS_SDL2DRV ON)
   set(UT_HAS_GL4ESDRV ON)
 else() # gl4es

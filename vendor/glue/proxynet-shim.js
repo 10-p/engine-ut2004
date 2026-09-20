@@ -1,0 +1,96 @@
+// proxynet-shim.js — the thin --js-library for the OPTIONAL "proxynet" ABI module (step 2.79).
+// ============================================================================
+// VENDORED from @ufront/glue at PROXYNET_ABI_VERSION 1, by the engines that ship a ProxyNetDrv — and ONLY by
+// those. It is a SEPARATE file from webrtc-shim.js on purpose: that shim stays byte-identical in every engine
+// repo, the v1 ABI is untouched (ABI_VERSION stays 1), and an engine that does not vendor this file has no
+// `ue_proxynet_*` imports at all (docs/02 §3e, docs/12 ADR-16).
+//
+// It defines the nine imports and FORWARDS each to the runtime-injected `Module.UE.proxynet.*`. No logic.
+//
+// ★ ABSENT MODULE = ABSENT FEATURE, NEVER A BOOT FAILURE. Unlike $ueNet, $ueProxyNet does not throw when the
+// host injected nothing: it returns null and every forwarder answers "not available" (connect -> -1, state ->
+// CLOSED, the rest -> 0). A page built without Proxy networking, or in P2P mode, therefore costs nothing and
+// breaks nothing. A module that IS present at the wrong version is a real mismatch, and that one throws.
+//
+// THREADING (-sPROXY_TO_PTHREAD), same split as webrtc-shim.js and for the same measured reason (2.13.6):
+//   * ue_proxynet_send / ue_proxynet_recv are NOT proxied. They are the per-packet path; on the engine thread
+//     `Module.UE.proxynet` is the ring client @ufront/glue installs there (installWorkerProxyNet), so the call
+//     never leaves the thread.
+//   * the other seven are `__proxy: 'sync'`: per-tick or per-action, and the WebSocket, the session token and
+//     fetch() all live on the main thread. Pthreads share memory, so a proxied call reads the string at the
+//     pointer and fills the out-buffers in the SAME heap — no marshalling.
+mergeInto(LibraryManager.library, {
+    $ueProxyNet: function () {
+        var ue = Module['UE'];
+        var m = ue && ue.proxynet;
+        if (!m) return null;
+        if (m.version !== 1) {
+            throw new Error('[ue-abi] Module.UE.proxynet version mismatch (host=' + m.version + ', shim expects 1)');
+        }
+        return m;
+    },
+
+    // --- the pipe ---
+    ue_proxynet_connect__deps: ['$ueProxyNet'],
+    ue_proxynet_connect__proxy: 'sync',
+    ue_proxynet_connect: function (hostPtr, port) {
+        var m = ueProxyNet();
+        return m ? m.ue_proxynet_connect(hostPtr, port) : -1;
+    },
+
+    ue_proxynet_state__deps: ['$ueProxyNet'],
+    ue_proxynet_state__proxy: 'sync',
+    ue_proxynet_state: function (connId) {
+        var m = ueProxyNet();
+        return m ? m.ue_proxynet_state(connId) : 3;
+    },
+
+    // --- the packet path: NOT proxied. Answered on the engine thread by the shared rings. ---
+    ue_proxynet_send__deps: ['$ueProxyNet'],
+    ue_proxynet_send: function (connId, dataPtr, len) {
+        var m = ueProxyNet();
+        return m ? m.ue_proxynet_send(connId, dataPtr, len) : 0;
+    },
+
+    ue_proxynet_recv__deps: ['$ueProxyNet'],
+    ue_proxynet_recv: function (connId, bufferPtr, maxLen) {
+        var m = ueProxyNet();
+        return m ? m.ue_proxynet_recv(connId, bufferPtr, maxLen) : 0;
+    },
+
+    ue_proxynet_close__deps: ['$ueProxyNet'],
+    ue_proxynet_close__proxy: 'sync',
+    ue_proxynet_close: function (connId) {
+        var m = ueProxyNet();
+        if (m) m.ue_proxynet_close(connId);
+    },
+
+    // --- redirect downloads ---
+    ue_proxynet_http_open__deps: ['$ueProxyNet'],
+    ue_proxynet_http_open__proxy: 'sync',
+    ue_proxynet_http_open: function (connId, urlPtr) {
+        var m = ueProxyNet();
+        return m ? m.ue_proxynet_http_open(connId, urlPtr) : -1;
+    },
+
+    ue_proxynet_http_poll__deps: ['$ueProxyNet'],
+    ue_proxynet_http_poll__proxy: 'sync',
+    ue_proxynet_http_poll: function (handle, statusPtr, receivedPtr, totalPtr) {
+        var m = ueProxyNet();
+        return m ? m.ue_proxynet_http_poll(handle, statusPtr, receivedPtr, totalPtr) : -1;
+    },
+
+    ue_proxynet_http_read__deps: ['$ueProxyNet'],
+    ue_proxynet_http_read__proxy: 'sync',
+    ue_proxynet_http_read: function (handle, bufferPtr, maxLen) {
+        var m = ueProxyNet();
+        return m ? m.ue_proxynet_http_read(handle, bufferPtr, maxLen) : 0;
+    },
+
+    ue_proxynet_http_close__deps: ['$ueProxyNet'],
+    ue_proxynet_http_close__proxy: 'sync',
+    ue_proxynet_http_close: function (handle) {
+        var m = ueProxyNet();
+        if (m) m.ue_proxynet_http_close(handle);
+    },
+});

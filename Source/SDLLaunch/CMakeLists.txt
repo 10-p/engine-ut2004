@@ -78,6 +78,9 @@ if(EMSCRIPTEN)
     GL4ESDrv ALAudio Onslaught
     zlib ogg vorbis
   )
+  if(UT_WITH_PROXYNET)
+    list(APPEND LINK_PACKAGES ProxyNetDrv)
+  endif()
 else()
   # Native/Windows: every render driver this configure enabled links in; the choice is made at runtime.
   set(LINK_PACKAGES Engine Core Fire IpDrv UWeb XGame XInterface)
@@ -351,6 +354,16 @@ if(EMSCRIPTEN)
   set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY LINK_DEPENDS
     "${CMAKE_SOURCE_DIR}/vendor/glue/wasmfs-shim.js"
     "${CMAKE_SOURCE_DIR}/vendor/glue/webrtc-shim.js")
+  # ProxyNetDrv's own thin shim (the OPTIONAL proxynet ABI module). A SEPARATE --js-library on purpose:
+  # webrtc-shim.js stays byte-identical across every engine repo, and with UT_WITH_PROXYNET=OFF the wasm
+  # has no ue_proxynet_* imports at all. Its $ueProxyNet rides in via each forwarder's __deps.
+  if(UT_WITH_PROXYNET)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE UT_WITH_PROXYNET=1)
+    target_link_options(${PROJECT_NAME} PRIVATE
+      "SHELL:--js-library ${CMAKE_SOURCE_DIR}/vendor/glue/proxynet-shim.js")
+    set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY LINK_DEPENDS
+      "${CMAKE_SOURCE_DIR}/vendor/glue/proxynet-shim.js")
+  endif()
   string(REPLACE ";" " " PRELOAD_FLAGS_STR "${PRELOAD_FLAGS}")
   set_property(TARGET ${PROJECT_NAME} APPEND_STRING PROPERTY LINK_FLAGS " ${PRELOAD_FLAGS_STR}")
   set_target_properties(${PROJECT_NAME} PROPERTIES SUFFIX ".js")  # 1.6a: bare loader (was ".html" via --shell-file)

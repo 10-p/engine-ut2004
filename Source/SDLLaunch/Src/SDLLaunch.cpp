@@ -125,6 +125,10 @@ static void AndroidRedirectStdioToLogcat()
 #ifdef __EMSCRIPTEN__
 #include "WebRTCDrv.h"
 #include "WebRTCDrvClasses.h"
+#ifdef UT_WITH_PROXYNET
+#include "ProxyNetDrv.h"
+#include "ProxyNetDrvClasses.h"
+#endif
 #endif
 #include "UnIpDrvCommandlets.h"
 #include "UnIpDrvNative.h"
@@ -1177,6 +1181,9 @@ int main(int argc, char **argv)
         AUTO_INITIALIZE_REGISTRANTS_IPDRV;
 #ifdef __EMSCRIPTEN__
         AUTO_INITIALIZE_REGISTRANTS_WEBRTCDRV;
+#ifdef UT_WITH_PROXYNET
+        AUTO_INITIALIZE_REGISTRANTS_PROXYNETDRV;
+#endif
 #endif
         RegisterNamesXInterface();
         AUTO_INITIALIZE_REGISTRANTS_XINTERFACE;
