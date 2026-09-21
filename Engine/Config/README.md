@@ -34,3 +34,16 @@ applied in engine code via the launcher's `#ifdef __EMSCRIPTEN__` overrides; thi
   `2K4Menus.utx`, checked against the package's export table) and doubled the odds of `2`. Both sets now
   list `1, 2, 3, 4`. Do not "restore" it from a retail install. ⚠ A player whose `User.ini` already exists
   keeps the old list — `User.ini` is derived from `DefUser.ini` only when it is absent.
+- **`[IpDrv.MasterServerLink] MasterServerList` (ufront 2.79n)** — retail names
+  `ut2004master1|2.epicgames.com`, which no longer resolve. Both sets now list the six community masters
+  that answered a real list query on 2026-09-21 (the engine's own master protocol, TCP 28902):
+  `ut2004master.333networks.com` 560 servers, `ut2004master.errorist.eu` 552, `ut2004master.gonespy.com`
+  542, `master.frag-net.com` 548, `master.noccer.de` 502, `utmaster.openspy.net` 599. Every entry must be
+  live: `MasterServerLink.GetMasterServer` picks a RANDOM one per query. OldUnreal 3374's `Group=` field is
+  omitted — our `tMasterServerEntry` has `Address` and `Port` only. The web cannot use these (a master
+  query is TCP, and the browser has no sockets; its LAN tab discovers hosts over WebRTC instead); they reach
+  NATIVE builds, and only new installs (a native install reads its own `System/UT2004.ini`). `UplinkToGamespy=True` is deliberately KEPT, although
+  its heartbeat target is hardcoded to the dead `master0.gamespy.com`: the same switch spawns the GameSpy
+  query responder (+10), which the native uplink also uses to answer a master's NAT heartbeat request
+  (`MasterServerUplink.cpp`, `HB_GamespyQueryPort`) and which third-party trackers query. OldUnreal 3374
+  keeps it on too.
