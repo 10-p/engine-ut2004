@@ -142,6 +142,17 @@ or to test an unpushed change to the recovered sources, point
   resolver thread. ⚠ Nothing may follow `DownloadDone()` in `WebTick`: it can start the next download, which
   deletes the object. Verified through the real proxy (2026-09-20): DM-SakuraGarden's two `.uz2` files
   fetched, decompressed and GUID-checked, level up 0.5 s after the first fetch began (in-band: 20.7 s).
+  **The in-game Internet browser (2.79o).** The same no-sockets problem, the same shape: on `__EMSCRIPTEN__`
+  `AMasterServerClient` asks the GENERIC table `GWebServerList` (`IpDrv/Inc/WebServerList.h`: Active/open/poll/
+  read/close) for the game proxy's list instead of a master; `ProxyNetDrv` fills it with the four
+  `ue_proxynet_list_*` imports and registers it WHEN THE PROGRAM STARTS (the browser wants its list before any
+  connection exists), and `Active()` (native: the ini's `NetworkDevice` is this driver) keeps it out of the way in
+  P2P mode — there every path is exactly as before. Every query type is answered from ONE fetch: the news query
+  (which is what unlocks the Internet tab), the list (honouring the browser's `gametype` term; a buddy query gets
+  nothing), the rest with an empty success. `StartQuery` only RECORDS the request and `Poll()` asks, at most four
+  times a second — never a sync import from inside a script call. Pings to a listed server are answered from the
+  row after the proxy's round trip, but ★ the stock browser does not ping at the web's netspeed (1000000:
+  `CalculateMaxConnections()` = `Min(MaxSimultaneousPings, 35)` = 0), so by default its rows show "?".
   **`PendingLevel: server sends N file(s): <names>` (2.79g)** — ONE log line at WELCOME
   (`Engine/Src/UnPenLev.cpp`), naming the files this client must be SENT. The per-package `USES` trail is
   commented out and `DevNet` is suppressed, so without it nothing in the log says what a server pushes, and

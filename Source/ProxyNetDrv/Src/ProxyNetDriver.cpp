@@ -11,6 +11,7 @@
 #include "UnNet.h"
 #include "ProxyNetDrv.h"
 #include "WebHttp.h"
+#include "WebServerList.h"
 
 /*-----------------------------------------------------------------------------
 	Declarations.
@@ -268,6 +269,54 @@ static void ProxyNetHttpClose( INT Handle )
 	ue_proxynet_http_close( Handle );
 }
 static FWebHttpHooks GProxyNetHttpHooks = { ProxyNetHttpOpen, ProxyNetHttpPoll, ProxyNetHttpRead, ProxyNetHttpClose };
+
+/*-----------------------------------------------------------------------------
+	The in-game Internet browser's list (2.79o, IpDrv's WebServerList.h).
+
+	The web build has no sockets, so the browser cannot ask a master server; in Proxy mode the game
+	proxy already holds that list (it polls the masters for everybody). This fills IpDrv's table with
+	the four `ue_proxynet_list_*` imports. Unlike the HTTP hook it is registered when the program
+	starts -- the browser wants its list before any connection exists -- and Active() keeps it out of
+	the way unless THIS launch is in Proxy mode.
+-----------------------------------------------------------------------------*/
+
+static_assert( WEBLIST_Pending==PROXYNET_HTTP_PENDING && WEBLIST_Done==PROXYNET_HTTP_DONE
+	&& WEBLIST_Failed==PROXYNET_HTTP_FAILED, "WebServerList.h and ue_proxynet_abi.h disagree" );
+
+static UBOOL ProxyNetListActive()
+{
+	// Proxy networking is this launch's mode exactly when the engine's network device is this driver:
+	// the ini key the launcher seeds, and the one SDLLaunch leaves alone. Fixed for the launch -> cached.
+	static INT Active = -1;
+	if( Active < 0 && GConfig )
+		Active = appStricmp( GConfig->GetStr( TEXT("Engine.Engine"), TEXT("NetworkDevice"), TEXT("System") ),
+			TEXT("ProxyNetDrv.ProxyNetDriver") ) == 0;
+	return Active == 1;
+}
+static INT ProxyNetListOpen()
+{
+	return ue_proxynet_list_open();
+}
+static INT ProxyNetListPoll( INT Handle, INT* Status, INT* Count )
+{
+	return ue_proxynet_list_poll( Handle, Status, Count );
+}
+static INT ProxyNetListRead( INT Handle, BYTE* Buffer, INT MaxLen )
+{
+	return ue_proxynet_list_read( Handle, Buffer, MaxLen );
+}
+static void ProxyNetListClose( INT Handle )
+{
+	ue_proxynet_list_close( Handle );
+}
+static FWebServerListHooks GProxyNetListHooks =
+	{ ProxyNetListActive, ProxyNetListOpen, ProxyNetListPoll, ProxyNetListRead, ProxyNetListClose };
+
+// IpDrv's pointer is constant-initialised to NULL, so this dynamic initialiser always runs after it.
+static struct FRegisterProxyNetList
+{
+	FRegisterProxyNetList() { GWebServerList = &GProxyNetListHooks; }
+} GRegisterProxyNetList;
 
 void UProxyNetDriver::RegisterWebHttp()
 {

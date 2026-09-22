@@ -43,6 +43,10 @@ inline int  ue_proxynet_http_open( int, const char* ) { return -1; }
 inline int  ue_proxynet_http_poll( int, int*, int*, int* ) { return -1; }
 inline int  ue_proxynet_http_read( int, void*, int ) { return 0; }
 inline void ue_proxynet_http_close( int ) {}
+inline int  ue_proxynet_list_open() { return -1; }
+inline int  ue_proxynet_list_poll( int, int*, int* ) { return -1; }
+inline int  ue_proxynet_list_read( int, void*, int ) { return 0; }
+inline void ue_proxynet_list_close( int ) {}
 #endif
 
 /*-----------------------------------------------------------------------------

@@ -5,7 +5,7 @@
 // repo, the v1 ABI is untouched (ABI_VERSION stays 1), and an engine that does not vendor this file has no
 // `ue_proxynet_*` imports at all (docs/02 §3e, docs/12 ADR-16).
 //
-// It defines the nine imports and FORWARDS each to the runtime-injected `Module.UE.proxynet.*`. No logic.
+// It defines the thirteen imports and FORWARDS each to the runtime-injected `Module.UE.proxynet.*`. No logic.
 //
 // ★ ABSENT MODULE = ABSENT FEATURE, NEVER A BOOT FAILURE. Unlike $ueNet, $ueProxyNet does not throw when the
 // host injected nothing: it returns null and every forwarder answers "not available" (connect -> -1, state ->
@@ -16,7 +16,7 @@
 //   * ue_proxynet_send / ue_proxynet_recv are NOT proxied. They are the per-packet path; on the engine thread
 //     `Module.UE.proxynet` is the ring client @ufront/glue installs there (installWorkerProxyNet), so the call
 //     never leaves the thread.
-//   * the other seven are `__proxy: 'sync'`: per-tick or per-action, and the WebSocket, the session token and
+//   * all the others are `__proxy: 'sync'`: per-tick or per-action, and the WebSocket, the session token and
 //     fetch() all live on the main thread. Pthreads share memory, so a proxied call reads the string at the
 //     pointer and fills the out-buffers in the SAME heap — no marshalling.
 mergeInto(LibraryManager.library, {
@@ -92,5 +92,34 @@ mergeInto(LibraryManager.library, {
     ue_proxynet_http_close: function (handle) {
         var m = ueProxyNet();
         if (m) m.ue_proxynet_http_close(handle);
+    },
+
+    // --- the in-game server browser's list (2.79o) ---
+    ue_proxynet_list_open__deps: ['$ueProxyNet'],
+    ue_proxynet_list_open__proxy: 'sync',
+    ue_proxynet_list_open: function () {
+        var m = ueProxyNet();
+        return m && m.ue_proxynet_list_open ? m.ue_proxynet_list_open() : -1;
+    },
+
+    ue_proxynet_list_poll__deps: ['$ueProxyNet'],
+    ue_proxynet_list_poll__proxy: 'sync',
+    ue_proxynet_list_poll: function (handle, statusPtr, countPtr) {
+        var m = ueProxyNet();
+        return m && m.ue_proxynet_list_poll ? m.ue_proxynet_list_poll(handle, statusPtr, countPtr) : -1;
+    },
+
+    ue_proxynet_list_read__deps: ['$ueProxyNet'],
+    ue_proxynet_list_read__proxy: 'sync',
+    ue_proxynet_list_read: function (handle, bufferPtr, maxLen) {
+        var m = ueProxyNet();
+        return m && m.ue_proxynet_list_read ? m.ue_proxynet_list_read(handle, bufferPtr, maxLen) : 0;
+    },
+
+    ue_proxynet_list_close__deps: ['$ueProxyNet'],
+    ue_proxynet_list_close__proxy: 'sync',
+    ue_proxynet_list_close: function (handle) {
+        var m = ueProxyNet();
+        if (m && m.ue_proxynet_list_close) m.ue_proxynet_list_close(handle);
     },
 });

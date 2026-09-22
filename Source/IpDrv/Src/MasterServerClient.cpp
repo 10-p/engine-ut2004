@@ -21,6 +21,29 @@ extern INT   WebRTCDiscovery_Drain( TArray<FServerResponseLine>& Out );
 // Active browser actor for WebRTC discovery callback firing
 static AMasterServerClient* GActiveWebRTCBrowser = NULL;
 static UBOOL GWebRTCDiscoveryPending = 0;
+
+// 2.79o -- Proxy networking: the in-game Internet browser's list comes from the game proxy
+// (WebServerList.h), and the browser's own pings are answered from the same rows. Every query type
+// shares ONE fetch; StartQuery only records the request and Poll() asks, never a script call.
+#include "WebServerList.h"
+FWebServerListHooks* GWebServerList = NULL;
+
+struct FProxyListRequest
+{
+	AMasterServerClient* Browser;
+	BYTE QueryType;
+};
+static TArray<FProxyListRequest> GProxyRequests;	// waiting for the list
+static INT    GProxyListHandle = -1;					// -1 until Poll() opens it
+static DOUBLE GProxyNextPoll = 0.0;
+static TArray<FServerResponseLine> GProxyRows;		// the last list: what the pings are answered from
+static INT    GProxyPingMs = -1;					// the player -> proxy round trip; -1 = unknown
+static UBOOL  GProxyPingsLogged = 0;				// one line per list: the first ping the list answered
+
+static UBOOL ProxyListActive()
+{
+	return GWebServerList && GWebServerList->Active && GWebServerList->Active();
+}
 #endif
 
 /*-----------------------------------------------------------------------------
@@ -51,6 +74,15 @@ class FServerQueryLink : public FUdpLink
 	UBOOL bWebRTCBroadcastPending;
 	INT   WebRTCServerID;
 	BYTE  WebRTCPingCause;
+	// 2.79o -- pings answered from the game proxy's list, delivered after the proxy's round trip.
+	struct FProxyPingReply
+	{
+		INT  ServerID;
+		BYTE PingCause;
+		DOUBLE Due;
+		FServerResponseLine State;
+	};
+	TArray<FProxyPingReply> ProxyReplies;
 #endif
 public:
 	FServerQueryLink( AServerQueryClient* InActor, INT InPort )
@@ -118,6 +150,16 @@ public:
 			for( INT i = 0; i < Servers.Num(); i++ )
 				Actor->delegateOnReceivedPingInfo( WebRTCServerID, WebRTCPingCause, Servers(i) );
 		}
+
+		// 2.79o -- the proxy-answered pings that are due (PingServer queued them).
+		for( INT r = 0; r < ProxyReplies.Num(); r++ )
+		{
+			if( ProxyReplies(r).Due > CurrentTime )
+				continue;
+			FProxyPingReply Reply = ProxyReplies(r);	// a copy: the delegate may ping again
+			ProxyReplies.Remove(r--);
+			Actor->delegateOnReceivedPingInfo( Reply.ServerID, Reply.PingCause, Reply.State );
+		}
 #endif
 
 		FUdpLink::Poll();
@@ -137,6 +179,35 @@ public:
 			WebRTCServerID  = ServerID;   // -1 for a broadcast request
 			WebRTCPingCause = PingCause;  // PC_LANBroadcast
 			return;
+		}
+
+		// 2.79o -- Proxy networking: no UDP here either. A server from the game proxy's list is
+		// answered from that list (a FULL row, as a real reply is -- the browser replaces the whole row
+		// with it), after the proxy's own round trip, so the ping shown is the player -> proxy leg: a floor.
+		// NOTE: the stock browser only pings when GUIController MaxSimultaneousPings > 0: at the web's netspeed
+		// (1000000, above every threshold) CalculateMaxConnections() returns Min(MaxSimultaneousPings, 35) = 0,
+		// so by default the rows show "?" and this answers only a player who raised that setting.
+		if( ProxyListActive() && GProxyPingMs >= 0 )
+		{
+			for( INT r = 0; r < GProxyRows.Num(); r++ )
+			{
+				FIpAddr RowAddr( *GProxyRows(r).IP, GProxyRows(r).QueryPort );
+				if( !(RowAddr == Addr) )
+					continue;
+				INT i = ProxyReplies.AddZeroed();
+				ProxyReplies(i).ServerID  = ServerID;
+				ProxyReplies(i).PingCause = PingCause;
+				ProxyReplies(i).Due       = appSeconds() + GProxyPingMs / 1000.0;
+				ProxyReplies(i).State     = GProxyRows(r);
+				ProxyReplies(i).State.ServerID = ServerID;
+				ProxyReplies(i).State.Ping     = Max( GProxyPingMs, 1 );
+				if( !GProxyPingsLogged )
+				{
+					GProxyPingsLogged = 1;
+					GLog->Logf( TEXT("ProxyNet: the in-game browser's pings are answered from the list (first: %s:%i)"), *GProxyRows(r).IP, GProxyRows(r).QueryPort );
+				}
+				return;
+			}
 		}
 #endif
 
@@ -175,6 +246,9 @@ public:
 	{
 		guard(FServerQueryLink::CancelPings);
 		OutstandingPings.Empty();
+#ifdef __EMSCRIPTEN__
+		ProxyReplies.Empty();
+#endif
 		unguard;
 	}
 	void OnReceivedData( FIpAddr SrcAddr, BYTE* Data, INT Count )
@@ -922,12 +996,182 @@ void AMasterServerClient::Init()
     MSLinkPtr = (PTRINT)(new FMasterServerClientLink(this));
 }
 
+#ifdef __EMSCRIPTEN__
+/*-----------------------------------------------------------------------------
+	2.79o -- the in-game Internet browser from the game proxy's list (WebServerList.h).
+-----------------------------------------------------------------------------*/
+
+// "#proxynet-list 1 ping=<ms>" then one row per line: host TAB port TAB name TAB map TAB gametype
+// TAB players TAB maxplayers TAB version TAB minversion TAB password. Empty fields keep their column.
+static void ProxyParseList( ANSICHAR* Text )
+{
+	GProxyRows.Empty();
+	GProxyPingMs = -1;
+	for( ANSICHAR* Line = Text; *Line; )
+	{
+		ANSICHAR* End = Line;
+		while( *End && *End != '\n' )
+			End++;
+		UBOOL Last = (*End == 0);
+		*End = 0;
+		if( Line[0] == '#' )
+		{
+			const ANSICHAR* P = strstr( Line, "ping=" );
+			if( P )
+				GProxyPingMs = atoi( P + 5 );
+		}
+		else if( Line[0] )
+		{
+			ANSICHAR* F[10];
+			INT N = 0;
+			F[N++] = Line;
+			for( ANSICHAR* C = Line; *C && N < 10; C++ )
+				if( *C == '\t' )
+				{
+					*C = 0;
+					F[N++] = C + 1;
+				}
+			if( N == 10 && F[0][0] && atoi(F[1]) > 0 )
+			{
+				INT i = GProxyRows.AddZeroed();
+				FServerResponseLine& S = GProxyRows(i);
+				S.ServerID       = i;
+				S.IP             = ANSI_TO_TCHAR(F[0]);
+				S.Port           = atoi( F[1] );
+				S.QueryPort      = S.Port + 1;	// the proxy's rows carry no query port; +1 is the game's own rule
+				S.ServerName     = F[2][0] ? FString(ANSI_TO_TCHAR(F[2])) : FString::Printf( TEXT("%s:%i"), *S.IP, S.Port );
+				S.MapName        = ANSI_TO_TCHAR(F[3]);
+				S.GameType       = ANSI_TO_TCHAR(F[4]);
+				S.CurrentPlayers = Max( atoi(F[5]), 0 );
+				S.MaxPlayers     = Max( atoi(F[6]), 0 );
+				S.Ping           = 0;
+				S.Flags          = atoi( F[9] ) ? 1 : 0;	// 1 = passworded (the browser's icon legend)
+			}
+		}
+		if( Last )
+			break;
+		Line = End + 1;
+	}
+}
+
+// The browser's filters that the list can honour: the game type (the rest need a real query).
+static UBOOL ProxyRowWanted( AMasterServerClient* Browser, const FServerResponseLine& S )
+{
+	for( INT i = 0; i < Browser->Query.Num(); i++ )
+	{
+		const FQueryData& Q = Browser->Query(i);
+		// A buddy query asks for the servers a PERSON is on: the list cannot know that.
+		if( Q.Key == TEXT("buddy") )
+			return 0;
+		if( Q.Key != TEXT("gametype") )
+			continue;
+		UBOOL Same = (S.GameType == Q.Value);
+		if( (Q.QueryType == QT_Equals && !Same) || (Q.QueryType == QT_NotEquals && Same) )
+			return 0;
+	}
+	return 1;
+}
+
+static void ProxyFinishQuery( AMasterServerClient* Browser, BYTE QueryType, UBOOL Ok )
+{
+	if( !Ok )
+	{
+		// No proxy chosen ("Start with proxying disabled"), or it could not be reached. For the news
+		// query this still unlocks the Internet tab (MOTDVerified(false)), where it then says so.
+		Browser->delegateOnQueryFinished( RI_ConnectionFailed, QueryType );
+		return;
+	}
+	if( QueryType == CTM_GetMOTD )
+	{
+		// This answer is what unlocks the Internet tab.
+		Browser->delegateOnReceivedMOTDData( MR_MOTD, FString::Printf(
+			TEXT("Proxy networking (experimental): the Internet list comes from this site's game proxy -- %i servers. Their ping is to the proxy only."),
+			GProxyRows.Num() ) );
+		Browser->delegateOnQueryFinished( RI_Success, QueryType );
+		return;
+	}
+	if( QueryType == CTM_Query )
+	{
+		Browser->ResultCount = 0;
+		for( INT i = 0; i < GProxyRows.Num(); i++ )
+			if( ProxyRowWanted( Browser, GProxyRows(i) ) )
+				Browser->ResultCount++;
+		for( INT i = 0; i < GProxyRows.Num(); i++ )
+			if( ProxyRowWanted( Browser, GProxyRows(i) ) )
+				Browser->delegateOnReceivedServer( GProxyRows(i) );
+	}
+	// An upgrade check, the mod news, the ownage list: nothing to say, and nothing wrong.
+	Browser->delegateOnQueryFinished( RI_Success, QueryType );
+}
+
+// Called from the browsers' Poll(): open the list, wait for it, then answer every waiting request.
+// At most four sync calls a second: a per-frame proxied import once overflowed Emscripten's proxy
+// queue (WebRTCLan.cpp).
+static void ProxyPollList()
+{
+	if( !GProxyRequests.Num() || appSeconds() < GProxyNextPoll )
+		return;
+	GProxyNextPoll = appSeconds() + 0.25;
+	UBOOL Ok = 0;
+	if( GProxyListHandle < 0 )
+	{
+		GProxyListHandle = GWebServerList->Open();
+		if( GProxyListHandle >= 0 )
+			return;
+	}
+	else
+	{
+		INT Status = WEBLIST_Pending, Count = 0;
+		if( GWebServerList->Poll( GProxyListHandle, &Status, &Count ) < 0 )
+			Status = WEBLIST_Failed;
+		if( Status == WEBLIST_Pending )
+			return;
+		if( Status == WEBLIST_Done )
+		{
+			INT Need = GWebServerList->Read( GProxyListHandle, NULL, 0 );
+			if( Need > 0 )
+			{
+				TArray<BYTE> Blob;
+				Blob.Add( Need + 1 );
+				if( GWebServerList->Read( GProxyListHandle, &Blob(0), Need ) == Need )
+				{
+					Blob(Need) = 0;
+					ProxyParseList( (ANSICHAR*)&Blob(0) );
+					GProxyPingsLogged = 0;
+					Ok = 1;
+				}
+			}
+		}
+		GWebServerList->Close( GProxyListHandle );
+		GProxyListHandle = -1;
+	}
+	GLog->Logf( TEXT("ProxyNet: the in-game server browser's list from the game proxy: %s, %i servers"),
+		Ok ? TEXT("ok") : TEXT("not available"), Ok ? GProxyRows.Num() : 0 );
+	// A copy, cleared first: a delegate may start the next query.
+	TArray<FProxyListRequest> Requests = GProxyRequests;
+	GProxyRequests.Empty();
+	for( INT i = 0; i < Requests.Num(); i++ )
+		ProxyFinishQuery( Requests(i).Browser, Requests(i).QueryType, Ok );
+}
+
+static void ProxyForgetBrowser( AMasterServerClient* Browser )
+{
+	for( INT i = 0; i < GProxyRequests.Num(); i++ )
+		if( GProxyRequests(i).Browser == Browser )
+			GProxyRequests.Remove(i--);
+}
+#endif
+
 UBOOL AMasterServerClient::Poll( INT WaitTime )
 {
 	guard(AMasterServerClient::Poll);
 	Super::Poll( WaitTime );
 
 #ifdef __EMSCRIPTEN__
+	// 2.79o -- the game proxy's list, for every request StartQuery recorded.
+	if( ProxyListActive() )
+		ProxyPollList();
+
 	// WebRTC discovery results -> the Internet/master browser tab. Row building lives
 	// in WebRTCDrv (WebRTCDiscovery_Drain); we just fire the stock delegates.
 	if( GWebRTCDiscoveryPending && GActiveWebRTCBrowser == this && WebRTCDiscovery_Ready() )
@@ -952,6 +1196,9 @@ UBOOL AMasterServerClient::Poll( INT WaitTime )
 
 void AMasterServerClient::Destroy()
 {
+#ifdef __EMSCRIPTEN__
+	ProxyForgetBrowser( this );
+#endif
 	if( MSLinkPtr )
 		delete ((FMasterServerClientLink*)MSLinkPtr);
 	MSLinkPtr = 0;
@@ -972,6 +1219,18 @@ void AMasterServerClient::execStartQuery( FFrame& Stack, RESULT_DECL )
 	P_FINISH;
 
 #ifdef __EMSCRIPTEN__
+	// 2.79o -- Proxy networking: every query is answered from the game proxy's list. Only RECORD
+	// the request here; Poll() asks (never a sync import from inside a script call).
+	if( ProxyListActive() )
+	{
+		ProxyForgetBrowser( this );
+		INT i = GProxyRequests.AddZeroed();
+		GProxyRequests(i).Browser   = this;
+		GProxyRequests(i).QueryType = QueryType;
+		ResultCount = 0;
+		return;
+	}
+
 	// On Emscripten, use WebRTC discovery via PeerJS peer list instead of
 	// connecting to the Epic master server. The room name is read from
 	// localStorage (set by config-form.js) or defaults to "default".
@@ -1008,6 +1267,7 @@ void AMasterServerClient::execStop( FFrame& Stack, RESULT_DECL )
 #ifdef __EMSCRIPTEN__
 	GWebRTCDiscoveryPending = 0;
 	GActiveWebRTCBrowser = NULL;
+	ProxyForgetBrowser( this );
 #else
 	if( MSLinkPtr )
 		delete ((FMasterServerClientLink*)MSLinkPtr);

@@ -62,6 +62,16 @@ UE_IMPORT int  ue_proxynet_http_open(int connId, const char* url);
 UE_IMPORT int  ue_proxynet_http_poll(int handle, int* status, int* received, int* total);
 UE_IMPORT int  ue_proxynet_http_read(int handle, void* buffer, int maxLen);
 UE_IMPORT void ue_proxynet_http_close(int handle);
+/* The IN-GAME server browser's list (2.79o): the chosen proxy's /servers, as ONE text blob (the web build has no
+ * sockets, so the engine cannot ask a master itself). open() returns a handle >= 0, or -1 when proxy networking is
+ * dormant (P2P mode, or no proxy). poll() fills *status (PROXYNET_HTTP_PENDING / DONE / FAILED) and *count (rows).
+ * read() returns the blob's size and copies it only when it fits in maxLen (call again with a bigger buffer);
+ * 0 = not ready. Blob: "#proxynet-list 1 ping=<ms>\n", then one row per line, tab-separated:
+ * host, port (game), name, map, gameType, players, maxPlayers, version, minVersion, password (0/1); -1 = unknown. */
+UE_IMPORT int  ue_proxynet_list_open(void);
+UE_IMPORT int  ue_proxynet_list_poll(int handle, int* status, int* count);
+UE_IMPORT int  ue_proxynet_list_read(int handle, void* buffer, int maxLen);
+UE_IMPORT void ue_proxynet_list_close(int handle);
 /* ===================== ABI-PARITY: end imports =========================== */
 
 #ifdef __cplusplus
