@@ -3658,6 +3658,9 @@ ULinkerLoad* UObject::GetPackageLinker
 #endif
 
 		// Create new linker.
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
+		const UBOOL FreshLinker = !Result;	// ufront (2.79o): only a linker made HERE may be dropped below
+#endif
 		if( !Result )
 		{
 			Result = new ULinkerLoad( InOuter, NewFilename, LoadFlags );
@@ -3682,7 +3685,11 @@ ULinkerLoad* UObject::GetPackageLinker
 #if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
 		{
 			debugf( NAME_Warning, TEXT("[PACKAGE-LOAD] '%s' is an incompatible version of package '%s' (GUID mismatch)"), NewFilename, InOuter->GetName() );
-			GObjLoaders.RemoveItem( Result );
+			// ufront (2.79o): drop the linker only if it was made HERE. One that was already there belongs to a
+			// package in USE (a server naming a mod the menus have loaded in another version): taking it out of
+			// GObjLoaders would orphan every object loaded through it. Natively the throw leaves it alone too.
+			if( FreshLinker )
+				GObjLoaders.RemoveItem( Result );
 			return NULL;
 		}
 #else
