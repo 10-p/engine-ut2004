@@ -2159,6 +2159,26 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 					PackageMap->List(i).RemoteGeneration
 				);
 			}
+#ifdef __EMSCRIPTEN__
+			// ufront (2.79o): on the web GetPackageLinker answers NULL for a package it cannot have -- not found, or
+			// found in ANOTHER VERSION than the server's ([PACKAGE-LOAD] ... GUID mismatch) -- and VerifyLinker
+			// would then call Verify() on NULL (in wasm that reads low memory instead of trapping). Fail the join
+			// HERE, with the reason a native client shows, before the live level is torn down. (The UE1 line
+			// aborted outright on this, on a real server; this engine was one dereference behind it.)
+			for( INT i=0; i<PackageMap->List.Num(); i++ )
+				if( !PackageMap->List(i).Linker )
+				{
+					const TCHAR* Name = PackageMap->List(i).Parent->GetName();
+					TCHAR Found[256];
+					const UBOOL HaveFile = appFindPackageFile( Name, &PackageMap->List(i).Guid, Found, PackageMap->List(i).RemoteGeneration );
+					Error = FString::Printf( HaveFile ? LocalizeError(TEXT("PackageVersion"),TEXT("Core")) : LocalizeError(TEXT("PackageNotFound"),TEXT("Core")), Name );
+					debugf( TEXT("[WebRTC] LoadMap: %s — failing the join gracefully (no abort)"), *Error );
+					EndLoad();
+					// Error stays SET: the caller (AttemptLoadPending) shows the disconnect menu with it -- an EMPTY
+					// Error there means "loaded", and it would send the join from the level we are still in.
+					return NULL;
+				}
+#endif
 			for( INT i=0; i<PackageMap->List.Num(); i++ )
 			{
 				VerifyLinker( PackageMap->List(i).Linker );
@@ -2182,8 +2202,9 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 			Error = FString::Printf( TEXT("Could not load map '%s'"), *URL.Map );
 			if( Pending && Pending->NetDriver && Pending->NetDriver->ServerConnection )
 			{
-				SetProgress( *FString::Printf(TEXT("menu:%s"),*DisconnectMenuClass), LocalizeError(TEXT("UrlFailed"),TEXT("Core")), *URL.Map );
-				Error = TEXT(""); // disconnect menu shown; don't also pop a generic error
+				// ufront (2.79o): Error stays SET -- the caller (AttemptLoadPending) shows the disconnect menu with it.
+				// It used to be cleared here "so no generic error pops too", but an EMPTY Error is how that caller
+				// knows the map LOADED: it would then have sent the join from the level we are still in.
 			}
 			else if( GLevel==GEntry )
 				SetProgress( *FString::Printf(TEXT("menu:%s"),*MainMenuClass), LocalizeError(TEXT("UrlFailed"),TEXT("Core")), *URL.Map );
