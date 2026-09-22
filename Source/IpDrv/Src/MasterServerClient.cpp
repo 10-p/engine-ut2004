@@ -1001,6 +1001,39 @@ void AMasterServerClient::Init()
 	2.79o -- the in-game Internet browser from the game proxy's list (WebServerList.h).
 -----------------------------------------------------------------------------*/
 
+// The list is UTF-8 (it is the page's own text), and TCHAR is 8 bits on the web (16 in a UNICODE build): each
+// character is DECODED, never copied byte by byte -- ANSI_TO_TCHAR would turn a name's "»" into two characters.
+// A code point this TCHAR cannot hold becomes '?', as the engine's own narrowing does; so does a broken sequence.
+static FString ProxyFromUtf8( const ANSICHAR* In )
+{
+	const DWORD MaxChar = sizeof(TCHAR) == 1 ? 0xFF : 0xFFFF;
+	TArray<TCHAR> Out;
+	for( const BYTE* P = (const BYTE*)In; *P; )
+	{
+		DWORD C = *P++;
+		INT More = 0;
+		if( C >= 0x80 )
+		{
+			if( C >= 0xC0 && C < 0xE0 )			{ C &= 0x1F; More = 1; }
+			else if( C >= 0xE0 && C < 0xF0 )	{ C &= 0x0F; More = 2; }
+			else if( C >= 0xF0 && C < 0xF8 )	{ C &= 0x07; More = 3; }
+			else								C = '?';	// a stray continuation byte, or no UTF-8 lead at all
+		}
+		for( ; More > 0; More-- )
+		{
+			if( (*P & 0xC0) != 0x80 )
+			{
+				C = '?';	// cut short: the next byte starts a character of its own
+				break;
+			}
+			C = (C << 6) | (*P++ & 0x3F);
+		}
+		Out.AddItem( (TCHAR)(C == 0 || C > MaxChar ? '?' : C) );
+	}
+	Out.AddItem( 0 );
+	return FString( &Out(0) );
+}
+
 // "#proxynet-list 1 ping=<ms>" then one row per line: host TAB port TAB name TAB map TAB gametype
 // TAB players TAB maxplayers TAB version TAB minversion TAB password. Empty fields keep their column.
 static void ProxyParseList( ANSICHAR* Text )
@@ -1039,9 +1072,9 @@ static void ProxyParseList( ANSICHAR* Text )
 				S.IP             = ANSI_TO_TCHAR(F[0]);
 				S.Port           = atoi( F[1] );
 				S.QueryPort      = S.Port + 1;	// the proxy's rows carry no query port; +1 is the game's own rule
-				S.ServerName     = F[2][0] ? FString(ANSI_TO_TCHAR(F[2])) : FString::Printf( TEXT("%s:%i"), *S.IP, S.Port );
-				S.MapName        = ANSI_TO_TCHAR(F[3]);
-				S.GameType       = ANSI_TO_TCHAR(F[4]);
+				S.ServerName     = F[2][0] ? ProxyFromUtf8(F[2]) : FString::Printf( TEXT("%s:%i"), *S.IP, S.Port );
+				S.MapName        = ProxyFromUtf8(F[3]);
+				S.GameType       = ProxyFromUtf8(F[4]);
 				S.CurrentPlayers = Max( atoi(F[5]), 0 );
 				S.MaxPlayers     = Max( atoi(F[6]), 0 );
 				S.Ping           = 0;
