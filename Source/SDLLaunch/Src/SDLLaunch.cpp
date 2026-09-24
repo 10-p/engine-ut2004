@@ -1050,7 +1050,67 @@ static void PersistRenderChoiceIfSwitched()
 // ufront 2.12 Part B: headers for the READ_IMPLIES_EXEC re-exec below (Pixomatic executable-heap fix).
 #include <sys/personality.h>
 #include <unistd.h>
-#include <strings.h>
+#include <errno.h>
+
+// ufront 2.79 — does THIS launch run Pixomatic? Answered the way the launch itself decides, so the answer and
+// the device can never disagree: the first -*RENDERER switch present wins when this build has its device
+// (SelectRenderDevice(), same table, same order; a switch whose device is absent is ignored and the ini
+// decides); otherwise the ini's [Engine.Engine] RenderDevice, which InitEngine() only ever replaces when this
+// build LACKS it, and never with Pixomatic; -testrendev= names the one device it tests. Needs appInit (the ini)
+// and the static registrants (IsRenderDeviceAvailable), and nothing else.
+static UBOOL LaunchRunsPixomatic()
+{
+	const TCHAR* Pixo = TEXT("PixoDrv.PixoRenderDevice");
+	if( !IsRenderDeviceAvailable( Pixo ) )
+		return 0;
+	FString Tested;
+	if( Parse( appCmdLine(), TEXT("testrendev="), Tested ) )
+		return appStricmp( *Tested, Pixo )==0;
+	for( INT i=0; i<ARRAY_COUNT(GRenderSwitches); i++ )
+	{
+		if( ParseParam( appCmdLine(), GRenderSwitches[i].Param ) )
+		{
+			if( IsRenderDeviceAvailable( GRenderSwitches[i].Device ) )
+				return appStricmp( GRenderSwitches[i].Device, Pixo )==0;
+			break;
+		}
+	}
+	return appStricmp( GConfig->GetStr( TEXT("Engine.Engine"), TEXT("RenderDevice"), TEXT("System") ), Pixo )==0;
+}
+
+// ufront 2.12 Part B — Pixomatic executable-heap fix. Pixomatic (Michael Abrash's JIT software rasterizer)
+// generates x86 code at runtime and executes it out of malloc'd heap buffers — including via an internal
+// drawverts path we cannot hook (not PixoAllocCodeBuffer, which our PixoCodeExec.c already RWX-overrides).
+// In 2004 the heap was executable, so this worked; a modern kernel marks the heap NX, so the JIT'd code
+// faults on instruction fetch (SIGSEGV, si_addr == the JIT IP in a rw-p [heap] page). The kernel makes the brk
+// heap executable when the process has the READ_IMPLIES_EXEC personality, but a modern kernel only grants
+// that for a *missing* PT_GNU_STACK marker (binutils always emits one, and an explicit executable-stack
+// marker no longer triggers it). So set the personality explicitly and re-exec ourselves once (personality
+// applies to the whole freshly-exec'd process, which is what makes the later brk heap executable; setting it
+// in place would leave the heap already allocated NX). Scoped to launches that RUN Pixomatic: no effect on a
+// GL launch, and web/plain/karma builds don't define USE_PIXOMATIC so this compiles out entirely. NB: an
+// executable heap is a security downgrade, accepted only for the software renderer.
+//
+// ★ ufront 2.79: decided from the RESOLVED device, not from the -SOFTWARERENDERER argument. 2.9 persists a
+// -*RENDERER choice in the ini so it "sticks next boot" — so the NEXT plain boot picked Pixomatic from the ini,
+// kept an NX heap, and SIGSEGV'd on its first frame (FPixoRenderInterface::DrawPrimitive jumping into the heap;
+// the same boot under `setarch i686 --read-implies-exec` reached the menu). Called after appInit, before the
+// splash or any window: the re-exec'd process repeats appInit and nothing else.
+static void ReexecIfPixomaticNeedsAnExecutableHeap( char** argv )
+{
+	if( !LaunchRunsPixomatic() )
+		return;
+	int persNow = personality( 0xffffffffUL );
+	if( persNow != -1 && (persNow & READ_IMPLIES_EXEC) )
+	{
+		debugf( TEXT("ufront 2.79: Pixomatic runs with an executable heap (READ_IMPLIES_EXEC)") );
+		return;
+	}
+	debugf( TEXT("ufront 2.79: the render device is Pixomatic -> re-exec with READ_IMPLIES_EXEC (its JIT runs code from the heap)") );
+	if( persNow != -1 && personality( (unsigned long)persNow | READ_IMPLIES_EXEC ) != -1 )
+		execv( "/proc/self/exe", argv );
+	debugf( NAME_Warning, TEXT("ufront 2.79: the re-exec failed (errno %i) -> Pixomatic runs on an NX heap and will likely crash"), errno );
+}
 #endif
 #if defined(__ANDROID__)
 // Android: SDLActivity dlsym's "SDL_main" from libUT2004.so and JNI-calls it. extern "C" +
@@ -1063,32 +1123,7 @@ int main(int argc, char **argv)
 #if defined(__ANDROID__)
     AndroidRedirectStdioToLogcat();
 #endif
-#if defined(USE_PIXOMATIC) && defined(__linux__)
-    // ufront 2.12 Part B — Pixomatic executable-heap fix. Pixomatic (Michael Abrash's JIT software rasterizer)
-    // generates x86 code at runtime and executes it out of malloc'd heap buffers — including via an internal
-    // drawverts path we cannot hook (not PixoAllocCodeBuffer, which our PixoCodeExec.c already RWX-overrides).
-    // In 2004 the heap was executable, so this worked; a modern kernel marks the heap NX, so the JIT'd code
-    // faults on instruction fetch when -SOFTWARERENDERER is active (SIGSEGV, si_addr == the JIT IP in a rw-p
-    // [heap] page). The kernel makes the brk heap executable when the process has the READ_IMPLIES_EXEC
-    // personality, but a modern kernel only grants that for a *missing* PT_GNU_STACK marker (binutils always
-    // emits one, and an explicit executable-stack marker no longer triggers it). So set the personality
-    // explicitly and re-exec ourselves once (personality applies to the whole freshly-exec'd process, which is
-    // what makes the later brk heap executable). Scoped to the Pixomatic software renderer ONLY: no effect on
-    // the GL4ES/OpenGL binaries, and web/plain/karma builds don't define USE_PIXOMATIC so this compiles out
-    // entirely (byte-identical). NB: an executable heap is a security downgrade, accepted only for this
-    // experimental software-renderer path.
-    {
-        UBOOL bWantPixo = 0;
-        for( int i=1; i<argc; i++ )
-            if( strcasecmp(argv[i], "-SOFTWARERENDERER")==0 ) { bWantPixo = 1; break; }
-        int persNow = personality(0xffffffffUL);
-        if( bWantPixo && persNow != -1 && !(persNow & READ_IMPLIES_EXEC) )
-        {
-            if( personality((unsigned long)persNow | READ_IMPLIES_EXEC) != -1 )
-                execv("/proc/self/exe", argv);   // re-exec with the new personality; on failure fall through
-        }
-    }
-#endif
+    // (The Pixomatic executable-heap re-exec is decided after appInit — ReexecIfPixomaticNeedsAnExecutableHeap.)
     appArgv0(argv[0]);
 
 	TCHAR CmdLine[1024] = TEXT("");
@@ -1211,6 +1246,12 @@ extern BYTE GLoadedOpenGLDrv; snprintf(&blah, 1, "%d", (int) GLoadedOpenGLDrv);
 extern BYTE GLoadedGL4ESDrv; snprintf(&blah, 1, "%d", (int) GLoadedGL4ESDrv);
 #endif
 extern BYTE GLoadedALAudio; snprintf(&blah, 1, "%d", (int) GLoadedALAudio);
+#endif
+
+#if defined(USE_PIXOMATIC) && defined(__linux__)
+		// The ini is read and the render-device classes are registered: decide whether this launch runs
+		// Pixomatic, and re-exec with an executable heap if so (before the splash opens any window).
+		ReexecIfPixomaticNeedsAnExecutableHeap( argv );
 #endif
 
 		// Init mode.
