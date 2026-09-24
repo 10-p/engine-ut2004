@@ -185,8 +185,8 @@ public:
 		// answered from that list (a FULL row, as a real reply is -- the browser replaces the whole row
 		// with it), after the proxy's own round trip, so the ping shown is the player -> proxy leg: a floor.
 		// NOTE: the stock browser only pings when GUIController MaxSimultaneousPings > 0: at the web's netspeed
-		// (1000000, above every threshold) CalculateMaxConnections() returns Min(MaxSimultaneousPings, 35) = 0,
-		// so by default the rows show "?" and this answers only a player who raised that setting.
+		// (1000000, above every threshold) CalculateMaxConnections() returns Min(MaxSimultaneousPings, 35), so
+		// DefUser.ini sets it to 35 (native and web alike); a User.ini made before that default still reads 0.
 		if( ProxyListActive() && GProxyPingMs >= 0 )
 		{
 			for( INT r = 0; r < GProxyRows.Num(); r++ )

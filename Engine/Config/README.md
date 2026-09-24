@@ -47,3 +47,12 @@ applied in engine code via the launcher's `#ifdef __EMSCRIPTEN__` overrides; thi
   query responder (+10), which the native uplink also uses to answer a master's NAT heartbeat request
   (`MasterServerUplink.cpp`, `HB_GamespyQueryPort`) and which third-party trackers query. OldUnreal 3374
   keeps it on too.
+- **`[XInterface.GUIController] MaxSimultaneousPings=35` (ufront 2.79)** — retail leaves it unset (0), which is
+  harmless at retail's `ConfiguredInternetSpeed=9636`; at OUR netspeed (1000000, both sets) the UT2K4 server
+  browser's `CalculateMaxConnections()` answers `Min(MaxSimultaneousPings, 35)` = 0 above 20000, so it pinged
+  NOTHING: every Ping read "?", and the master's cut / '?' names (ufront 2.79o) were never replaced by each
+  server's own reply. 35 is the value retail's own speed tiers give the fastest line. Measured natively
+  (server + client in one network-less namespace, the server a favourite): unset → "?"; 35 → the server's
+  own row with a ping. The property is `globalconfig`, so it belongs to `XInterface.GUIController`'s section,
+  not the UT2K4 subclass's. On the web the in-game browser's pings are answered from the game proxy's list.
+  ⚠ Like every `DefUser.ini` change it reaches only a NEW `User.ini`: an existing one keeps its 0.
