@@ -27,7 +27,7 @@ The first configure of each preset needs network access: SDL2, OpenAL Soft, GL4E
    ```
    cmake --preset native && cmake --build --preset native -j$(nproc)
    ```
-   The preset asks for `gcc-13`/`g++-13`, the validated compiler. With a newer GCC (tested: 16.2) add `-DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++` to the first command.
+   It uses your default `gcc`/`g++` (tested: 13 and 16.2). To pick another, add `-DCMAKE_C_COMPILER=... -DCMAKE_CXX_COMPILER=...` to the first command.
 3. The result is `build-native/Source/SDLLaunch/ut2004-pixo.bin` plus `libopenal.so`, which must stay next to it.
 
 ### Windows x86 (cross-compiled from Linux)

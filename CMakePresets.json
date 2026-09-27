@@ -11,8 +11,6 @@
             "hidden": true,
             "generator": "Unix Makefiles",
             "cacheVariables": {
-                "CMAKE_C_COMPILER": "gcc-13",
-                "CMAKE_CXX_COMPILER": "g++-13",
                 "CMAKE_BUILD_TYPE": "RelWithDebInfo"
             }
         },

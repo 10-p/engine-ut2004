@@ -42,7 +42,7 @@ cmake --preset wasm   && cmake --build --preset wasm   -j"$(nproc)"        # the
   64-bit, deprecated aliases).
 - **`wasm` is `-O2 -g`** (the dev default — named stacks and assertions at a playable speed);
   `wasm-debug` is the `-O0` last resort; `wasm-perf` is `-O3 -g0` shipping.
-- Prerequisites for a from-scratch host (gcc-13 or a newer GCC via `-DCMAKE_{C,CXX}_COMPILER`, the i386
+- Prerequisites for a from-scratch host (the system GCC, 13 and 16 tested, the i386
   sysroot, emsdk 5.0.7) are in `README.md` — a default install cannot build the 32-bit native presets.
 - Assets path is `UT_ASSETS_DIR` (pass `-DUT_ASSETS_DIR=`); only 2 files come from it.
   **If it is a mount it may not survive a reboot** — `ls $UT_ASSETS_DIR` before

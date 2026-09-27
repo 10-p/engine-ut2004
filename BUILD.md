@@ -23,15 +23,15 @@ native and needs an i386 multiarch sysroot that a default install does not have.
 ### 1. Prerequisites
 
 ```bash
-# --- compilers: gcc-13 is PINNED by the presets ---------------------------
-sudo apt install gcc-13 g++-13 cmake ninja-build git python3
-#   Newer GCC is unvalidated against this pre-C++11 tree. CMake must be >= 3.21
+# --- compilers: the system gcc (tested: 13 in CI, 16.2) ---------------------
+sudo apt install gcc g++ cmake ninja-build git python3
+#   CMake must be >= 3.21
 #   (tested on 4.2 — GL4ES declares an ancient cmake_minimum_required and the
 #   build forces a modern policy floor so it still configures on CMake 4.x).
 
 # --- 32-bit: every native preset is -m32 ----------------------------------
 sudo dpkg --add-architecture i386 && sudo apt update
-sudo apt install gcc-13-multilib g++-13-multilib
+sudo apt install gcc-multilib g++-multilib
 sudo apt install libc6-dev:i386 linux-libc-dev:i386 zlib1g-dev:i386 \
                  libx11-dev:i386 libxext-dev:i386 libxrandr-dev:i386 \
                  libxcursor-dev:i386 libxi-dev:i386 libxinerama-dev:i386 \
@@ -73,7 +73,7 @@ Two commands per target: configure, then build. **Nothing here is incremental ac
 each has its own `build-*/` directory and they do not share state.
 
 ```bash
-# =========================== NATIVE (32-bit, gcc-13) =======================
+# =========================== NATIVE (32-bit) ================================
 cmake --preset native
 cmake --build --preset native -j"$(nproc)"
 #   -> build-native/Source/SDLLaunch/ut2004-pixo.bin
@@ -543,7 +543,7 @@ build is the same data model with all of those.
 ```bash
 rm -rf /tmp/kd_b64          # SDL caches its failed X11 probes in SDL_config.h
 cmake -S . -B /tmp/kd_b64 -G "Unix Makefiles" \
-  -DCMAKE_C_COMPILER=gcc-13 -DCMAKE_CXX_COMPILER=g++-13 -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo \
   -DUT_GFX_BACKEND=gl4es -DUSE_PIXOMATIC=OFF -DUT_ALLOW_64BIT=ON -DUSE_KARMA_DECOMP=ON
 cmake --build /tmp/kd_b64 -j 24
 file /tmp/kd_b64/Source/SDLLaunch/ut2004.bin    # MUST say ELF 64-bit ... x86-64
@@ -768,7 +768,7 @@ Build config is the root `CMakeLists.txt` + `CMakePresets.json`.
 A separate **native NDK/Gradle** build wrapping the engine as `libUT2004.so`. It reuses the SDL2 +
 `GL4ESDrv` stack (→ native EGL GLES2) — **not** wasm. **The web build is priority #1 and stays
 byte-identical:** every Android delta is behind `#if defined(__ANDROID__)` (C++) / `if(ANDROID)`
-(CMake), which only the NDK toolchain sets — `emcmake` and the gcc-13 presets never do.
+(CMake), which only the NDK toolchain sets — `emcmake` and the native presets never do.
 
 - **Where:** `Android/` (Gradle 8.7 / AGP 8.5.2; `GameActivity extends SDLActivity`; vendored SDL
   **2.32.11** Java layer, version-matched to the engine's `release-2.32.x` SDL FetchContent).

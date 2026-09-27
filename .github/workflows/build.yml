@@ -85,7 +85,7 @@ jobs:
 
       - uses: actions/checkout@v4
 
-      # A 32-bit build (-m32): every dev package has to be the :i386 one. gcc-13 is what the preset pins.
+      # A 32-bit build (-m32): every dev package has to be the :i386 one. The presets use the default gcc, which is 13 on ubuntu-24.04.
       # SDL2 is built FROM SOURCE here (FetchContent) with SDL_X11 forced on, so it needs the i386 X11
       # development headers too — a shorter list makes SDL2 configure "successfully" without a video
       # driver, and the failure only shows up as a black window much later.
