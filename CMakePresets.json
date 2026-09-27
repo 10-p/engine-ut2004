@@ -74,7 +74,7 @@
         {
             "name": "wasm",
             "displayName": "Web (Emscripten/WASM) -- dev default",
-            "description": "Emscripten gl4es web build: -O2 + DWARF + assertions + exception catching. The everyday dev build \u2014 named stacks and readable errors while the engine still runs at a playable speed. NOT the small one: DWARF plus un-cleaned-up inlining makes it the largest of the three. Builds in build-wasm/. Run `source ~/emsdk/emsdk_env.sh` first (sets EMSDK).",
+            "description": "Emscripten gl4es web build: -O2 + DWARF + assertions + exception catching. The everyday dev build \u2014 named stacks and readable errors while the engine still runs at a playable speed. NOT the small one: DWARF plus un-cleaned-up inlining makes it the largest of the three. Builds in build-wasm/. Run `source <emsdk>/emsdk_env.sh` first (sets EMSDK).",
             "generator": "Unix Makefiles",
             "binaryDir": "${sourceDir}/build-wasm",
             "toolchainFile": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
@@ -96,7 +96,7 @@
         {
             "name": "wasm-perf",
             "displayName": "Web (Emscripten/WASM) -- max performance",
-            "description": "Emscripten gl4es web build: -O3, assertions off, no debug info -> smaller/faster. Builds in build-wasm-perf/. Run `source ~/emsdk/emsdk_env.sh` first.",
+            "description": "Emscripten gl4es web build: -O3, assertions off, no debug info -> smaller/faster. Builds in build-wasm-perf/. Run `source <emsdk>/emsdk_env.sh` first.",
             "inherits": "wasm",
             "binaryDir": "${sourceDir}/build-wasm-perf",
             "cacheVariables": {

@@ -2,20 +2,20 @@
 
 **What this is:** the **private** engine repo for the UT2004 (Unreal Engine 2.5) web port. It holds
 engine source only and produces a WASM artifact (+ native binaries). It is **not** the product on
-its own — the public monorepo `ufront` (`/home/ion/ufrontend`) consumes this engine's WASM artifact,
+its own — the public monorepo `ufront` (`10-p/unreal-frontend-arch-private`) consumes this engine's WASM artifact,
 owns the host page / UI / build assembly, and (from Phase 1) owns the browser glue behind a thin
 ABI shim.
 
 ## Map of the world
-| Thing | Path | Role |
+| Thing | Where | Role |
 |-------|------|------|
-| This engine repo (private) | `/home/ion/engines/engine-ut2004` | engine source → WASM/native artifacts |
-| Public monorepo | `/home/ion/ufrontend` | consumes the artifact; host/UI/glue/build; **migration state lives here** |
-| Game assets (never in git) | `/home/ion/ut2004-assets` | canonical ~5.8 GB; `$UT_ASSETS_DIR` |
-| Old monolith (rollback only) | `/home/ion/ut2004-exps` | the pre-split repo; do not develop here |
+| This engine repo (private) | `10-p/engine-ut2004` | engine source → WASM/native artifacts |
+| Public monorepo | `10-p/unreal-frontend-arch-private` | consumes the artifact; host/UI/glue/build; **migration state lives here** |
+| Game assets (never in git) | any local folder | canonical ~5.8 GB; `$UT_ASSETS_DIR` |
+| Old monolith (rollback only) | `ut2004-exps` | the pre-split repo; do not develop here |
 
 > **Migration plan & durable state are in the monorepo**, not here:
-> `/home/ion/ufrontend/docs/migration/STATE.md` (read it first if you are continuing the migration),
+> `docs/migration/STATE.md` (read it first if you are continuing the migration),
 > `ROADMAP.md`, `steps/*.md`. This repo was created by **step 0.1**.
 
 ## Status (Phase 1, important)
@@ -30,22 +30,22 @@ has happened.
 ## Build (full details: `BUILD.md`)
 ```bash
 cmake --preset native && cmake --build --preset native -j"$(nproc)"        # native twin
-source ~/emsdk/emsdk_env.sh
+source <emsdk>/emsdk_env.sh
 cmake --preset wasm   && cmake --build --preset wasm   -j"$(nproc)"        # the web build
 ```
 - **Green checkpoint for this repo:** both `native` and `wasm` build cleanly, producing
   `build-native/Source/SDLLaunch/ut2004-pixo.bin` and
   `build-wasm/Source/SDLLaunch/SDLLaunch.{js,wasm,data}`.
 - **`cmake --list-presets` is the authority.** There is no `gl4es` preset and no `legacy` preset —
-  both were retired with SDL 1.2 in ufront 2.34. The ten that exist are `native`, `native-karma`,
-  `karma-ref`, `physics`, `wasm`, `wasm-debug`, `wasm-perf`, `windows`, and the two
-  `wasm-karmadecomp-{debug,perf}`.
+  both were retired with SDL 1.2 in ufront 2.34. The main ones are `native`, `native64`,
+  `wasm`, `wasm-debug`, `wasm-perf` and `windows`; `BUILD.md` § *Build matrix* lists the rest (controls,
+  64-bit, deprecated aliases).
 - **`wasm` is `-O2 -g`** (the dev default — named stacks and assertions at a playable speed);
   `wasm-debug` is the `-O0` last resort; `wasm-perf` is `-O3 -g0` shipping.
-- Prerequisites for a from-scratch host (gcc-13, the i386 multiarch sysroot, emsdk 5.0.x) are in
-  `BUILD.md` — a default install cannot build the 32-bit native presets.
-- Assets path is `UT_ASSETS_DIR` (default `/home/ion/ut2004-assets`); only 4 INIs are preloaded.
-  **They live on a mount that does not survive a reboot** — `ls /home/ion/ut2004-assets` before
+- Prerequisites for a from-scratch host (gcc-13 or a newer GCC via `-DCMAKE_{C,CXX}_COMPILER`, the i386
+  sysroot, emsdk 5.0.7) are in `README.md` — a default install cannot build the 32-bit native presets.
+- Assets path is `UT_ASSETS_DIR` (pass `-DUT_ASSETS_DIR=`); only 2 files come from it.
+  **If it is a mount it may not survive a reboot** — `ls $UT_ASSETS_DIR` before
   blaming the engine.
 - GL4ES is fetched from our **fork by default** (`10-p/gl4es@fix/cubemap-bind-active-unit`). First
   configure of a fresh build dir needs network (FetchContent clone of GL4ES + SDL2/OpenAL ports).

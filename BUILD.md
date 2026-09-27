@@ -2,7 +2,7 @@
 
 This is the **private engine repo** for the UT2004 (UE2.5) web port — engine source only. Game
 assets (~5.8 GB: maps, textures, meshes, sounds, animations, compiled `.u` packages) live **out of
-tree** at `$UT_ASSETS_DIR` (default `/home/ion/ut2004-assets`) and are never tracked here.
+tree** and are never tracked here; only the wasm link reads two files from them (`-DUT_ASSETS_DIR`).
 
 > Status: the heavy browser glue has been **extracted** to the public monorepo (`@ufront/glue`,
 > Phase 1 steps 1.3/1.4) and is injected at runtime — the WASM build bakes only the thin `webrtc_*`
@@ -17,7 +17,7 @@ tree** at `$UT_ASSETS_DIR` (default `/home/ion/ut2004-assets`) and are never tra
 
 ## From scratch, in order
 
-Everything below assumes a Debian/Ubuntu host. **Do the prerequisites first** — the build is 32-bit
+The package names below are Debian/Ubuntu; [README.md](README.md) has the Arch equivalents. **Do the prerequisites first** — the build is 32-bit
 native and needs an i386 multiarch sysroot that a default install does not have.
 
 ### 1. Prerequisites
@@ -45,9 +45,9 @@ sudo apt install libc6-dev:i386 linux-libc-dev:i386 zlib1g-dev:i386 \
 #   missing one does not fail the configure, it silently drops a backend.
 
 # --- Emscripten, for the wasm presets -------------------------------------
-git clone https://github.com/emscripten-core/emsdk ~/emsdk
-~/emsdk/emsdk install 5.0.7 && ~/emsdk/emsdk activate 5.0.7
-#   Validated on 5.0.7. `source ~/emsdk/emsdk_env.sh` before ANY wasm preset —
+git clone https://github.com/emscripten-core/emsdk <emsdk>
+<emsdk>/emsdk install 5.0.7 && <emsdk>/emsdk activate 5.0.7
+#   Validated on 5.0.7. `source <emsdk>/emsdk_env.sh` before ANY wasm preset —
 #   the presets read $EMSDK to find the toolchain file, and a shell without it
 #   fails the configure with "toolchainFile not found".
 
@@ -59,10 +59,10 @@ sudo apt install g++-mingw-w64-i686-posix binutils-mingw-w64-i686
 not vendored — CMake FetchContent clones them into `build-*/_deps/`. Later builds in the same
 directory reuse that and are offline.
 
-**Assets.** Only the wasm link reads them, and only four INIs
-(`System/{Default.ini,DefUser.ini,Build.ini,Packages.md5}`) which it `--preload-file`s into MEMFS.
-Point at them with `-DUT_ASSETS_DIR=/abs/path` if they are not at `/home/ion/ut2004-assets`. The
-native presets read no assets at build time.
+**Assets.** Only the wasm link reads them, and only `System/{Build.ini,Packages.md5}` (the two boot INIs come
+from `Engine/Config/web`), which it `--preload-file`s into MEMFS. Point at the game folder with
+`-DUT_ASSETS_DIR=/abs/path`; the configure stops early if the two files are not there. The native presets
+read no assets at build time.
 
 > If a wasm configure fails on the preload step, check `ls $UT_ASSETS_DIR` is non-empty first — the
 > asset volume is a mount and does not survive a reboot.
@@ -83,7 +83,7 @@ cmake --build --preset windows64 -j"$(nproc)"
 #   -> build-windows64/Source/SDLLaunch/ut2004.exe   (run it under wine; see ktrace_gate.sh)
 
 # =========================== WEB (needs $EMSDK) ============================
-source ~/emsdk/emsdk_env.sh
+source <emsdk>/emsdk_env.sh
 
 cmake --preset wasm
 cmake --build --preset wasm -j"$(nproc)"
@@ -94,7 +94,7 @@ cmake --build --preset wasm-perf -j"$(nproc)"
 #   -> build-wasm-perf/Source/SDLLaunch/SDLLaunch.{js,wasm,data}
 
 # =============== WEB + RECOVERED KARMA (physics on the web) ================
-source ~/emsdk/emsdk_env.sh
+source <emsdk>/emsdk_env.sh
 
 cmake --preset wasm-karmadecomp-perf
 cmake --build --preset wasm-karmadecomp-perf -j"$(nproc)"
@@ -152,7 +152,7 @@ native stack* below) and any script still calling them will fail with "no such p
 | `wasm-nokarma` | `wasm-perf` + `USE_KARMA_DECOMP=OFF` — the NO_KARMA control for the browser suite. | `build-wasm-nokarma/` | same names |
 | `wasm-karmadecomp-debug` | **DEPRECATED alias of `wasm-debug`.** Karma is the default now, so the two are the same build. Kept working so existing commands and the handovers do not rot. | `build-wasm-karmadecomp-debug/` | same names |
 | `wasm-karmadecomp-perf` | **DEPRECATED alias of `wasm-perf`.** | `build-wasm-karmadecomp-perf/` | same names |
-| `windows` | 32-bit Windows cross-build (MinGW-w64), **now with the recovered Karma** — it took three portability fixes nothing else could surface (`proven.txt` `WIN32-PORT-3`). ★ **ufront 2.54: Pixomatic is ON here.** The earlier note that the DLL "is not in the drop" was half right — it was absent from `Thirdparty/`, but it ships in a retail `System/`, and it is now **vendored** at `Thirdparty/Pixomatic/Bin/pixomatic.dll` (PE32 i386, byte-identical to retail) and staged beside the exe. ⚠ `pixomatic.lib` is a pure IMPORT library and nothing is delay-loaded, so the DLL is a **load-time** dependency: without it the process does not start at all — measured, `objdump -p` lists `pixomatic.dll` and the Delay Import Directory is empty. ⚠ It BUILDS; it does not RUN under wine, and neither does the `windows-nokarma` control, so that is pre-existing rather than Karma's doing. | `build-windows/` | `Source/SDLLaunch/ut2004-pixo.exe` + `pixomatic.dll` |
+| `windows` | 32-bit Windows cross-build (MinGW-w64), **now with the recovered Karma** — it took three portability fixes nothing else could surface (`proven.txt` `WIN32-PORT-3`). ★ **ufront 2.54: Pixomatic is ON here.** The earlier note that the DLL "is not in the drop" was half right — it was absent from `Thirdparty/`, but it ships in a retail `System/`, and it is now **vendored** at `Thirdparty/Pixomatic/Bin/pixomatic.dll` (PE32 i386, byte-identical to retail) and staged beside the exe. ⚠ `pixomatic.lib` is a pure IMPORT library and nothing is delay-loaded, so the DLL is a **load-time** dependency: without it the process does not start at all — measured, `objdump -p` lists `pixomatic.dll` and the Delay Import Directory is empty. It runs under wine to `UT2K4MainMenu` (`-SOFTWARERENDERER`, Xvfb; see the note below on the wine loader). | `build-windows/` | `Source/SDLLaunch/ut2004-pixo.exe` + `pixomatic.dll` |
 | **`windows64`** | 64-bit Windows (MinGW-w64 cross) **with the recovered Karma** — the only reason an x64 Windows build exists, since MinGW cannot link MathEngine's MSVC-mangled prebuilts. **LLP64**: `long` is 4 bytes where Linux's is 8 and pointers are 8 on both, so it is the only target exercising that combination. Validated through the same trajectory gate as everything else (`ktrace_gate.sh` runs a `.exe` under wine). | `build-windows64/` | `.../ut2004.exe` |
 | `windows-nokarma` | `windows` + `USE_KARMA_DECOMP=OFF` — the control that established the line above. | `build-windows-nokarma/` | `.../ut2004-nokarma.exe` |
 | *(no preset)* **Windows x64** | The 64-bit Windows cross-build, and the LAST target to be exercised at all. Not a preset because it is not a shipping configuration — see the section below for the one-liner. | `build-windows64/` | `Source/SDLLaunch/ut2004.exe` (PE32+ x86-64) |
@@ -624,7 +624,7 @@ default produces a crash that reads exactly like a physics bug — `proven.txt` 
 renderer producing a confident wrong conclusion in both directions at once.
 
 ```bash
-WINEPREFIX=~/.wine64ut wine64 ./ut2004.exe \
+WINEPREFIX=<prefix> wine64 ./ut2004.exe \
   "ONS-Torlan?game=Onslaught.ONSOnslaughtGame?SpectatorOnly=1?NumBots=6?QuickStart=True" \
   -OPENGLRENDERER -nohomedir -FIXEDFPS=30 -KTRACE=ktrace-win64.csv
 ```
@@ -806,7 +806,7 @@ byte-identical:** every Android delta is behind `#if defined(__ANDROID__)` (C++)
 ```bash
 # NDK r30 + SDK cmake + Android Studio JBR 21. Emulator: x86_64 / API-34 (arm64 runs via translation).
 cd Android
-JAVA_HOME=/home/ion/android-studio/jbr ./gradlew :app:assembleDebug   # -> app/build/outputs/apk/debug/app-debug.apk
+JAVA_HOME=<android-studio>/jbr ./gradlew :app:assembleDebug   # -> app/build/outputs/apk/debug/app-debug.apk
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -n com.ut2004.android/.GameActivity                # SDL_main runs the engine; logcat tag UT2004
 ```
@@ -818,14 +818,14 @@ adb shell am start -n com.ut2004.android/.GameActivity                # SDL_main
 
 ## Assets (`UT_ASSETS_DIR`)
 
-The WASM link **preloads 4 INIs** into MEMFS (needed during `appInit`):
-`System/{Default.ini,DefUser.ini,Build.ini,Packages.md5}`. They are read from `$UT_ASSETS_DIR`:
+The WASM link **preloads 4 INIs** into MEMFS (needed during `appInit`): `System/{Default.ini,DefUser.ini}`
+from the tracked `Engine/Config/web`, and `System/{Build.ini,Packages.md5}` from `$UT_ASSETS_DIR`:
 
 ```bash
 cmake --preset wasm -DUT_ASSETS_DIR=/abs/path/to/ut2004-assets
 ```
 
-Default: `/home/ion/ut2004-assets`. The native presets do **not** read assets at build time (the
+The native presets do **not** read assets at build time (the
 native binary only compiles here; running it needs a runtime dir with INIs + assets, out of scope
 for the build checkpoint). All other game content is streamed at runtime by FetchFS over HTTP from
 the deployed asset tree — it is never a build input.

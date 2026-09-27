@@ -31,4 +31,4 @@ Full table in `../BUILD.md`.
 ## Where the migration plan lives
 This repo was created by **step 0.1** of the ufront re-architecture. The phased plan and durable
 cross-context state are in the **monorepo**, not here:
-`/home/ion/ufrontend/docs/migration/{STATE.md,ROADMAP.md,steps/}`.
+the monorepo's `docs/migration/{STATE.md,ROADMAP.md,steps/}`.
