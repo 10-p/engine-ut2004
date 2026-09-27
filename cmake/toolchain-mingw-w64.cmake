@@ -24,7 +24,14 @@ set(CMAKE_SYSTEM_PROCESSOR ${MINGW_TARGET_ARCH})
 # (see CMakeLists.txt), so this costs no extra DLL beside the exe.
 set(MINGW_THREAD_MODEL "win32" CACHE STRING "MinGW thread model: win32 (no pthreads) or posix (winpthreads)")
 if(MINGW_THREAD_MODEL STREQUAL "posix")
-  set(_MINGW_SUFFIX "-posix")
+  # Debian/Ubuntu install both models side by side as `-posix`/`-win32`; MSYS2, Arch and Fedora ship a
+  # single, already-posix compiler with no suffix.
+  find_program(_MINGW_POSIX_GCC ${MINGW_TARGET_ARCH}-w64-mingw32-gcc-posix)
+  if(_MINGW_POSIX_GCC)
+    set(_MINGW_SUFFIX "-posix")
+  else()
+    set(_MINGW_SUFFIX "")
+  endif()
 else()
   set(_MINGW_SUFFIX "")
 endif()

@@ -221,6 +221,11 @@ if(NOT EMSCRIPTEN AND NOT ANDROID)
     string(APPEND CMAKE_EXE_LINKER_FLAGS " -m32")
     string(APPEND CMAKE_SHARED_LINKER_FLAGS " -m32")
     string(APPEND CMAKE_MODULE_LINKER_FLAGS " -m32")
+    # find_library() must look in lib32 as well: without a multiarch triplet (Arch: /usr/lib = 64-bit,
+    # /usr/lib32 = i386) SDL2 picks up the 64-bit libX11 and its X11 probes fail exactly as above.
+    if(NOT CMAKE_LIBRARY_ARCHITECTURE)
+      set(CMAKE_FIND_LIBRARY_CUSTOM_LIB_SUFFIX 32)
+    endif()
   endif()
 endif()
 

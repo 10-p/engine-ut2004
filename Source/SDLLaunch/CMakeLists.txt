@@ -323,6 +323,13 @@ if(EMSCRIPTEN)
   # ${CMAKE_SOURCE_DIR}/../ut2004-assets.)
   set(UT_ASSETS_DIR "/home/ion/ut2004-assets" CACHE PATH
       "Directory holding UT2004 game assets (System/*.ini are preloaded into the WASM build)")
+  # Fail at configure, not minutes later at the link, when the tree is not there (a fresh machine).
+  foreach(_f System/Build.ini System/Packages.md5)
+    if(NOT EXISTS "${UT_ASSETS_DIR}/${_f}")
+      message(FATAL_ERROR "UT_ASSETS_DIR: ${UT_ASSETS_DIR}/${_f} not found. "
+                          "Configure with -DUT_ASSETS_DIR=<UT2004 folder> (the one holding System/).")
+    endif()
+  endforeach()
   # Preload essential INI files into MEMFS (~30KB, needed during appInit).
   # The two BOOT CONFIG templates come from the TRACKED, WEB-SPECIFIC set in this repo
   # (Engine/Config/web), not from the out-of-tree asset dir. Rationale:
