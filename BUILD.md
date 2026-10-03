@@ -23,7 +23,7 @@ native and needs an i386 multiarch sysroot that a default install does not have.
 ### 1. Prerequisites
 
 ```bash
-# --- compilers: the system gcc (tested: 13 in CI, 16.2) ---------------------
+# --- compilers: the system gcc (tested: 13 in CI, 15.2, 16.2) ---------------
 sudo apt install gcc g++ cmake ninja-build git python3
 #   CMake must be >= 3.21
 #   (tested on 4.2 — GL4ES declares an ancient cmake_minimum_required and the

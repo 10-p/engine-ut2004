@@ -27,7 +27,7 @@ The first configure of each preset needs network access: SDL2, OpenAL Soft, GL4E
    ```
    cmake --preset native && cmake --build --preset native -j$(nproc)
    ```
-   It uses your default `gcc`/`g++` (verified with 16.2; CI builds with 13). To pick another, add `-DCMAKE_C_COMPILER=... -DCMAKE_CXX_COMPILER=...` to the first command.
+   It uses your default `gcc`/`g++` (verified with 16.2 on Arch and 15.2 on Ubuntu 26.04; CI builds with 13). To pick another, add `-DCMAKE_C_COMPILER=... -DCMAKE_CXX_COMPILER=...` to the first command.
 3. The result is `build-native/Source/SDLLaunch/ut2004-pixo.bin` plus `libopenal.so`, which must stay next to it.
 
 **64-bit (x86_64):** use the `native64` preset instead of `native`, with the regular 64-bit libraries in place of the i386/lib32 ones. The result is `build-native64/Source/SDLLaunch/ut2004.bin`; it has no software renderer (Pixomatic is 32-bit only).
@@ -39,6 +39,8 @@ The first configure of each preset needs network access: SDL2, OpenAL Soft, GL4E
    cmake --preset windows && cmake --build --preset windows -j$(nproc)
    ```
 3. The result is `build-windows/Source/SDLLaunch/ut2004-pixo.exe` plus `pixomatic.dll` and `OpenAL32.dll`, which must stay next to it.
+
+**64-bit (x86_64):** use the `windows64` preset with the x86_64 MinGW toolchain (`g++-mingw-w64-x86-64-posix` on Debian/Ubuntu). The result is `build-windows64/Source/SDLLaunch/ut2004.exe` plus `OpenAL32.dll`; like `native64` it has no software renderer.
 
 ### Windows x86 (MSYS2 on Windows)
 1. Install MSYS2 and open the `MINGW32` prompt.
