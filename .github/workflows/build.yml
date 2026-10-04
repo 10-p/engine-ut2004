@@ -85,7 +85,8 @@ jobs:
 
       - uses: actions/checkout@v4
 
-      # A 32-bit build (-m32): every dev package has to be the :i386 one. The presets use the default gcc, which is 13 on ubuntu-24.04.
+      # A 32-bit build (-m32): every dev package has to be the :i386 one. The presets use the system gcc; this job installs
+      # only the versioned gcc-13 (no unversioned `gcc`/`cc` in the container), so Configure names it — see there.
       # SDL2 is built FROM SOURCE here (FetchContent) with SDL_X11 forced on, so it needs the i386 X11
       # development headers too — a shorter list makes SDL2 configure "successfully" without a video
       # driver, and the failure only shows up as a black window much later.
@@ -118,7 +119,13 @@ jobs:
           path: build-${{ matrix.preset }}/_deps
           key: deps-${{ matrix.preset }}-${{ hashFiles('CMakeLists.txt', 'Source/*/CMakeLists.txt', 'cmake/*.cmake') }}
 
+      # ★ Name the compiler this job tests. a599905 dropped the gcc-13 pin from the presets (a fresh machine has no
+      # gcc-13), and the container has no default `cc`, so every Linux job died in `project()` with "No
+      # CMAKE_C_COMPILER could be found" — unseen for ten days because a billing hold stopped every job (2026-10-04).
       - name: Configure
+        env:
+          CC: gcc-13
+          CXX: g++-13
         run: cmake --preset ${{ matrix.preset }}
 
       - name: Build
@@ -333,7 +340,12 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      # ★ Only platform-tools: the action's default list still names `tools`, which the current SDK repository
+      # (cmdline-tools 16.0) no longer has, so sdkmanager exited 1 before any build step ran (2026-10-04). The
+      # NDK and CMake come from the next step.
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       # The NDK and the CMake the Gradle plugin asks for; the versions match app/build.gradle's
       # ndkVersion, because AGP silently downloads its own on a mismatch and then CI is not building what
