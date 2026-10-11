@@ -769,6 +769,10 @@ family, and its `docs/CHEAT-COMMANDS.md` is the reference for the cheats):
 - **The command line holds 4,096 characters** (`SDLLaunch`, Core's `GCmdLine`, now copied bounded): a token that
   does not fit is dropped whole, with a warning once the log is up. It was a `TCHAR[1024]` filled with `strcat`,
   which the web's argv (the URL plus every `-ini:` seed) could overrun.
+- **`FindFiles` matches like Windows' `FindFirstFile`** (`Core/Inc/FFileManagerUnix.h`, engine-uc2's matcher):
+  `*`/`?` anywhere, case-insensitive, `*.*` = everything, and the Files/Directories flags honoured (no `.`/`..`). It
+  was case-sensitive with a `*.ext` substring test, so e.g. the music menu's `*.OGG` (GetOGGList) found nothing on a
+  case-sensitive file system.
 
 ## Repository layout
 

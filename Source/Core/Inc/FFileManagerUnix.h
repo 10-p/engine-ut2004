@@ -644,9 +644,9 @@ public:
     		TCHAR* tmp = appStaticString1024();
     		appStrcpy( tmp, BaseDir );
 		    TCHAR* Filename = appStrcat( tmp, FakeFilename );
-			SearchDirectory( Result, Filename );
+			SearchDirectory( Result, Filename, Files, Directories );
         }
-		SearchDirectory( Result, FakeFilename );
+		SearchDirectory( Result, FakeFilename, Files, Directories );
 
 		return Result;
 		unguard;
@@ -800,7 +800,44 @@ public:
 
 
 protected:
-	void SearchDirectory( TArray<FString> &Result, const TCHAR* Filename )
+	// ufront (from engine-uc2, which took this file from here and fixed it): Windows FindFirstFile wildcard semantics:
+	// '*' and '?', "*.*" matches every name, and (with __FILE_NOCASE, which UT2004 defines) letters match regardless
+	// of case. The stock matcher was case-sensitive (GetOGGList's "..\\Music\\*.OGG" found none of the .ogg files) and took
+	// "*.ext" as a substring test; "*.*" missed names without a dot.
+	static UBOOL WildcardMatch( const char* Pattern, const char* Name )
+	{
+		if( strcmp( Pattern, "*.*" ) == 0 )
+			return 1;
+		while( *Pattern )
+		{
+			if( *Pattern == '*' )
+			{
+				while( *Pattern == '*' )
+					Pattern++;
+				if( !*Pattern )
+					return 1;
+				for( ; *Name; Name++ )
+					if( WildcardMatch( Pattern, Name ) )
+						return 1;
+				return 0;
+			}
+			if( !*Name )
+				return 0;
+#if __FILE_NOCASE
+			if( *Pattern != '?' && tolower((unsigned char)*Pattern) != tolower((unsigned char)*Name) )
+#else
+			if( *Pattern != '?' && *Pattern != *Name )
+#endif
+				return 0;
+			Pattern++;
+			Name++;
+		}
+		return *Name == 0;
+	}
+
+	// Lists the entries of one directory that match the wildcard, files and/or directories as asked,
+	// never "." or ".." (FFileManagerWindows::FindFiles).
+	void SearchDirectory( TArray<FString> &Result, const TCHAR* Filename, UBOOL Files, UBOOL Directories )
 	{
 		guard(FFileManagerUnix::SearchDirectory);
 		DIR *Dirp;
@@ -809,19 +846,11 @@ protected:
 		char File[PATH_MAX];
 		char *Filestart;
 		char *Cur;
-		UBOOL Match;
 
-		// Initialize Path to Filename.
+		// Initialize Path to Filename ("\\" to "/" and the case-insensitive lookup are done in appUnixPath).
         unixToANSI( File, Filename );
 		strcpy( Path, appUnixPath(File) );
 
-        /* Do this (and case sensitivity check) in appUnixPath, above. --ryan.
-		// Convert MS "\" to Unix "/".
-		for( Cur = Path; *Cur != '\0'; Cur++ )
-			if( *Cur == '\\' )
-				*Cur = '/';
-        */
-	
 		// Separate path and filename.
 		Filestart = Path;
 		for( Cur = Path; *Cur != '\0'; Cur++ )
@@ -845,70 +874,20 @@ protected:
 			return;
 		}
 
-		Direntp = readdir( Dirp );
-
 		// Check each entry.
-		while( Direntp != NULL )
+		while( (Direntp = readdir( Dirp )) != NULL )
 		{
-			Match = false;
+			if( strcmp( Direntp->d_name, "." ) == 0 || strcmp( Direntp->d_name, ".." ) == 0 )
+				continue;
+			if( !WildcardMatch( File, Direntp->d_name ) )
+				continue;
 
-			if( strcmp( File, "*" ) == 0 )
-			{
-				// Any filename.
-				Match = true;
-			}
-			else if( strcmp( File, "*.*" ) == 0 )
-			{
-				// Any filename with a '.'.
-				if( strchr( Direntp->d_name, '.' ) != NULL )
-					Match = true;
-			}
-			else if( File[0] == '*' )
-			{
-				// "*.ext" filename.
-				if( strstr( Direntp->d_name, (File + 1) ) != NULL )
-					Match = true;
-			}
-			else if( File[strlen( File ) - 1] == '*' )
-			{
-				// "name.*" filename.
-				if( strncmp( Direntp->d_name, File, strlen( File ) - 1 ) == 0 )
-					Match = true;
-			}
-			else if( strstr( File, "*" ) != NULL )
-			{
-				// single str.*.str match.
-				char* star = strstr( File, "*" );
-				INT filelen = strlen( File );
-				INT starlen = strlen( star );
-				INT starpos = filelen - (starlen - 1);
-				char prefix[256];
-				strncpy( prefix, File, starpos );
-				star++;
-				if( strncmp( Direntp->d_name, prefix, starpos - 1 ) == 0 )
-				{
-					// part before * matches
-					char* postfix = Direntp->d_name + (strlen(Direntp->d_name) - starlen) + 1;
-					if ( strcmp( postfix, star ) == 0 )
-						Match = true;
-				}
-			}
-			else
-			{
-				// Literal filename.
-				if( strcmp( Direntp->d_name, File ) == 0 )
-					Match = true;
-			}
-
-			// Does this entry match the Filename?
-			if( Match )
-			{
-				// Yes, add the file name to Result.
+			// File or directory, as asked.
+			char Full[PATH_MAX];
+			snprintf( Full, sizeof(Full), "%s%s", Path, Direntp->d_name );
+			UBOOL IsDir = isdir( Full );
+			if( IsDir ? Directories : Files )
 				new(Result)FString(Direntp->d_name);
-			}
-
-			// Get next entry.
-			Direntp = readdir( Dirp );
 		}
 
 		// Close directory.
