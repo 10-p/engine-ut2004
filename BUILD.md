@@ -764,6 +764,11 @@ family, and its `docs/CHEAT-COMMANDS.md` is the reference for the cheats):
   before the engine's commands) and in `UGameEngine::Exec` (the web's `ue_exec_command` reaches the engine only).
 - **`[Engine.GameEngine] FpsLogSeconds=<s>`** (0 = off) / console **`FPSLOG <s>`**: an `FPS:` log line every `<s>`
   seconds (frames, fps, frame ms avg/min/max/p99, the 1% low, the viewport size). `Source/Engine/Src/UnFpsLog.cpp`.
+- **`Init: Language: <ext>`** in the log at start-up: the language this run took (`[Engine.Engine] Language`, read
+  after the `-ini:` overrides; the frontend's Language setting).
+- **The command line holds 4,096 characters** (`SDLLaunch`, Core's `GCmdLine`, now copied bounded): a token that
+  does not fit is dropped whole, with a warning once the log is up. It was a `TCHAR[1024]` filled with `strcat`,
+  which the web's argv (the URL plus every `-ini:` seed) could overrun.
 
 ## Repository layout
 

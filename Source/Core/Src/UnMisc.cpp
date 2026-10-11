@@ -2186,7 +2186,7 @@ CORE_API void appInit( const TCHAR* InPackage, const TCHAR* InCmdLine, FMalloc* 
 			InCmdLine++;
 	#endif
 
-	appStrcpy( GCmdLine, InCmdLine );
+	appStrncpy( GCmdLine, InCmdLine, ARRAY_COUNT(GCmdLine) );	// ufront: bounded (an unbounded strcpy before)
 
 	// Error history.
 	appStrcpy( GErrorHist, TEXT("General protection fault!\r\n\r\nHistory: ") );
@@ -2210,7 +2210,7 @@ CORE_API void appInit( const TCHAR* InPackage, const TCHAR* InCmdLine, FMalloc* 
 	{
 		FString	Command;
 		verify(appLoadFileToString(Command,CommandFile,GFileManager));
-		appStrcpy(GCmdLine,*Command);
+		appStrncpy(GCmdLine,*Command,ARRAY_COUNT(GCmdLine));	// ufront: bounded
 		GFileManager->Delete(CommandFile);
 	}
 
@@ -2340,6 +2340,9 @@ CORE_API void appInit( const TCHAR* InPackage, const TCHAR* InCmdLine, FMalloc* 
 	TCHAR Temp[256];
 	if( GConfig->GetString( TEXT("Engine.Engine"), TEXT("Language"), Temp, ARRAY_COUNT(Temp) ) )
 		UObject::SetLanguage( Temp );
+	// ufront (the launcher's Language, G-4 of the UC2 port): say which language this run uses, so a log alone tells
+	// which localisation the menus come from (the -ini: override above is logged as such, not whether it took).
+	debugf( NAME_Init, TEXT("Language: %s"), UObject::GetLanguage() );
 
     // gam ---
     if( !GConfig->GetString(TEXT("BuildVersion"), TEXT("Label"), Temp, ARRAY_COUNT(Temp), TEXT("Build.ini")) ) //amb

@@ -1126,16 +1126,23 @@ int main(int argc, char **argv)
     // (The Pixomatic executable-heap re-exec is decided after appInit — ReexecIfPixomaticNeedsAnExecutableHeap.)
     appArgv0(argv[0]);
 
-	TCHAR CmdLine[1024] = TEXT("");
-    if (argc >= 2)
-    {
-	    appStrcpy(CmdLine, appFromAnsi(argv[1]));
-	    for (INT i = 2; i < argc; i++)
-    	{
-       		appStrcat(CmdLine, TEXT(" "));
-    		appStrcat(CmdLine, appFromAnsi(argv[i]));
-    	}
-    }
+	// ufront (as engine-uc2's launcher, which took this code): 4096 characters, the size of Core's GCmdLine, and a
+	// token that does not fit is dropped whole, with a warning once the log is up. It was a TCHAR[1024] filled with
+	// appStrcat (strcat): the web's argv (the URL plus every -ini: seed of the launcher) could overrun it.
+	TCHAR CmdLine[4096] = TEXT("");
+	UBOOL CmdLineCut = 0;
+	for (INT i = 1; i < argc; i++)
+	{
+		const TCHAR* Arg = appFromAnsi(argv[i]);
+		if (appStrlen(CmdLine) + appStrlen(Arg) + 2 >= ARRAY_COUNT(CmdLine))
+		{
+			CmdLineCut = 1;
+			break;
+		}
+		if (i > 1)
+			appStrcat(CmdLine, TEXT(" "));
+		appStrcat(CmdLine, Arg);
+	}
 
 #if MACOSX  // GameRanger support.  --ryan.
     if (GRCheckFileForCmd())
@@ -1176,6 +1183,8 @@ int main(int argc, char **argv)
 		// Init core.
 		GIsClient = GIsGuarded = 1;
 		appInit( GPackage, CmdLine, &Malloc, &Log, &Error, &Warn, &FileManager, FConfigCacheIni::Factory, 1 );
+		if( CmdLineCut )
+			debugf( NAME_Warning, TEXT("The command line is longer than %i characters: the arguments after '%s' were dropped"), ARRAY_COUNT(CmdLine), CmdLine + Max(0, appStrlen(CmdLine) - 40) );
 
 		// Launch the bug report monitor.
 #ifndef _DEBUG
