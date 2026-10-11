@@ -789,6 +789,17 @@ family, and its `docs/CHEAT-COMMANDS.md` is the reference for the cheats):
   side table `GSerializedPointers` (128K entries) was searched linearly for every reference at every load and every
   garbage collection; the native name stash of a not-yet-registered object waits in `StateFrame`. 32-bit builds
   (the web, Windows, the shipped Linux binary) are unchanged: `SERIAL_POINTER_INDEX` is 64-bit only.
+- **Game pads on the web and the desktop** (`Source/SDL2Drv`; Android had them already): one pad, the first
+  connected, opened on `SDL_CONTROLLERDEVICEADDED` (also for a pad present at start) and closed on `REMOVED`,
+  releasing every pad key; Android's map (`DefUser.ini` binds every `IK_Joy*`): sticks -> `IK_JoyX/Y` (move) and
+  `IK_JoyV`/`IK_JoySlider1` (look), triggers -> `IK_Joy1` (fire) / `IK_Joy3` (alt fire). On the web the press that
+  made the browser list the pad, which SDL's Emscripten driver never reports, is read from
+  `navigator.getGamepads()` once at the connect and given to the game (engine-uc2's H-3). Always on, with **no
+  key** (the owner, 2026-10-11: "Always on, no switch"): the `[SDL2Drv.SDL2Client] UseJoystick=False` the inis
+  carry was read by nothing, and every web player's saved `UT2004.ini` has it, so honouring it would keep pads off
+  for all of them. Log lines: `SDL2: game pad connected: <name>` / `disconnected` / `buttons held at the connect
+  given to the game: 0x<mask>`.
+- Not here: engine-uc2's deterministic `ucc make` saves (this engine's scripts are never rebuilt).
 
 ## Repository layout
 

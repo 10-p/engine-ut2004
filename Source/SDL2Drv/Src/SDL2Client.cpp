@@ -112,10 +112,15 @@ void USDL2Client::Init( UEngine* InEngine )
     // Android also brings up the game-controller subsystem (2.10d gamepad).
     // SDL_INIT_GAMECONTROLLER implies SDL_INIT_JOYSTICK and makes SDL emit
     // SDL_CONTROLLER* events, which USDL2Viewport::UpdateInput turns into IK_Joy*
-    // input. Web/desktop keep SDL_INIT_VIDEO only -> byte-identical.
+    // input.
     const Uint32 SDL2DrvInitFlags = SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER;
 #else
-    const Uint32 SDL2DrvInitFlags = SDL_INIT_VIDEO;
+    // ufront (the UC2 port's pads): the web and the desktop get pads too, always (the owner, 2026-10-11: "Always on, no
+    // switch"; one pad, the first connected; USDL2Viewport::UpdateInput). There is deliberately NO key: the
+    // [SDL2Drv.SDL2Client] UseJoystick=False the inis carried since the fork was read by nothing, and every web
+    // player's saved UT2004.ini still has it, so honouring it now would keep pads off for all of them. Pads already
+    // connected arrive as SDL_CONTROLLERDEVICEADDED events like later ones.
+    const Uint32 SDL2DrvInitFlags = SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER;
 #endif
     if (SDL_Init(SDL2DrvInitFlags) == -1)
     {

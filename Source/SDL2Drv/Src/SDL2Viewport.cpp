@@ -15,6 +15,9 @@
 #endif
 
 #include "SDL2Drv.h"
+#if defined(__EMSCRIPTEN__)
+#include <emscripten/em_asm.h>   // ufront: WebPadPressed (the H-3 read of a pad's first press)
+#endif
 
 #if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
 #include <math.h>
@@ -223,7 +226,7 @@ Java_com_ut2004_android_GameActivity_nativeTouchButton( JNIEnv*, jclass, jint Bu
     wiring (NO ini editing):
       left stick  -> IK_JoyX / IK_JoyY        (aStrafe / aBaseY Invert=-1)  [move]
       right stick -> IK_JoyV / IK_JoySlider1  (aBaseX turn / aLookUp pitch) [look]
-      buttons     -> IK_Joy* per GAndroidPadButtonMap (all remappable in Controls)
+      buttons     -> IK_Joy* per GPadButtonMap (all remappable in Controls)
       triggers    -> IK_Joy1 (Fire) / IK_Joy3 (AltFire), thresholded to buttons
     Left-stick move reuses the touch move channel (GAndroidMoveX/Y) so one consumer
     emits IK_JoyX/Y for both. NOTE: mappings/feel are the owner's to tune live.
@@ -243,11 +246,21 @@ static FLOAT  GAndroidPadLastPitch = 0.f;
 static UBOOL  GAndroidPadRT = 0;   // right trigger -> IK_Joy1 (Fire)
 static UBOOL  GAndroidPadLT = 0;   // left trigger  -> IK_Joy3 (AltFire)
 
-static const FLOAT GAndroidPadDeadzone     = 0.12f;  // stick deadzone (engine ini also deadzones)
-static const FLOAT GAndroidPadTriggerPress = 0.35f;  // trigger press threshold
+#endif // __ANDROID__
+
+/*-----------------------------------------------------------------------------
+    Game pads (2.10d on Android; ufront on the web and the desktop, from the UC2
+    port's pads, the owner's 2026-10-11 parity list). The map, the deadzone and the
+    trigger threshold are shared; Android keeps its own state below (its move
+    channel is the touch overlay's), the web and the desktop use one pad (the first
+    connected) with their own. [SDL2Drv.SDL2Client] UseJoystick turns pads off.
+-----------------------------------------------------------------------------*/
+
+static const FLOAT GPadDeadzone     = 0.12f;  // stick deadzone (engine ini also deadzones)
+static const FLOAT GPadTriggerPress = 0.35f;  // trigger press threshold
 
 // SDL_CONTROLLER_BUTTON_* -> EInputKey. All targets are DefUser.ini defaults; remappable.
-static const BYTE GAndroidPadButtonMap[SDL_CONTROLLER_BUTTON_MAX] =
+static const BYTE GPadButtonMap[SDL_CONTROLLER_BUTTON_MAX] =
 {
     /* A             */ IK_Joy2,    // Jump
     /* B             */ IK_Joy4,    // Duck / crouch
@@ -267,15 +280,59 @@ static const BYTE GAndroidPadButtonMap[SDL_CONTROLLER_BUTTON_MAX] =
 };
 
 // Rescale a normalized stick axis so motion starts at 0 past the deadzone.
-static inline FLOAT AndroidPadAxis( FLOAT V )
+static inline FLOAT PadAxis( FLOAT V )
 {
-    if( Abs(V) < GAndroidPadDeadzone )
+    if( Abs(V) < GPadDeadzone )
         return 0.f;
-    FLOAT S = ( V > 0.f ? (V - GAndroidPadDeadzone) : (V + GAndroidPadDeadzone) ) / (1.f - GAndroidPadDeadzone);
+    FLOAT S = ( V > 0.f ? (V - GPadDeadzone) : (V + GPadDeadzone) ) / (1.f - GPadDeadzone);
     return Clamp( S, -1.f, 1.f );
 }
 
-#endif // __ANDROID__
+#if !defined(__ANDROID__)
+static SDL_GameController* GPad          = NULL;   // the pad in use (the first connected)
+static FLOAT               GPadMoveX     = 0.f;    // left stick  -> IK_JoyX / IK_JoyY (held-absolute)
+static FLOAT               GPadMoveY     = 0.f;
+static FLOAT               GPadLastMoveX = 0.f;
+static FLOAT               GPadLastMoveY = 0.f;
+static FLOAT               GPadYaw       = 0.f;    // right stick -> IK_JoyV / IK_JoySlider1
+static FLOAT               GPadPitch     = 0.f;
+static FLOAT               GPadLastYaw   = 0.f;
+static FLOAT               GPadLastPitch = 0.f;
+static UBOOL               GPadRT        = 0;      // right trigger -> IK_Joy1 (Fire)
+static UBOOL               GPadLT        = 0;      // left trigger  -> IK_Joy3 (AltFire)
+
+static SDL_JoystickID PadInstance( SDL_GameController* Pad )
+{
+    return Pad ? SDL_JoystickInstanceID( SDL_GameControllerGetJoystick( Pad ) ) : -1;
+}
+
+#if defined(__EMSCRIPTEN__)
+//
+// H-3 (the UC2 port's fix for every SDL engine on the web): the buttons pressed right now on the browser's first
+// listed pad named Id (bit i = Gamepad.buttons[i].pressed, the W3C "standard" layout), 0 if none. A browser lists a
+// pad only at its first press, and that press is already down in the snapshot SDL's Emscripten driver keeps as the
+// pad's starting state (it reports CHANGES only), so SDL never reports it: read it once at the connect. Runs on the
+// page's main thread (the engine runs on a worker). (In the EM_ASM block: no top-level commas and no // comments.)
+//
+static DWORD WebPadPressed( const char* Id )
+{
+    return (DWORD)MAIN_THREAD_EM_ASM_INT({
+        if (typeof navigator === 'undefined' || !navigator.getGamepads) return 0;
+        var id = UTF8ToString($0);
+        var pads = navigator.getGamepads();
+        for (var i = 0; i < pads.length; i++) {
+            var g = pads[i];
+            if (!g || g.id !== id || !g.buttons) continue;
+            var m = 0;
+            for (var b = 0; b < g.buttons.length && b < 31; b++)
+                if (g.buttons[b] && g.buttons[b].pressed) m = m | (1 << b);
+            return m;
+        }
+        return 0;
+    }, Id );
+}
+#endif
+#endif // !__ANDROID__
 
 /*-----------------------------------------------------------------------------
     Key map initialization.
@@ -1359,7 +1416,7 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
         {
             if( Ev.cbutton.button >= SDL_CONTROLLER_BUTTON_MAX )
                 break;
-            BYTE Key = GAndroidPadButtonMap[Ev.cbutton.button];
+            BYTE Key = GPadButtonMap[Ev.cbutton.button];
             if( Key == IK_None )
                 break;
             CauseInputEvent( Key, Ev.type == SDL_CONTROLLERBUTTONDOWN ? IST_Press : IST_Release );
@@ -1372,26 +1429,26 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
             switch( Ev.caxis.axis )
             {
             case SDL_CONTROLLER_AXIS_LEFTX:
-                GAndroidMoveX.store( AndroidPadAxis(Norm), std::memory_order_relaxed );   // -> IK_JoyX (shared move consumer)
+                GAndroidMoveX.store( PadAxis(Norm), std::memory_order_relaxed );   // -> IK_JoyX (shared move consumer)
                 break;
             case SDL_CONTROLLER_AXIS_LEFTY:
-                GAndroidMoveY.store( AndroidPadAxis(Norm), std::memory_order_relaxed );   // -> IK_JoyY
+                GAndroidMoveY.store( PadAxis(Norm), std::memory_order_relaxed );   // -> IK_JoyY
                 break;
             case SDL_CONTROLLER_AXIS_RIGHTX:
-                GAndroidPadYaw = AndroidPadAxis( Norm );      // -> IK_JoyV (turn)
+                GAndroidPadYaw = PadAxis( Norm );      // -> IK_JoyV (turn)
                 break;
             case SDL_CONTROLLER_AXIS_RIGHTY:
-                GAndroidPadPitch = AndroidPadAxis( Norm );    // -> IK_JoySlider1 (pitch)
+                GAndroidPadPitch = PadAxis( Norm );    // -> IK_JoySlider1 (pitch)
                 break;
             case SDL_CONTROLLER_AXIS_TRIGGERRIGHT:
             {
-                UBOOL Down = Norm > GAndroidPadTriggerPress;
+                UBOOL Down = Norm > GPadTriggerPress;
                 if( Down != GAndroidPadRT ) { GAndroidPadRT = Down; CauseInputEvent( IK_Joy1, Down ? IST_Press : IST_Release ); }
                 break;
             }
             case SDL_CONTROLLER_AXIS_TRIGGERLEFT:
             {
-                UBOOL Down = Norm > GAndroidPadTriggerPress;
+                UBOOL Down = Norm > GPadTriggerPress;
                 if( Down != GAndroidPadLT ) { GAndroidPadLT = Down; CauseInputEvent( IK_Joy3, Down ? IST_Press : IST_Release ); }
                 break;
             }
@@ -1400,10 +1457,136 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
         }
 #endif // __ANDROID__
 
+#if !defined(__ANDROID__)
+        // --- Game pads on the web and the desktop (ufront; one pad, the first connected). The same map and feel as
+        // Android's (DefUser.ini binds every IK_Joy* target), with their own move channel. ---
+        case SDL_CONTROLLERDEVICEADDED:
+        {
+            if( GPad || !SDL_IsGameController( Ev.cdevice.which ) )
+                break;
+            GPad = SDL_GameControllerOpen( Ev.cdevice.which );
+            if( !GPad )
+            {
+                debugf( NAME_Init, TEXT("SDL2: game pad %i could not be opened: %s"), Ev.cdevice.which, appFromAnsi(SDL_GetError()) );
+                break;
+            }
+            const char* Name = SDL_GameControllerName( GPad );
+            debugf( NAME_Init, TEXT("SDL2: game pad connected: %s"), Name ? appFromAnsi(Name) : TEXT("(no name)") );
+#if defined(__EMSCRIPTEN__)
+            {
+                // H-3: give the game the press that made the browser list the pad (SDL never reports it).
+                const char* Id = SDL_JoystickName( SDL_GameControllerGetJoystick( GPad ) );
+                const DWORD Held = Id ? WebPadPressed( Id ) : 0;
+                static const INT W3CToSDL[17] =
+                {
+                    SDL_CONTROLLER_BUTTON_A, SDL_CONTROLLER_BUTTON_B, SDL_CONTROLLER_BUTTON_X, SDL_CONTROLLER_BUTTON_Y,
+                    SDL_CONTROLLER_BUTTON_LEFTSHOULDER, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER, -1, -1,
+                    SDL_CONTROLLER_BUTTON_BACK, SDL_CONTROLLER_BUTTON_START,
+                    SDL_CONTROLLER_BUTTON_LEFTSTICK, SDL_CONTROLLER_BUTTON_RIGHTSTICK,
+                    SDL_CONTROLLER_BUTTON_DPAD_UP, SDL_CONTROLLER_BUTTON_DPAD_DOWN,
+                    SDL_CONTROLLER_BUTTON_DPAD_LEFT, SDL_CONTROLLER_BUTTON_DPAD_RIGHT, SDL_CONTROLLER_BUTTON_GUIDE,
+                };
+                for( INT b = 0; b < 17; b++ )
+                {
+                    if( !(Held & (1u << b)) )
+                        continue;
+                    if( b == 6 )        // left trigger: a button in the browser's layout, an axis in SDL's
+                    {
+                        GPadLT = 1;
+                        CauseInputEvent( IK_Joy3, IST_Press );
+                    }
+                    else if( b == 7 )   // right trigger
+                    {
+                        GPadRT = 1;
+                        CauseInputEvent( IK_Joy1, IST_Press );
+                    }
+                    else if( GPadButtonMap[W3CToSDL[b]] != IK_None )
+                        CauseInputEvent( GPadButtonMap[W3CToSDL[b]], IST_Press );
+                }
+                if( Held )
+                    debugf( NAME_Init, TEXT("SDL2: buttons held at the connect given to the game: 0x%x"), Held );
+            }
+#endif
+            break;
+        }
+
+        case SDL_CONTROLLERDEVICEREMOVED:
+        {
+            if( !GPad || Ev.cdevice.which != PadInstance( GPad ) )
+                break;
+            SDL_GameControllerClose( GPad );
+            GPad = NULL;
+            debugf( NAME_Init, TEXT("SDL2: game pad disconnected") );
+            // Nothing may stay held: release every pad key, stop the sticks.
+            for( INT b = 0; b < SDL_CONTROLLER_BUTTON_MAX; b++ )
+                if( GPadButtonMap[b] != IK_None )
+                    CauseInputEvent( GPadButtonMap[b], IST_Release );
+            if( GPadRT ) { GPadRT = 0; CauseInputEvent( IK_Joy1, IST_Release ); }
+            if( GPadLT ) { GPadLT = 0; CauseInputEvent( IK_Joy3, IST_Release ); }
+            GPadMoveX = GPadMoveY = GPadYaw = GPadPitch = 0.f;
+            break;
+        }
+
+        case SDL_CONTROLLERBUTTONDOWN:
+        case SDL_CONTROLLERBUTTONUP:
+        {
+            if( !GPad || Ev.cbutton.which != PadInstance( GPad ) || Ev.cbutton.button >= SDL_CONTROLLER_BUTTON_MAX )
+                break;
+            BYTE Key = GPadButtonMap[Ev.cbutton.button];
+            if( Key != IK_None )
+                CauseInputEvent( Key, Ev.type == SDL_CONTROLLERBUTTONDOWN ? IST_Press : IST_Release );
+            break;
+        }
+
+        case SDL_CONTROLLERAXISMOTION:
+        {
+            if( !GPad || Ev.caxis.which != PadInstance( GPad ) )
+                break;
+            const FLOAT Norm = Ev.caxis.value / 32767.f;
+            switch( Ev.caxis.axis )
+            {
+            case SDL_CONTROLLER_AXIS_LEFTX:  GPadMoveX = PadAxis( Norm ); break;   // -> IK_JoyX (strafe)
+            case SDL_CONTROLLER_AXIS_LEFTY:  GPadMoveY = PadAxis( Norm ); break;   // -> IK_JoyY (move)
+            case SDL_CONTROLLER_AXIS_RIGHTX: GPadYaw   = PadAxis( Norm ); break;   // -> IK_JoyV (turn)
+            case SDL_CONTROLLER_AXIS_RIGHTY: GPadPitch = PadAxis( Norm ); break;   // -> IK_JoySlider1 (pitch)
+            case SDL_CONTROLLER_AXIS_TRIGGERRIGHT:
+            {
+                UBOOL Down = Norm > GPadTriggerPress;
+                if( Down != GPadRT ) { GPadRT = Down; CauseInputEvent( IK_Joy1, Down ? IST_Press : IST_Release ); }
+                break;
+            }
+            case SDL_CONTROLLER_AXIS_TRIGGERLEFT:
+            {
+                UBOOL Down = Norm > GPadTriggerPress;
+                if( Down != GPadLT ) { GPadLT = Down; CauseInputEvent( IK_Joy3, Down ? IST_Press : IST_Release ); }
+                break;
+            }
+            }
+            break;
+        }
+#endif // !__ANDROID__
+
         default:
             break;
         }
     }
+
+#if !defined(__ANDROID__)
+    // Game pad sticks -> joystick axes, held-absolute (re-sent every tick while nonzero, plus one trailing 0), as
+    // Android's move and look channels below.
+    if( GPadMoveX != 0.f || GPadLastMoveX != 0.f )
+        CauseInputEvent( IK_JoyX, IST_Axis, GPadMoveX );
+    if( GPadMoveY != 0.f || GPadLastMoveY != 0.f )
+        CauseInputEvent( IK_JoyY, IST_Axis, GPadMoveY );
+    if( GPadYaw != 0.f || GPadLastYaw != 0.f )
+        CauseInputEvent( IK_JoyV, IST_Axis, GPadYaw );
+    if( GPadPitch != 0.f || GPadLastPitch != 0.f )
+        CauseInputEvent( IK_JoySlider1, IST_Axis, -GPadPitch );  // stick up = look up
+    GPadLastMoveX = GPadMoveX;
+    GPadLastMoveY = GPadMoveY;
+    GPadLastYaw   = GPadYaw;
+    GPadLastPitch = GPadPitch;
+#endif
 
 #if defined(__ANDROID__)
     // --- Android touch overlay: fold UI-thread intent into engine input (2.10d). ---
