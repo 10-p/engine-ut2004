@@ -778,6 +778,9 @@ family, and its `docs/CHEAT-COMMANDS.md` is the reference for the cheats):
   lock of the interrupted thread); a second one is ignored instead of aborting on top of the exit already under way
   (`timeout` signals the process and then its group); a crash report that blocks is ended after 10 s (`alarm`). The
   file-streaming thread is waited for at most 5 s at shutdown (`ALAudio/Src/ALAudioStream.cpp`).
+- **A missing audio device is replaced, not fatal** (`SDLLaunch.cpp`, engine-uc2's `ReplaceMissingDrivers`): an ini
+  naming an audio class this build lacks gets `ALAudio.ALAudioSubsystem`, or `UseSound=False` if the build has no
+  audio device at all (it hit `LOAD_NoFail` in `UEngine::InitAudio`). The render device already had this rule.
 
 ## Repository layout
 

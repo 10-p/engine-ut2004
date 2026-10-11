@@ -770,6 +770,27 @@ static UEngine* InitEngine()
         }
     }
 
+    // ufront (engine-uc2's ReplaceMissingDrivers, the owner's 2026-10-11 parity list): the audio device too. An ini
+    // naming an audio class this build lacks hit LOAD_NoFail in UEngine::InitAudio, a fatal error. Same rule as
+    // above: a device the build has is left alone; otherwise the build's ALAudio, or no sound at all (UseSound=False)
+    // rather than a crash at start-up.
+    {
+        const TCHAR* Audio = GConfig->GetStr(TEXT("Engine.Engine"),TEXT("AudioDevice"),TEXT("System"));
+        if( *Audio && !IsRenderDeviceAvailable(Audio) )
+        {
+            if( IsRenderDeviceAvailable(TEXT("ALAudio.ALAudioSubsystem")) )
+            {
+                debugf(TEXT("ufront: AudioDevice=%s is not in this build -> ALAudio.ALAudioSubsystem"), Audio);
+                GConfig->SetString(TEXT("Engine.Engine"), TEXT("AudioDevice"), TEXT("ALAudio.ALAudioSubsystem"));
+            }
+            else
+            {
+                debugf(NAME_Warning, TEXT("ufront: AudioDevice=%s is not in this build and no audio device is -> no sound"), Audio);
+                GConfig->SetBool(TEXT("Engine.Engine"), TEXT("UseSound"), 0);
+            }
+        }
+    }
+
     // Auto-switch from TcpNetDriver to WebRTCNetDriver on Emscripten (per D-05).
     // TcpNetDriver uses BSD sockets which don't work in browsers.
 #ifdef __EMSCRIPTEN__
