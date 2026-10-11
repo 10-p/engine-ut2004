@@ -604,6 +604,12 @@ UBOOL UGL4ESRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Ful
 			setenv("LIBGL_SILENTSTUB", "1", 1);        // Hide stub function warnings
 			setenv("LIBGL_NPOT", "2", 1);              // Advertise full NPOT support
 			setenv("LIBGL_NOTEXRECT", "1", 1);         // Hide texture_rectangle
+			// ufront (from engine-uc2's UC2GL4ESDrv, the owner's 2026-10-11 parity list): no precompiled-shader
+			// archive. Natively gl4es otherwise writes one into the player's home ($HOME/.gl4es.psa), and a test run
+			// should build its programs the way the browser must (WebGL has no program binaries).
+			setenv("LIBGL_NOPSA", "1", 1);
+			// NVIDIA's own OpenGL ES driver rejects the int overloads gl4es inserts into converted shaders.
+			setenv("LIBGL_NOINTOVLHACK", "1", 1);
 
 #if defined(__ANDROID__)
 			// 2.10c-2 item#1: the Android EMULATOR's emugl GLES translator mishandles GL_BGRA texture

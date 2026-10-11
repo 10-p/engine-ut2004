@@ -781,6 +781,9 @@ family, and its `docs/CHEAT-COMMANDS.md` is the reference for the cheats):
 - **A missing audio device is replaced, not fatal** (`SDLLaunch.cpp`, engine-uc2's `ReplaceMissingDrivers`): an ini
   naming an audio class this build lacks gets `ALAudio.ALAudioSubsystem`, or `UseSound=False` if the build has no
   audio device at all (it hit `LOAD_NoFail` in `UEngine::InitAudio`). The render device already had this rule.
+- **GL4ES: `LIBGL_NOPSA=1`, `LIBGL_NOINTOVLHACK=1`** (`GL4ESDrv`): no precompiled-shader archive in the player's
+  home (`$HOME/.gl4es.psa`; a native run builds its programs the way WebGL must), and no int overloads in converted
+  shaders (NVIDIA's own GLES driver rejects them).
 
 ## Repository layout
 
