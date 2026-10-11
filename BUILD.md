@@ -749,6 +749,22 @@ drivers, coupled 1:1 to an SDL viewport manager) its matching `ViewportManager`:
   → `GConfig->Flush`) so the pick sticks next boot (on the web, via the user-data IDB layer). The
   frontend's per-target `videoDrivers` DATA maps a friendly label → the switch.
 
+## Shared with the other engines of the frontend (2026-10-11, from engine-uc2)
+
+The same commands, settings and log lines in every engine (ufront's UC2 merge; engine-uc2 is the same engine
+family, and its `docs/CHEAT-COMMANDS.md` is the reference for the cheats):
+
+- **`WHEREAMI`** prints `<x> <y> <z> <yaw> <pitch>` (the pawn's location, one decimal; the controller's view yaw
+  0..65535 and pitch -32768..32767) on the console, on screen and in the log; **`TELEPORT <x> <y> <z> [<yaw>
+  [<pitch>]]`** puts the local player there (WHEREAMI's output pasted back gives the same place and view). `TELEPORT`
+  with no arguments is still Epic's `CheatManager.Teleport` (to the surface looked at). Cheats: allowed in a
+  standalone game and for a listen server's host, refused (logged) on a network client; `[Engine.GameEngine]
+  AllowNetCheats=True` opens them for test harnesses only (`-ini:`), never in a shipped ini. Every use logs a `Cheat: `
+  line. `Source/Engine/Src/UnCheats.cpp`, first in `UPlayer::Exec` (the console runs the scripts' exec functions
+  before the engine's commands) and in `UGameEngine::Exec` (the web's `ue_exec_command` reaches the engine only).
+- **`[Engine.GameEngine] FpsLogSeconds=<s>`** (0 = off) / console **`FPSLOG <s>`**: an `FPS:` log line every `<s>`
+  seconds (frames, fps, frame ms avg/min/max/p99, the 1% low, the viewport size). `Source/Engine/Src/UnFpsLog.cpp`.
+
 ## Repository layout
 
 | Dir | What |

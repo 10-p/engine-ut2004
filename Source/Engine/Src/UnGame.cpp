@@ -497,10 +497,22 @@ UBOOL UGameEngine::GUIActive( const UClient* InClient ) const
 // This always going to be the last exec handler in the chain. It
 // handles passing the command to all other global handlers.
 //
+// ufront port (from engine-uc2): WHEREAMI / TELEPORT <x> <y> <z> (UnCheats.cpp) and the frame rate in the log,
+// [Engine.GameEngine] FpsLogSeconds / FPSLOG (UnFpsLog.cpp).
+ENGINE_API UBOOL UfrontCheatExec( UEngine* Engine, APlayerController* PC, const TCHAR* Cmd, FOutputDevice& Ar );
+ENGINE_API void UfrontFpsLogTick( UEngine* Engine );
+ENGINE_API UBOOL UfrontFpsLogExec( const TCHAR* Cmd, FOutputDevice& Ar );
+
 UBOOL UGameEngine::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 {
 	guard(UGameEngine::Exec);
 	const TCHAR* Str=Cmd;
+	// ufront: the web's ue_exec_command reaches this engine only (never the viewport or the player); the typed console
+	// takes the cheats in UPlayer::Exec, before the scripts.
+	if( UfrontCheatExec( this, NULL, Cmd, Ar ) )
+		return 1;
+	if( UfrontFpsLogExec( Cmd, Ar ) )
+		return 1;
 	if( ParseCommand( &Str, TEXT("OPEN") ) )
 	{
 		FString Error;
@@ -3780,6 +3792,7 @@ void UGameEngine::Tick( FLOAT DeltaSeconds )
 	guard(UGameEngine::Tick);
 	INT LocalTickCycles=0;
 	clock(LocalTickCycles);
+	UfrontFpsLogTick( this );	// ufront: FpsLogSeconds / FPSLOG; nothing unless asked for
 
     if( DeltaSeconds < 0.0f )
         appErrorf(TEXT("Negative delta time!"));
