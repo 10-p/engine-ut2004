@@ -80,8 +80,9 @@ UObject::UObject( ENativeConstructor, UClass* InClass, const TCHAR* InName, cons
 	*(const TCHAR  **)&Outer        = InPackageName;
 
 #if SERIAL_POINTER_INDEX
-	check(sizeof(Name        )>=sizeof(INT          ));
-	*(INT*)&Name                    = SerialPointerIndex((void *) InName);
+	// ufront: FName is 4 bytes, the stashed name a pointer: it waits in StateFrame (pointer-sized, NULL until
+	// Register(), which clears it again) instead of a slot of the old side table.
+	*(const TCHAR  **)&StateFrame   = InName;
 #else
 	check(sizeof(Name        )>=sizeof(InName       ));
 	*(const TCHAR  **)&Name         = InName;
@@ -114,8 +115,8 @@ UObject::UObject( EStaticConstructor, const TCHAR* InName, const TCHAR* InPackag
 	*(const TCHAR  **)&Outer        = InPackageName;
 
 #if SERIAL_POINTER_INDEX
-	check(sizeof(Name        )>=sizeof(INT          ));
-	*(INT*)&Name                    = SerialPointerIndex((void *) InName);
+	// ufront: see the native constructor above.
+	*(const TCHAR  **)&StateFrame   = InName;
 #else
 	check(sizeof(Name        )>=sizeof(InName       ));
 	*(const TCHAR  **)&Name         = InName;
@@ -2109,9 +2110,8 @@ void UObject::Register()
 	const TCHAR* InOuter = *(const TCHAR**)&Outer;
 
 #if SERIAL_POINTER_INDEX
-	INT idx = *(INT*)&Name;
-	check(idx < GTotalSerializedPointers);
-	const TCHAR* InName  = (const TCHAR*) GSerializedPointers[idx];
+	const TCHAR* InName  = *(const TCHAR**)&StateFrame;
+	StateFrame   = NULL;
 #else
 	const TCHAR* InName  = *(const TCHAR**)&Name;
 #endif

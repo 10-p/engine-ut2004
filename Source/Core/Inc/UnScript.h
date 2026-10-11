@@ -146,9 +146,7 @@ inline UObject* FFrame::ReadObject()
 	UObject* Result;
 
 #if SERIAL_POINTER_INDEX
-	INT idx = *(INT*)Code;
-	check(idx < GTotalSerializedPointers);
-	Result = (UObject*) GSerializedPointers[idx];
+	Result = UObject::SerialIndexPointer( *(INT*)Code );
 #else
   #if __PSX2_EE__ || __GCN__ || (defined(__ANDROID__) && defined(__arm__))
 	appMemcpy(&Result, Code, sizeof(INT));

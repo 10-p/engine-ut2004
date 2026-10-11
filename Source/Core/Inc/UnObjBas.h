@@ -10,17 +10,12 @@
 #include "UnForcePacking_begin.h"
 
 // This is a hack, but MUST be defined for 64-bit platforms right now! --ryan.
+// ufront (engine-uc2's M13, the owner's 2026-10-11 parity list): an object reference in bytecode keeps its 4-byte
+// slot and holds the object's index in the object table, INDEX_NONE for None (UObject::SerialPointerIndex /
+// SerialIndexPointer, O(1)). Ryan's side table GSerializedPointers (128K entries) was searched linearly for every
+// reference at every load and every garbage collection.
 #ifdef PLATFORM_64BITS
 #define SERIAL_POINTER_INDEX 1
-#endif
-
-#if SERIAL_POINTER_INDEX
-#define MAX_SERIALIZED_POINTERS (1024 * 128)
-extern "C" {
-    extern void *GSerializedPointers[MAX_SERIALIZED_POINTERS];
-    extern INT GTotalSerializedPointers;
-    INT SerialPointerIndex(void *ptr);
-}
 #endif
 
 /*-----------------------------------------------------------------------------
@@ -735,6 +730,11 @@ public:
 	static ULinkerLoad* GetPackageLinker( UObject* InOuter, const TCHAR* Filename, DWORD LoadFlags, UPackageMap* Sandbox, FGuid* CompatibleGuid, INT GenerationLevel=0 );
 	static void StaticShutdownAfterError();
 	static UObject* GetIndexedObject( INT Index );
+#if SERIAL_POINTER_INDEX
+	// A bytecode object slot (see SERIAL_POINTER_INDEX above).
+	static INT SerialPointerIndex( UObject* Ptr ) { return Ptr ? (INT)Ptr->Index : INDEX_NONE; }
+	static UObject* SerialIndexPointer( INT Idx ) { return (DWORD)Idx<(DWORD)GObjObjects.Num() ? GObjObjects(Idx) : NULL; }
+#endif
 	static void GlobalSetProperty( const TCHAR* Value, UClass* Class, UProperty* Property, INT Offset, UBOOL Immediate );
 	static void ExportProperties( FOutputDevice& Out, UClass* ObjectClass, BYTE* Object, INT Indent, UClass* DiffClass, BYTE* Diff );
 	static void ResetConfig( UClass* Class, const TCHAR* PropName=NULL );

@@ -784,6 +784,11 @@ family, and its `docs/CHEAT-COMMANDS.md` is the reference for the cheats):
 - **GL4ES: `LIBGL_NOPSA=1`, `LIBGL_NOINTOVLHACK=1`** (`GL4ESDrv`): no precompiled-shader archive in the player's
   home (`$HOME/.gl4es.psa`; a native run builds its programs the way WebGL must), and no int overloads in converted
   shaders (NVIDIA's own GLES driver rejects them).
+- **64-bit bytecode object slots are O(1)** (`Core`; engine-uc2's M13): a slot keeps its 4 bytes and holds the
+  object's index in the object table (`UObject::SerialPointerIndex` / `SerialIndexPointer`), where Ryan Gordon's
+  side table `GSerializedPointers` (128K entries) was searched linearly for every reference at every load and every
+  garbage collection; the native name stash of a not-yet-registered object waits in `StateFrame`. 32-bit builds
+  (the web, Windows, the shipped Linux binary) are unchanged: `SERIAL_POINTER_INDEX` is 64-bit only.
 
 ## Repository layout
 

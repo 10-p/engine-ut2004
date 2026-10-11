@@ -647,9 +647,7 @@ void UObject::execBoolVariable( FFrame& Stack, RESULT_DECL )
 
 	UBoolProperty* Property;
 #if SERIAL_POINTER_INDEX
-	INT idx = *(INT*)Stack.Code;
-	checkSlow(idx < GTotalSerializedPointers);
-	Property = (UBoolProperty*) GSerializedPointers[idx];
+	Property = (UBoolProperty*) UObject::SerialIndexPointer( *(INT*)Stack.Code );
 #else
   #if __PSX2_EE__ || __GCN__
 	appMemcpy(&Property, Stack.Code, sizeof(INT));

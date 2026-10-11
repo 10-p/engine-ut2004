@@ -1236,26 +1236,6 @@ CORE_API FArchive& operator<<( FArchive& Ar, FLabelEntry &Label )
 -----------------------------------------------------------------------------*/
 
 
-#if SERIAL_POINTER_INDEX
-void *GSerializedPointers[MAX_SERIALIZED_POINTERS];
-INT GTotalSerializedPointers = 0;
-
-// !!! FIXME: This has GOT to be a mad performance hit.  --ryan.
-INT SerialPointerIndex(void *ptr)
-{
-    for (INT i = 0; i < GTotalSerializedPointers; i++)
-    {
-        if (GSerializedPointers[i] == ptr)
-            return(i);
-    }
-
-    check(GTotalSerializedPointers < MAX_SERIALIZED_POINTERS);
-    GSerializedPointers[GTotalSerializedPointers] = ptr;
-    //printf("Added new serialized pointer: number (%d) at (%p).\n", GTotalSerializedPointers, ptr);
-    return(GTotalSerializedPointers++);
-}
-#endif
-
 
 //
 // Serialize an expression to an archive.
@@ -1274,9 +1254,9 @@ EExprToken UStruct::SerializeExpr( INT& iCode, FArchive& Ar )
     { \
         T x = NULL; \
         if (!Ar.IsLoading()) \
-            x = (T) GSerializedPointers[*(INT*)&Script(iCode)]; \
+            x = (T) UObject::SerialIndexPointer(*(INT*)&Script(iCode)); \
         Ar << x; \
-        *(INT*)&Script(iCode) = SerialPointerIndex(x); \
+        *(INT*)&Script(iCode) = UObject::SerialPointerIndex(x); \
         iCode += sizeof (INT); \
     }
 #endif
