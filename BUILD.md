@@ -773,6 +773,11 @@ family, and its `docs/CHEAT-COMMANDS.md` is the reference for the cheats):
   `*`/`?` anywhere, case-insensitive, `*.*` = everything, and the Files/Directories flags honoured (no `.`/`..`). It
   was case-sensitive with a `*.ext` substring test, so e.g. the music menu's `*.OGG` (GetOGGList) found nothing on a
   case-sensitive file system.
+- **Exit signals** (`Core/Src/UnUnix.cpp`, engine-uc2's D-1): the first SIGTERM/SIGHUP/Ctrl-C only sets
+  `GIsRequestingExit` (async-signal-safe `write()`s; `printf` and `appRequestExit` could deadlock on the log or malloc
+  lock of the interrupted thread); a second one is ignored instead of aborting on top of the exit already under way
+  (`timeout` signals the process and then its group); a crash report that blocks is ended after 10 s (`alarm`). The
+  file-streaming thread is waited for at most 5 s at shutdown (`ALAudio/Src/ALAudioStream.cpp`).
 
 ## Repository layout
 

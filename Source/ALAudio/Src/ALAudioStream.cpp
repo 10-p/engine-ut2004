@@ -571,8 +571,12 @@ void FALAudioStreamManager::Destroy()
 #else
 		Destroyed = 1;
 		debugf(TEXT("Waiting for file streaming thread to finish..."));
-		while( Destroyed == 1 )
+		// ufront (engine-uc2's D-1, FFileStream::Destroy): at most 5 s, polled at 0.1 s. An exit that interrupted the
+		// streaming thread itself (a signal, a crash report) waited here for ever.
+		for( INT Polls=0; Destroyed == 1 && Polls < 50; Polls++ )
 			appSleep(0.1f);
+		if( Destroyed == 1 )
+			debugf(NAME_Warning, TEXT("The file streaming thread did not finish within 5 s; going on without it"));
 #endif
 #if WITH_MP3
 		ASI_shutdown();

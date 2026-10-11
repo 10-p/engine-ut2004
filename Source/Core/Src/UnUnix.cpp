@@ -1781,12 +1781,34 @@ static void HandleSignal( int Signal )
 			break;
 	}
 
+	// ufront (engine-uc2's D-1, its commit d282bc7): a second exit signal no longer aborts. The engine is already
+	// leaving its main loop for the first one, and the abort below runs appExit() inside this handler, on top of
+	// whatever the interrupted thread was doing (its own appPreExit/StaticExit): the two exits then ran over the same
+	// objects or the handler waited for a lock the interrupted code held (a hang). The second signal is common:
+	// `timeout` signals the process and then its process group. SIGKILL still ends the process at once; Ctrl-C twice
+	// still aborts (HandleInterrupt, a critical signal).
+	if ( SignalCritical == 0 && SignalExit > 1 )
+	{
+		static const char Ignored[] = "Signal: exit already requested; this one is ignored (SIGKILL ends the process now).\n";
+		write( 1, sig_text, strlen(sig_text) );
+		write( 1, "\n", 1 );
+		write( 1, Ignored, sizeof(Ignored)-1 );
+		return;
+	}
+
 	if ( (SignalCritical > 0) || (SignalExit > 1) )
 	{
 		if (!AlreadyAborting)
 		{
 			// Avoid calling appExit again.
 			AlreadyAborting = true;
+
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
+			// ufront (D-1): the report and appExit() below are not async-signal-safe (malloc, the log, the inis); when
+			// the crash interrupted a thread holding one of their locks they block for ever. SIGALRM's default action
+			// ends the process if they have not finished in 10 seconds.
+			alarm( 10 );
+#endif
 
 			printf( "%s\n", sig_text );
 			printf( "Aborting.\n\n" );
@@ -1814,9 +1836,14 @@ static void HandleSignal( int Signal )
 	}
 	if ( SignalExit == 1 )
 	{
-		printf("%s\n", sig_text);
-		printf("Requesting Exit.\n");
-		appRequestExit( 0 );
+		// ufront (D-1): only async-signal-safe calls here (write, and the flag the main loop polls). printf and
+		// appRequestExit (a debugf: formatting and the log device) could deadlock or corrupt the log when the signal
+		// interrupted a thread inside malloc or the log; the signal may land on any thread.
+		static const char Requesting[] = "Requesting Exit.\n";
+		write( 1, sig_text, strlen(sig_text) );
+		write( 1, "\n", 1 );
+		write( 1, Requesting, sizeof(Requesting)-1 );
+		GIsRequestingExit = 1;
 	}
 }
 
@@ -1842,8 +1869,11 @@ static void HandleInterrupt( int Signal )
         if (GIsRunning)   // already in main loop.
         {
             // let the engine try to shut down cleanly.
-            debugf(TEXT("CTRL-C has been pressed.\n"));
-            appRequestExit(0);
+            // ufront (D-1): async-signal-safe, as in HandleSignal (debugf + appRequestExit here could deadlock on
+            // the log or malloc lock of the interrupted thread).
+            static const char Pressed[] = "CTRL-C has been pressed.\n";
+            write( 1, Pressed, sizeof(Pressed)-1 );
+            GIsRequestingExit = 1;
         }
 
         else
