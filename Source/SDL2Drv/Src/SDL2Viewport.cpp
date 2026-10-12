@@ -300,6 +300,11 @@ static FLOAT               GPadLastYaw   = 0.f;
 static FLOAT               GPadLastPitch = 0.f;
 static UBOOL               GPadRT        = 0;      // right trigger -> IK_Joy1 (Fire)
 static UBOOL               GPadLT        = 0;      // left trigger  -> IK_Joy3 (AltFire)
+// H-3: the keys a pad's held-at-connect press gave the game. SDL never reports their release (it never saw them go
+// down), so they are a tap: released at the next tick, as engine-uc2's SDL2Pads.cpp does. (The triggers become a tap
+// by themselves: the next read of their state says up.)
+static BYTE                GPadHeldTap[32];
+static INT                 GPadHeldTapNum = 0;
 
 static SDL_JoystickID PadInstance( SDL_GameController* Pad )
 {
@@ -1208,6 +1213,13 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
     USDL2Client* Client = GetOuterUSDL2Client();
 
     SDL_Event Ev;
+#if !defined(__ANDROID__)
+    // H-3: last tick's held-at-connect presses end now (a tap; GPadHeldTap).
+    for( INT k = 0; k < GPadHeldTapNum; k++ )
+        CauseInputEvent( GPadHeldTap[k], IST_Release );
+    GPadHeldTapNum = 0;
+#endif
+
     while( SDL_PollEvent(&Ev) )
     {
         switch( Ev.type )
@@ -1467,11 +1479,12 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
             GPad = SDL_GameControllerOpen( Ev.cdevice.which );
             if( !GPad )
             {
-                debugf( NAME_Init, TEXT("SDL2: game pad %i could not be opened: %s"), Ev.cdevice.which, appFromAnsi(SDL_GetError()) );
+                debugf( NAME_Log, TEXT("SDL2: game pad %i could not be opened: %s"), Ev.cdevice.which, appFromAnsi(SDL_GetError()) );
                 break;
             }
             const char* Name = SDL_GameControllerName( GPad );
-            debugf( NAME_Init, TEXT("SDL2: game pad connected: %s"), Name ? appFromAnsi(Name) : TEXT("(no name)") );
+            // NAME_Log: the inis suppress Init once the engine is up, and a pad comes at any time.
+            debugf( NAME_Log, TEXT("SDL2: game pad connected: %s"), Name ? appFromAnsi(Name) : TEXT("(no name)") );
 #if defined(__EMSCRIPTEN__)
             {
                 // H-3: give the game the press that made the browser list the pad (SDL never reports it).
@@ -1490,21 +1503,20 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
                 {
                     if( !(Held & (1u << b)) )
                         continue;
-                    if( b == 6 )        // left trigger: a button in the browser's layout, an axis in SDL's
+                    if( b == 6 || b == 7 )   // a trigger: a button in the browser's layout, an axis in SDL's
                     {
-                        GPadLT = 1;
-                        CauseInputEvent( IK_Joy3, IST_Press );
-                    }
-                    else if( b == 7 )   // right trigger
-                    {
-                        GPadRT = 1;
-                        CauseInputEvent( IK_Joy1, IST_Press );
+                        const BYTE Key = b == 6 ? IK_Joy3 : IK_Joy1;
+                        CauseInputEvent( Key, IST_Press );
+                        GPadHeldTap[GPadHeldTapNum++] = Key;  // released next tick (a tap)
                     }
                     else if( GPadButtonMap[W3CToSDL[b]] != IK_None )
+                    {
                         CauseInputEvent( GPadButtonMap[W3CToSDL[b]], IST_Press );
+                        GPadHeldTap[GPadHeldTapNum++] = GPadButtonMap[W3CToSDL[b]];  // released next tick (a tap)
+                    }
                 }
                 if( Held )
-                    debugf( NAME_Init, TEXT("SDL2: buttons held at the connect given to the game: 0x%x"), Held );
+                    debugf( NAME_Log, TEXT("SDL2: buttons held at the connect given to the game: 0x%x"), Held );
             }
 #endif
             break;
@@ -1516,7 +1528,7 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
                 break;
             SDL_GameControllerClose( GPad );
             GPad = NULL;
-            debugf( NAME_Init, TEXT("SDL2: game pad disconnected") );
+            debugf( NAME_Log, TEXT("SDL2: game pad disconnected") );
             // Nothing may stay held: release every pad key, stop the sticks.
             for( INT b = 0; b < SDL_CONTROLLER_BUTTON_MAX; b++ )
                 if( GPadButtonMap[b] != IK_None )
@@ -1538,32 +1550,8 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
             break;
         }
 
-        case SDL_CONTROLLERAXISMOTION:
-        {
-            if( !GPad || Ev.caxis.which != PadInstance( GPad ) )
-                break;
-            const FLOAT Norm = Ev.caxis.value / 32767.f;
-            switch( Ev.caxis.axis )
-            {
-            case SDL_CONTROLLER_AXIS_LEFTX:  GPadMoveX = PadAxis( Norm ); break;   // -> IK_JoyX (strafe)
-            case SDL_CONTROLLER_AXIS_LEFTY:  GPadMoveY = PadAxis( Norm ); break;   // -> IK_JoyY (move)
-            case SDL_CONTROLLER_AXIS_RIGHTX: GPadYaw   = PadAxis( Norm ); break;   // -> IK_JoyV (turn)
-            case SDL_CONTROLLER_AXIS_RIGHTY: GPadPitch = PadAxis( Norm ); break;   // -> IK_JoySlider1 (pitch)
-            case SDL_CONTROLLER_AXIS_TRIGGERRIGHT:
-            {
-                UBOOL Down = Norm > GPadTriggerPress;
-                if( Down != GPadRT ) { GPadRT = Down; CauseInputEvent( IK_Joy1, Down ? IST_Press : IST_Release ); }
-                break;
-            }
-            case SDL_CONTROLLER_AXIS_TRIGGERLEFT:
-            {
-                UBOOL Down = Norm > GPadTriggerPress;
-                if( Down != GPadLT ) { GPadLT = Down; CauseInputEvent( IK_Joy3, Down ? IST_Press : IST_Release ); }
-                break;
-            }
-            }
-            break;
-        }
+        // The sticks and triggers are read from the pad's state every tick (after this loop), not from
+        // SDL_CONTROLLERAXISMOTION.
 #endif // !__ANDROID__
 
         default:
@@ -1572,6 +1560,24 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
     }
 
 #if !defined(__ANDROID__)
+    // The sticks and triggers come from the pad's STATE every tick, not from SDL_CONTROLLERAXISMOTION. SDL's
+    // Emscripten joystick driver reports no axis values when a pad is opened, so SDL takes the first value an axis
+    // reports as its resting point and posts no event for it (SDL_PrivateJoystickAxis): the first push of a stick
+    // after the pad appeared was lost, and SDL then took the held stick for the centre. The state is always right
+    // (engine-uc2's SDL2Pads.cpp reads it the same way).
+    if( GPad )
+    {
+        const FLOAT Scale = 1.f / 32767.f;
+        GPadMoveX = PadAxis( SDL_GameControllerGetAxis( GPad, SDL_CONTROLLER_AXIS_LEFTX ) * Scale );  // -> IK_JoyX (strafe)
+        GPadMoveY = PadAxis( SDL_GameControllerGetAxis( GPad, SDL_CONTROLLER_AXIS_LEFTY ) * Scale );  // -> IK_JoyY (move)
+        GPadYaw   = PadAxis( SDL_GameControllerGetAxis( GPad, SDL_CONTROLLER_AXIS_RIGHTX ) * Scale ); // -> IK_JoyV (turn)
+        GPadPitch = PadAxis( SDL_GameControllerGetAxis( GPad, SDL_CONTROLLER_AXIS_RIGHTY ) * Scale ); // -> IK_JoySlider1
+        const UBOOL RT = SDL_GameControllerGetAxis( GPad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT ) * Scale > GPadTriggerPress;
+        const UBOOL LT = SDL_GameControllerGetAxis( GPad, SDL_CONTROLLER_AXIS_TRIGGERLEFT ) * Scale > GPadTriggerPress;
+        if( RT != GPadRT ) { GPadRT = RT; CauseInputEvent( IK_Joy1, RT ? IST_Press : IST_Release ); }  // Fire
+        if( LT != GPadLT ) { GPadLT = LT; CauseInputEvent( IK_Joy3, LT ? IST_Press : IST_Release ); }  // AltFire
+    }
+
     // Game pad sticks -> joystick axes, held-absolute (re-sent every tick while nonzero, plus one trailing 0), as
     // Android's move and look channels below.
     if( GPadMoveX != 0.f || GPadLastMoveX != 0.f )

@@ -93,7 +93,7 @@ ENGINE_API void UfrontFpsLogTick( UEngine* Engine )
 		GConfig->GetFloat( TEXT("Engine.GameEngine"), TEXT("FpsLogSeconds"), GFpsLogSeconds );
 		GFpsLogSeconds = Max( 0.f, GFpsLogSeconds );
 		if( GFpsLogSeconds > 0.f )
-			debugf( NAME_Init, TEXT("FpsLogSeconds=%g: the frame rate is logged every %g s"), GFpsLogSeconds, GFpsLogSeconds );
+			debugf( NAME_Log, TEXT("FpsLogSeconds=%g: the frame rate is logged every %g s"), GFpsLogSeconds, GFpsLogSeconds );	// Log: the inis suppress Init by now
 	}
 	if( GFpsLogSeconds <= 0.f )
 		return;

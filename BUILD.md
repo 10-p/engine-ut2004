@@ -797,8 +797,13 @@ family, and its `docs/CHEAT-COMMANDS.md` is the reference for the cheats):
   `navigator.getGamepads()` once at the connect and given to the game (engine-uc2's H-3). Always on, with **no
   key** (the owner, 2026-10-11: "Always on, no switch"): the `[SDL2Drv.SDL2Client] UseJoystick=False` the inis
   carry was read by nothing, and every web player's saved `UT2004.ini` has it, so honouring it would keep pads off
-  for all of them. Log lines: `SDL2: game pad connected: <name>` / `disconnected` / `buttons held at the connect
-  given to the game: 0x<mask>`.
+  for all of them. Log lines (on `Log`: the inis suppress `Init` once the engine is up): `SDL2: game pad connected:
+  <name>` / `disconnected` / `buttons held at the connect given to the game: 0x<mask>`. That press is a tap (released
+  at the next tick: SDL never saw it go down, so it never reports its release). The sticks and triggers are read from
+  the pad's STATE every tick, not from axis events: SDL's Emscripten driver reports no axis values when a pad is
+  opened, so SDL took a stick's first push for its resting point and posted no event for it
+  (`SDL_PrivateJoystickAxis`); the state is right (engine-uc2 reads pads the same way). Found by the cross-engine E2E
+  (`wasm-shared.spec.js` connect-and-move), which also found the `FpsLogSeconds` line suppressed (now on `Log`).
 - Not here: engine-uc2's deterministic `ucc make` saves (this engine's scripts are never rebuilt).
 
 ## Repository layout
