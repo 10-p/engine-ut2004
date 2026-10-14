@@ -151,7 +151,7 @@ void USDL2Client::Init( UEngine* InEngine )
             GConfig->SetBool( TEXT("SDL2Drv.SDL2Client"), TEXT("UseJoystick"), 1 );
             GConfig->SetBool( TEXT("SDL2Drv.SDL2Client"), TEXT("UseJoystickDefaulted"), 1 );
         }
-        debugf( NAME_Init, TEXT("SDL2Client: game pads %s (UseJoystick)"), UseJoystick ? TEXT("on") : TEXT("off") );
+        debugf( NAME_Log, TEXT("SDL2Client: game pads %s (UseJoystick)"), UseJoystick ? TEXT("on") : TEXT("off") );
     }
 
     // Note configuration.
