@@ -33,6 +33,9 @@ void USDL2Client::StaticConstructor()
 {
     guard(USDL2Client::StaticConstructor);
     new(GetClass(),TEXT("StartupFullscreen"), RF_Public)UBoolProperty(CPP_PROPERTY(StartupFullscreen), TEXT("Display"), CPF_Config );
+    // ufront 2.91 (the owner: "UseJoystick on by default, but it can still be disabled"): the retail key the game's own
+    // "Enable Joystick" option writes (GUI2K4: `set ini:Engine.Engine.ViewportManager UseJoystick`).
+    new(GetClass(),TEXT("UseJoystick"),       RF_Public)UBoolProperty(CPP_PROPERTY(UseJoystick),       TEXT("Joystick"), CPF_Config );
 
     // ★ COMPILED DEFAULTS FOR THE INHERITED UClient SETTINGS (ufront 2.35).
     //
@@ -69,6 +72,7 @@ void USDL2Client::StaticConstructor()
     ReportDynamicUploads    = 0;
     WeatherEffects          = 1;
     StartupFullscreen       = 0;
+    UseJoystick             = 1;
 
     // ⚠ The web build does NOT take its render size from these: USDL2Viewport::ResizeViewport queries the
     // canvas whenever the requested size is 0x0, and the browser viewport is what governs there (measured
@@ -115,11 +119,10 @@ void USDL2Client::Init( UEngine* InEngine )
     // input.
     const Uint32 SDL2DrvInitFlags = SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER;
 #else
-    // ufront (the UC2 port's pads): the web and the desktop get pads too, always (the owner, 2026-10-11: "Always on, no
-    // switch"; one pad, the first connected; USDL2Viewport::UpdateInput). There is deliberately NO key: the
-    // [SDL2Drv.SDL2Client] UseJoystick=False the inis carried since the fork was read by nothing, and every web
-    // player's saved UT2004.ini still has it, so honouring it now would keep pads off for all of them. Pads already
-    // connected arrive as SDL_CONTROLLERDEVICEADDED events like later ones.
+    // ufront (the UC2 port's pads): the web and the desktop get pads too (one pad, the first connected;
+    // USDL2Viewport::UpdateInput). The game-controller subsystem is always up; whether a pad is USED is UseJoystick,
+    // read every tick, so the game's own option takes effect at once. Pads already connected arrive as
+    // SDL_CONTROLLERDEVICEADDED events like later ones.
     const Uint32 SDL2DrvInitFlags = SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER;
 #endif
     if (SDL_Init(SDL2DrvInitFlags) == -1)
@@ -133,6 +136,23 @@ void USDL2Client::Init( UEngine* InEngine )
 
     // Initialize scancode-to-EInputKey mapping table.
     USDL2Viewport::InitKeyMap();
+
+    // ★ UseJoystick: ON ONCE for every ini written before it was honoured (ufront 2.91). The inis shipped
+    // `[SDL2Drv.SDL2Client] UseJoystick=False` since the fork, read by nothing (pads were always on, 2026-10-11), and
+    // every web player's saved UT2004.ini still carries that False: honoured as it stands it would turn their pads off,
+    // which nobody chose. So the first engine that honours the key turns it on, once, and records it
+    // (UseJoystickDefaulted); from then on the player's own choice stands.
+    {
+        UBOOL Defaulted = 0;
+        GConfig->GetBool( TEXT("SDL2Drv.SDL2Client"), TEXT("UseJoystickDefaulted"), Defaulted );
+        if( !Defaulted )
+        {
+            UseJoystick = 1;
+            GConfig->SetBool( TEXT("SDL2Drv.SDL2Client"), TEXT("UseJoystick"), 1 );
+            GConfig->SetBool( TEXT("SDL2Drv.SDL2Client"), TEXT("UseJoystickDefaulted"), 1 );
+        }
+        debugf( NAME_Init, TEXT("SDL2Client: game pads %s (UseJoystick)"), UseJoystick ? TEXT("on") : TEXT("off") );
+    }
 
     // Note configuration.
     PostEditChange();

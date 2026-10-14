@@ -794,16 +794,29 @@ family, and its `docs/CHEAT-COMMANDS.md` is the reference for the cheats):
   releasing every pad key; Android's map (`DefUser.ini` binds every `IK_Joy*`): sticks -> `IK_JoyX/Y` (move) and
   `IK_JoyV`/`IK_JoySlider1` (look), triggers -> `IK_Joy1` (fire) / `IK_Joy3` (alt fire). On the web the press that
   made the browser list the pad, which SDL's Emscripten driver never reports, is read from
-  `navigator.getGamepads()` once at the connect and given to the game (engine-uc2's H-3). Always on, with **no
-  key** (the owner, 2026-10-11: "Always on, no switch"): the `[SDL2Drv.SDL2Client] UseJoystick=False` the inis
-  carry was read by nothing, and every web player's saved `UT2004.ini` has it, so honouring it would keep pads off
-  for all of them. Log lines (on `Log`: the inis suppress `Init` once the engine is up): `SDL2: game pad connected:
+  `navigator.getGamepads()` once at the connect and given to the game (engine-uc2's H-3). **`UseJoystick` is a real
+  switch, on by default** (ufront 2.91; the owner corrected 2026-10-11's "Always on, no switch": "on by default, but it
+  can still be disabled"): `[SDL2Drv.SDL2Client] UseJoystick` (compiled default and shipped inis `True`), read every
+  tick, so the game's own "Enable Joystick" (`set ini:Engine.Engine.ViewportManager UseJoystick …`) closes the pad
+  (releasing every key) or opens the first one present at once; logged `SDL2: game pads on|off (UseJoystick)`. The
+  inis shipped `UseJoystick=False`, read by nothing, and every web player's saved `UT2004.ini` still has it: the first
+  boot of an engine that honours the key turns it on ONCE and records `UseJoystickDefaulted=True` (the shipped inis
+  carry the marker, so a new install or an explicit `-ini:` `False` is never overridden). Log lines (on `Log`: the inis suppress `Init` once the engine is up): `SDL2: game pad connected:
   <name>` / `disconnected` / `buttons held at the connect given to the game: 0x<mask>`. That press is a tap (released
   at the next tick: SDL never saw it go down, so it never reports its release). The sticks and triggers are read from
   the pad's STATE every tick, not from axis events: SDL's Emscripten driver reports no axis values when a pad is
   opened, so SDL took a stick's first push for its resting point and posted no event for it
   (`SDL_PrivateJoystickAxis`); the state is right (engine-uc2 reads pads the same way). Found by the cross-engine E2E
   (`wasm-shared.spec.js` connect-and-move), which also found the `FpsLogSeconds` line suppressed (now on `Log`).
+  **The layout (ufront 2.91)** is the one the UE1 targets share (Unreal 1's): A Jump, B Duck, X InventoryActivate,
+  Y Walking (held), Back ScoreToggle, left-stick click Duck, Start the menu, the bumpers and triggers Fire / AltFire,
+  D-pad left/right PrevWeapon / NextWeapon, D-pad up/down InventoryPrevious / InventoryNext, the left stick moves,
+  the right stick looks (`GPadButtonMap` + `DefUser.ini`; a player's existing `User.ini` keeps its own bindings).
+  **The sticks are a rate** (ufront 2.91): each is sent as `stick × factor × DeltaSeconds`, because UInput's "Axis …
+  SpeedBase=" branch adds a constant per event and `ReadInput` makes the per-tick sum a rate, so the raw stick turned
+  at a speed proportional to the frame rate (1242°/s at full tilt at 20 fps; Unreal 1: 241). Look factor 5.7 =
+  ≈240°/s, move factor 0.444 = the keyboard's walk input at full tilt (`SDL2Viewport.cpp` `GPadLookFactor`). Android's
+  pad path is unchanged.
 - Not here: engine-uc2's deterministic `ucc make` saves (this engine's scripts are never rebuilt).
 
 ## Repository layout

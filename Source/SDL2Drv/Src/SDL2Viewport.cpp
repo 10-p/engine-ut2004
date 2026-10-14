@@ -253,31 +253,47 @@ static UBOOL  GAndroidPadLT = 0;   // left trigger  -> IK_Joy3 (AltFire)
     port's pads, the owner's 2026-10-11 parity list). The map, the deadzone and the
     trigger threshold are shared; Android keeps its own state below (its move
     channel is the touch overlay's), the web and the desktop use one pad (the first
-    connected) with their own. [SDL2Drv.SDL2Client] UseJoystick turns pads off.
+    connected) with their own. [SDL2Drv.SDL2Client] UseJoystick (on by default) turns pads off and on again at once.
 -----------------------------------------------------------------------------*/
 
 static const FLOAT GPadDeadzone     = 0.12f;  // stick deadzone (engine ini also deadzones)
 static const FLOAT GPadTriggerPress = 0.35f;  // trigger press threshold
 
-// SDL_CONTROLLER_BUTTON_* -> EInputKey. All targets are DefUser.ini defaults; remappable.
+// SDL_CONTROLLER_BUTTON_* -> EInputKey. The actions are DefUser.ini's [Engine.Input] defaults (remappable); the layout
+// is the one every UE1/UE2 target shares (ufront 2.91, Unreal 1's: the triggers and bumpers fire, the D-pad changes
+// weapon and inventory item, the left stick moves).
 static const BYTE GPadButtonMap[SDL_CONTROLLER_BUTTON_MAX] =
 {
     /* A             */ IK_Joy2,    // Jump
-    /* B             */ IK_Joy4,    // Duck / crouch
-    /* X             */ IK_Joy5,    // NextWeapon
-    /* Y             */ IK_Joy6,    // SwitchWeapon 2 (spare face button)
-    /* BACK          */ IK_None,
+    /* B             */ IK_Joy4,    // Duck
+    /* X             */ IK_Joy5,    // InventoryActivate (use the selected item)
+    /* Y             */ IK_Joy6,    // Walking (held)
+    /* BACK          */ IK_Joy7,    // ScoreToggle (the scoreboard while held)
     /* GUIDE         */ IK_None,
     /* START         */ IK_Escape,  // menu
-    /* LEFTSTICK     */ IK_None,
-    /* RIGHTSTICK    */ IK_None,
-    /* LEFTSHOULDER  */ IK_Joy11,   // InventoryPrevious
-    /* RIGHTSHOULDER */ IK_Joy12,   // InventoryActivate
-    /* DPAD_UP       */ IK_Joy13,   // MoveForward
-    /* DPAD_DOWN     */ IK_Joy15,   // MoveBackward
-    /* DPAD_LEFT     */ IK_Joy16,   // StrafeLeft
-    /* DPAD_RIGHT    */ IK_Joy14,   // StrafeRight
+    /* LEFTSTICK     */ IK_Joy8,    // Duck
+    /* RIGHTSTICK    */ IK_Joy9,    // (unbound)
+    /* LEFTSHOULDER  */ IK_Joy11,   // AltFire
+    /* RIGHTSHOULDER */ IK_Joy12,   // Fire
+    /* DPAD_UP       */ IK_Joy13,   // InventoryPrevious
+    /* DPAD_DOWN     */ IK_Joy15,   // InventoryNext
+    /* DPAD_LEFT     */ IK_Joy16,   // PrevWeapon
+    /* DPAD_RIGHT    */ IK_Joy14,   // NextWeapon
 };
+
+// ★ THE STICKS ARE A RATE, NOT A PER-FRAME STEP (ufront 2.91; the owner: the look was "way way WAY too high"). Each tick
+// a held stick goes to the [Engine.Input] binding as an IST_Axis event, and UInput's "Axis ... SpeedBase=" branch adds
+// `Delta * SpeedBase * Scale` per event, where Scale is a CONSTANT here ((1-DeadZone)/(0.5-DeadZone): the binding's
+// Speed is never the stick's, only DirectAxis appends one); ReadInput then turns the per-tick sum into a rate (x 20/dt).
+// Sent raw, the turn was therefore proportional to the FRAME RATE: measured at the Null renderer's 20 fps, 1242 deg/s
+// at full tilt (about 3700 at 60 fps), against Unreal 1's 241 deg/s. Sent as `stick * Factor * DeltaSeconds`, the rate
+// is the stick's and nothing else's:
+//   look (JoyV / JoySlider1: SpeedBase 2, DeadZone 0.4, Scale 6): aBaseX = 240 * Factor * stick; the yaw rate is
+//     32 * aTurn units/s, so 5.7 -> 43,776 units/s = 240 deg/s at full tilt (Unreal 1's, measured 241); pitch alike.
+//   move (JoyX / JoyY: SpeedBase 300, DeadZone 0.1, Scale 2.25): aBaseY = 13,500 * Factor * stick, so 0.444 -> 6000 at
+//     full tilt, the keyboard's MoveForward (Speed=+300 held: 300 x 20).
+static const FLOAT GPadLookFactor = 5.7f;
+static const FLOAT GPadMoveFactor = 0.444f;
 
 // Rescale a normalized stick axis so motion starts at 0 past the deadzone.
 static inline FLOAT PadAxis( FLOAT V )
@@ -310,6 +326,8 @@ static SDL_JoystickID PadInstance( SDL_GameController* Pad )
 {
     return Pad ? SDL_JoystickInstanceID( SDL_GameControllerGetJoystick( Pad ) ) : -1;
 }
+
+static UBOOL GPadsOn = 1;   // UseJoystick as last seen (a change is logged once)
 
 #if defined(__EMSCRIPTEN__)
 //
@@ -1201,6 +1219,27 @@ UBOOL USDL2Viewport::CauseInputEvent( INT iKey, EInputAction Action, FLOAT Delta
     unguard;
 }
 
+#if !defined(__ANDROID__)
+//
+// Close the pad in use (it was removed, or UseJoystick went off). Nothing may stay held: every pad key is released and
+// the sticks stop (the trailing 0 of each goes out on the next tick).
+//
+void USDL2Viewport::ClosePad()
+{
+    guard(USDL2Viewport::ClosePad);
+    if( GPad )
+        SDL_GameControllerClose( GPad );
+    GPad = NULL;
+    for( INT b = 0; b < SDL_CONTROLLER_BUTTON_MAX; b++ )
+        if( GPadButtonMap[b] != IK_None )
+            CauseInputEvent( GPadButtonMap[b], IST_Release );
+    if( GPadRT ) { GPadRT = 0; CauseInputEvent( IK_Joy1, IST_Release ); }
+    if( GPadLT ) { GPadLT = 0; CauseInputEvent( IK_Joy3, IST_Release ); }
+    GPadMoveX = GPadMoveY = GPadYaw = GPadPitch = 0.f;
+    unguard;
+}
+#endif
+
 //
 // Update input -- full SDL2 event loop.
 // Handles keyboard (scancode-based), mouse (relative + absolute),
@@ -1218,6 +1257,28 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
     for( INT k = 0; k < GPadHeldTapNum; k++ )
         CauseInputEvent( GPadHeldTap[k], IST_Release );
     GPadHeldTapNum = 0;
+
+    // UseJoystick, every tick: the game's own option ("Enable Joystick": `set ini:Engine.Engine.ViewportManager
+    // UseJoystick ...`) sets it on this live client, so it takes effect at once. Off: the pad is closed. Back on: the
+    // first game controller present is opened (one connected while it was off sent its ADDED event then).
+    if( (Client->UseJoystick != 0) != GPadsOn )
+    {
+        GPadsOn = Client->UseJoystick != 0;
+        debugf( NAME_Log, TEXT("SDL2: game pads %s (UseJoystick)"), GPadsOn ? TEXT("on") : TEXT("off") );
+        if( !GPadsOn )
+        {
+            // Only a pad that is open has keys to release (at start, with no pad, there is nothing to send).
+            if( GPad )
+                ClosePad();
+        }
+        else
+            for( INT i = 0; i < SDL_NumJoysticks() && !GPad; i++ )
+                if( SDL_IsGameController( i ) && (GPad = SDL_GameControllerOpen( i )) != NULL )
+                {
+                    const char* Name = SDL_GameControllerName( GPad );
+                    debugf( NAME_Log, TEXT("SDL2: game pad connected: %s"), Name ? appFromAnsi(Name) : TEXT("(no name)") );
+                }
+    }
 #endif
 
     while( SDL_PollEvent(&Ev) )
@@ -1474,7 +1535,8 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
         // Android's (DefUser.ini binds every IK_Joy* target), with their own move channel. ---
         case SDL_CONTROLLERDEVICEADDED:
         {
-            if( GPad || !SDL_IsGameController( Ev.cdevice.which ) )
+            // UseJoystick off: the pad stays closed (opened at once if the switch comes back on, below the loop).
+            if( GPad || !Client->UseJoystick || !SDL_IsGameController( Ev.cdevice.which ) )
                 break;
             GPad = SDL_GameControllerOpen( Ev.cdevice.which );
             if( !GPad )
@@ -1526,16 +1588,8 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
         {
             if( !GPad || Ev.cdevice.which != PadInstance( GPad ) )
                 break;
-            SDL_GameControllerClose( GPad );
-            GPad = NULL;
+            ClosePad();
             debugf( NAME_Log, TEXT("SDL2: game pad disconnected") );
-            // Nothing may stay held: release every pad key, stop the sticks.
-            for( INT b = 0; b < SDL_CONTROLLER_BUTTON_MAX; b++ )
-                if( GPadButtonMap[b] != IK_None )
-                    CauseInputEvent( GPadButtonMap[b], IST_Release );
-            if( GPadRT ) { GPadRT = 0; CauseInputEvent( IK_Joy1, IST_Release ); }
-            if( GPadLT ) { GPadLT = 0; CauseInputEvent( IK_Joy3, IST_Release ); }
-            GPadMoveX = GPadMoveY = GPadYaw = GPadPitch = 0.f;
             break;
         }
 
@@ -1580,14 +1634,15 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
 
     // Game pad sticks -> joystick axes, held-absolute (re-sent every tick while nonzero, plus one trailing 0), as
     // Android's move and look channels below.
+    // Each scaled by this tick's DeltaSeconds: a rate, the same at any frame rate (GPadLookFactor, above).
     if( GPadMoveX != 0.f || GPadLastMoveX != 0.f )
-        CauseInputEvent( IK_JoyX, IST_Axis, GPadMoveX );
+        CauseInputEvent( IK_JoyX, IST_Axis, GPadMoveX * GPadMoveFactor * DeltaSeconds );
     if( GPadMoveY != 0.f || GPadLastMoveY != 0.f )
-        CauseInputEvent( IK_JoyY, IST_Axis, GPadMoveY );
+        CauseInputEvent( IK_JoyY, IST_Axis, GPadMoveY * GPadMoveFactor * DeltaSeconds );
     if( GPadYaw != 0.f || GPadLastYaw != 0.f )
-        CauseInputEvent( IK_JoyV, IST_Axis, GPadYaw );
+        CauseInputEvent( IK_JoyV, IST_Axis, GPadYaw * GPadLookFactor * DeltaSeconds );
     if( GPadPitch != 0.f || GPadLastPitch != 0.f )
-        CauseInputEvent( IK_JoySlider1, IST_Axis, -GPadPitch );  // stick up = look up
+        CauseInputEvent( IK_JoySlider1, IST_Axis, -GPadPitch * GPadLookFactor * DeltaSeconds );  // stick up = look up
     GPadLastMoveX = GPadMoveX;
     GPadLastMoveY = GPadMoveY;
     GPadLastYaw   = GPadYaw;

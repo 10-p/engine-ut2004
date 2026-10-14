@@ -54,6 +54,7 @@ class USDL2Client : public UClient, public FNotifyHook
 
     // Configuration.
     BITFIELD            StartupFullscreen;
+    BITFIELD            UseJoystick;        // game pads on (default) or off; read every tick (USDL2Viewport::UpdateInput)
 
     // Variables.
     UBOOL               InMenuLoop;
@@ -125,6 +126,9 @@ class USDL2Viewport : public UViewport
     void OpenWindow( PTRINT ParentWindow, UBOOL Temporary, INT NewX, INT NewY, INT OpenX, INT OpenY );
     void CloseWindow();
     void UpdateInput( UBOOL Reset, FLOAT DeltaSeconds );
+#if !defined(__ANDROID__)
+    void ClosePad();
+#endif
     void* GetWindow();
     void SetMouseCapture( UBOOL Capture, UBOOL Clip, UBOOL FocusOnly );
 
