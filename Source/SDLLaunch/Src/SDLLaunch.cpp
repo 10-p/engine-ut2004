@@ -438,14 +438,32 @@ inline void	CMainLoop::RunLoop(void)
 	unguard;
 
 	// Enforce optional maximum tick rate.
+	UBOOL LimiterSlept = 0;	// ufront 2.89: the web yields below only when this limiter did not sleep
 	guard(EnforceTickRate);
 	if( !GUseFixedTimeStep && IncludeMessaging )
 	{
 		FLOAT MaxTickRate = Engine->GetMaxTickRate();
+		// ufront 2.89: a frame-rate cap for a game with no tick rate of its own (a standalone game or a listen
+		// server: GetMaxTickRate returns 0 there), [Engine.Engine] FrameRateCap=<fps> in the System ini, the key the
+		// frontend's other engines read (engine-uc2's launcher, engine-ut99, engine-unreal1). Absent or <= 0:
+		// uncapped, exactly as before. The E2E sets it on the null renderer (-ini:System:[Engine.Engine]:FrameRateCap=20),
+		// which otherwise runs at about a thousand frames a second and still presents each one.
+		static FLOAT MaxFps = -1.f;
+		if( MaxFps < 0.f )
+		{
+			MaxFps = 0.f;
+			GConfig->GetFloat( TEXT("Engine.Engine"), TEXT("FrameRateCap"), MaxFps );
+			MaxFps = Max( 0.f, MaxFps );
+			if( MaxFps > 0.f )
+				debugf( NAME_Init, TEXT("FrameRateCap=%g: a game without a tick rate of its own is capped at %g fps"), MaxFps, MaxFps );
+		}
+		if( MaxFps > 0.f && (MaxTickRate <= 0.f || MaxFps < MaxTickRate) )
+			MaxTickRate = MaxFps;
 		if( MaxTickRate>0.0 )
 		{
 			FLOAT Delta = (1.0/MaxTickRate) - (appSeconds()-OldTime);
 			appSleep( Max(0.f,Delta) );
+			LimiterSlept = 1;
 		}
 	}
 	unguard;
@@ -468,7 +486,7 @@ inline void	CMainLoop::RunLoop(void)
 	// compiled out. (2.13.3 drops ASYNCIFY, at which point this yield needs a different mechanism —
 	// noted there.)
 	guard(WorkerYield);
-	if( GUseFixedTimeStep || !IncludeMessaging || Engine->GetMaxTickRate() <= 0.f )
+	if( GUseFixedTimeStep || !IncludeMessaging || !LimiterSlept )	// ufront 2.89: was GetMaxTickRate() <= 0, the same test before the cap
 		// ufront 2.13.7 (option E): same yield, EVERY frame, exactly as 2.13.2 — only the resume is
 		// scheduled differently. Frequency is deliberately unchanged: the yield is the frame's present
 		// point. ufront 2.43: WHICH primitive resumes it decides whether the frame is presented at all —
