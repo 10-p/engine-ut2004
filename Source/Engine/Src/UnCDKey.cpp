@@ -17,6 +17,7 @@
 // in a DLL export.  So we have to declare the registry stuff we need here.
 
 #if defined(_WIN32) && !_XBOX
+#define _CRT_RAND_S		// rand_s() for the key generator below
 #pragma pack(push, 8)
 #include <windows.h>
 #pragma pack(pop)
@@ -64,7 +65,7 @@ static inline LONG RegQueryValueExX( HKEY hKey, LPCTSTR lpValueName, LPDWORD lpR
 	private repo and must never be reimplemented in the public host page.
 -----------------------------------------------------------------------------*/
 
-#if __UNIX__
+#if __UNIX__ || (defined(_WIN32) && !_XBOX)
 #ifdef __EMSCRIPTEN__
 #include <unistd.h>		// getentropy(): crypto.getRandomValues in a browser
 #endif
@@ -73,6 +74,13 @@ static UBOOL CDKeyEntropy( QWORD& Out )
 {
 #ifdef __EMSCRIPTEN__
 	return getentropy( &Out, sizeof(Out) )==0;
+#elif defined(_WIN32)
+	// rand_s: the CRT's interface to the system's cryptographic generator, 32 bits a call.
+	unsigned int Lo = 0, Hi = 0;
+	if( rand_s( &Lo )!=0 || rand_s( &Hi )!=0 )
+		return 0;
+	Out = ((QWORD)Hi << 32) | (QWORD)Lo;
+	return 1;
 #else
 	FILE* Urandom = fopen( "/dev/urandom", "rb" );
 	if( !Urandom )
@@ -112,6 +120,61 @@ static FString GenerateCDKey()
 	if( Key.Len()!=23 || !ValidateCDKey( *Key ) )
 		return TEXT("");
 	return Key;
+	unguard;
+}
+
+// The `cdkey` file beside the game: its key, or (no file) a generated key, saved there so the install
+// keeps its identity. The key itself is never logged.
+static FString CDKeyFromFile()
+{
+	guard(CDKeyFromFile);
+	FString cdkey;
+    FArchive *in = GFileManager->CreateFileReader(TEXT("cdkey"));
+    if (in == NULL)
+    {
+        cdkey = GenerateCDKey();
+        FArchive *out = cdkey.Len() ? GFileManager->CreateFileWriter(TEXT("cdkey")) : NULL;
+        if (out != NULL)
+        {
+            out->Serialize((void *) appToAnsi(*cdkey), cdkey.Len());
+            delete out;
+            debugf(TEXT("No cdkey file: generated a key for this install and saved it."));
+        }
+        else if (cdkey.Len())
+        {
+            debugf(TEXT("No cdkey file: generated a key for this install, but could not save it."));
+        }
+        else
+        {
+            debugf(TEXT("Couldn't open cdkey file."));
+        }
+    }
+    else
+    {
+        char buf[128];
+        int max = in->TotalSize();
+        if (max >= sizeof (buf))
+            max = sizeof (buf) - 1;
+        in->Serialize(buf, max);
+        delete in;
+
+        for (int i = 0; i < max; i++)
+        {
+            char ch = buf[i];
+            if ( ! ( ((ch >= '0') && (ch <= '9')) ||
+                     ((ch >= 'a') && (ch <= 'z')) ||
+                     ((ch >= 'A') && (ch <= 'Z')) ||
+                     ((ch == '-')) ) )
+            {
+                buf[i] = '\0';
+                break;
+            }
+        }
+
+        buf[max] = '\0';  // just in case.
+        cdkey = buf;
+    }
+	return cdkey;
 	unguard;
 }
 #endif
@@ -172,56 +235,12 @@ static FString GetRealCDKey()
 			cdkey = cdkey.Left(23).Caps();
 		}
 	}
+	// No key in the registry (an install that did not come from the retail installer): the `cdkey`
+	// file, generated on first use.
+	if( cdkey == TEXT("") )
+		cdkey = CDKeyFromFile();
 #elif __UNIX__
-    FArchive *in = GFileManager->CreateFileReader(TEXT("cdkey"));
-    if (in == NULL)
-    {
-        // No key file: give this install an identity of its own and keep it (GenerateCDKey, above).
-        // The key itself is never logged.
-        cdkey = GenerateCDKey();
-        FArchive *out = cdkey.Len() ? GFileManager->CreateFileWriter(TEXT("cdkey")) : NULL;
-        if (out != NULL)
-        {
-            out->Serialize((void *) appToAnsi(*cdkey), cdkey.Len());
-            delete out;
-            debugf(TEXT("No cdkey file: generated a key for this install and saved it."));
-        }
-        else if (cdkey.Len())
-        {
-            debugf(TEXT("No cdkey file: generated a key for this install, but could not save it."));
-        }
-        else
-        {
-            debugf(TEXT("Couldn't open cdkey file."));
-        }
-    }
-    else
-    {
-        char buf[128];
-        int max = in->TotalSize();
-        if (max >= sizeof (buf))
-            max = sizeof (buf) - 1;
-        in->Serialize(buf, max);
-        delete in;
-
-        for (int i = 0; i < max; i++)
-        {
-            char ch = buf[i];
-            if ( ! ( ((ch >= '0') && (ch <= '9')) ||
-                     ((ch >= 'a') && (ch <= 'z')) ||
-                     ((ch >= 'A') && (ch <= 'Z')) ||
-                     ((ch == '-')) ) )
-            {
-                buf[i] = '\0';
-                break;
-            }
-        }
-
-        buf[max] = '\0';  // just in case.
-        cdkey = buf;
-
-        //debugf("cdkey is [%s].", *cdkey);
-    }
+	cdkey = CDKeyFromFile();
 #else
 #   error Please fill in CD Key stuff for your platform!
 #endif
