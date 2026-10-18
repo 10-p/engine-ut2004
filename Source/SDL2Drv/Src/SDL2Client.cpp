@@ -97,16 +97,11 @@ void USDL2Client::Init( UEngine* InEngine )
     // Init base.
     UClient::Init( InEngine );
 
-#if defined(__ANDROID__)
     // The game-controller subsystem: SDL_INIT_GAMECONTROLLER implies SDL_INIT_JOYSTICK and makes SDL emit
-    // SDL_CONTROLLER* events, which USDL2Viewport::UpdateInput turns into IK_Joy* input.
-    const Uint32 SDL2DrvInitFlags = SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER;
-#else
-    // The game-controller subsystem (one pad, the first connected; USDL2Viewport::UpdateInput). Whether a pad is
-    // used is UseJoystick, read every tick, so the game's own option takes effect at once. Pads already connected
+    // SDL_CONTROLLER* events (one pad, the first connected; USDL2Viewport::UpdateInput). Whether a pad is used
+    // is UseJoystick, read every tick, so the game's own option takes effect at once. Pads already connected
     // arrive as SDL_CONTROLLERDEVICEADDED events like later ones.
     const Uint32 SDL2DrvInitFlags = SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER;
-#endif
     if (SDL_Init(SDL2DrvInitFlags) == -1)
     {
         const TCHAR *err = appFromAnsi(SDL_GetError());
@@ -163,11 +158,7 @@ void USDL2Client::Destroy()
     // Shut down GRenDev.
     Engine->GRenDev->Exit(NULL);
 
-#if defined(__ANDROID__)
     SDL_QuitSubSystem(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER);
-#else
-    SDL_QuitSubSystem(SDL_INIT_VIDEO);
-#endif
 
     debugf( NAME_Exit, TEXT("SDL2 client shut down") );
     Super::Destroy();
