@@ -375,7 +375,7 @@ if(EMSCRIPTEN)
       --target=ut2004 --abi=${UE_ABI_VERSION}
       --gitSha=${META_GIT_SHA} --builtAt=${META_BUILT_AT} --emcc=${META_EMCC}
       ${META_DEPS}
-    COMMENT "Emitting artifact meta.json (step 1.5)"
+    COMMENT "Emitting artifact meta.json"
     VERBATIM
   )
 elseif(ANDROID)
