@@ -1,5 +1,5 @@
 /*=============================================================================
-	OpenGLResource.h: Unreal OpenGL resource definition.
+	GL4ESResource.h: GL4ESDrv's cached textures and vertex/index streams (from OpenGLDrv's OpenGLResource.h).
 	Copyright 2002 Epic Games, Inc. All Rights Reserved.
 
 	Revision history:

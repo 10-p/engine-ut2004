@@ -1,5 +1,5 @@
 /*=============================================================================
-	OpenGLRenderResource.cpp: Unreal OpenGL support.
+	GL4ESResource.cpp: GL4ESDrv's cached textures and vertex/index streams (from OpenGLDrv's OpenGLRenderResource.cpp).
 	Copyright 2002 Epic Games, Inc. All Rights Reserved.
 	
 	Revision history:

@@ -1,5 +1,5 @@
 /*=============================================================================
-	OpenGLMaterialState.cpp: Unreal OpenGL support.
+	GL4ESMaterialState.cpp: GL4ESDrv's material-to-GL-state setup (from OpenGLDrv's OpenGLMaterialState.cpp).
 	Copyright 2002 Epic Games, Inc. All Rights Reserved.
 	
 	Revision history:

@@ -1,5 +1,5 @@
 /*=============================================================================
-	OpenGLRenderInterface.cpp: Unreal OpenGL support.
+	GL4ESRenderInterface.cpp: GL4ESDrv's rendering interface (from OpenGLDrv's OpenGLRenderInterface.cpp).
 	Copyright 2002 Epic Games, Inc. All Rights Reserved.
 	
 	Revision history:

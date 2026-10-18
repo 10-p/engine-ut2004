@@ -1,5 +1,5 @@
 /*=============================================================================
-	OpenGLRenderInterface.h: Unreal OpenGL rendering interface definition.
+	GL4ESRenderInterface.h: GL4ESDrv's rendering interface class (from OpenGLDrv's OpenGLRenderInterface.h).
 	Copyright 2002 Epic Games, Inc. All Rights Reserved.
 
 	Revision history:

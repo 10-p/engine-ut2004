@@ -1,7 +1,6 @@
 /*=============================================================================
-	GL4ESDrv.h: Unreal GL4ES (GL-to-GLES2 translation) support header.
+	GL4ESDrv.h: GL4ESDrv's package header (OpenGL through gl4es on OpenGL ES 2 and WebGL).
 	Based on OpenGLDrv.h by Daniel Vogel.
-	Modified for GL4ES integration.
 
 =============================================================================*/
 

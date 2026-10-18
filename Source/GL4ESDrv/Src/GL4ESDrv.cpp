@@ -1,5 +1,5 @@
 /*=============================================================================
-	OpenGlDrv.cpp: Unreal OpenGL support precompiled header generator.
+	GL4ESDrv.cpp: the GL4ESDrv package definition (from OpenGLDrv's OpenGlDrv.cpp).
 	Copyright 2002 Epic Games, Inc. All Rights Reserved.
 
 	Revision history:

@@ -1,5 +1,5 @@
 /*=============================================================================
-	OpenGLFuncs.h: OpenGL function-declaration macros.
+	GL4ESFuncs.h: the GL entry points GL4ESDrv resolves through gl4es (from OpenGLDrv's OpenGLFuncs.h).
 
 	Copyright 2002 Epic Games, Inc. All Rights Reserved.
 

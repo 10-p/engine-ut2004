@@ -1,5 +1,5 @@
 /*=============================================================================
-	OpenGLRenderDevice.h: Unreal OpenGL render device definition.
+	GL4ESRenderDevice.h: the GL4ES render device class (from OpenGLDrv's OpenGLRenderDevice.h).
 	Copyright 2002 Epic Games, Inc. All Rights Reserved.
 
 	Revision history:

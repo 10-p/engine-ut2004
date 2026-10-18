@@ -1,7 +1,6 @@
 /*=============================================================================
-	GL4ESRenderDevice.cpp: GL4ES (GL-to-GLES2 translation) render device.
+	GL4ESRenderDevice.cpp: the GL4ES render device (from OpenGLDrv's OpenGLRenderDevice.cpp).
 	Based on OpenGLRenderDevice.cpp by Daniel Vogel.
-	Modified for GL4ES integration -- SDL2/Linux-only.
 
 =============================================================================*/
 
