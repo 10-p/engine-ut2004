@@ -5,7 +5,7 @@
 # file supplies what a cross build cannot infer.
 #
 # MINGW_TARGET_ARCH: i686 by default (the `windows` preset, with Pixomatic, as retail UT2004), x86_64 for
-# the `windows64` preset (which also sets UT_ALLOW_64BIT).
+# the `windows64` preset (which also sets UE_ALLOW_64BIT).
 #
 # Usage: `cmake --preset windows` / `cmake --preset windows64` (the presets point here and set
 # MINGW_THREAD_MODEL=posix). Standalone:

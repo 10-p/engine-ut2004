@@ -43,8 +43,8 @@ target_link_libraries(${PROJECT_NAME}
 
 # -m32 (32-bit i386, like the rest of the native build), -export-dynamic for the engine's reflection /
 # class-loading, -rpath,. so any vendored .so next to the binary resolves at runtime. The -m32 is gated on
-# UT_PTR_BYTES: a 64-bit build's objects are x86-64.
-if(UT_PTR_BYTES EQUAL 4)
+# UE_PTR_BYTES: a 64-bit build's objects are x86-64.
+if(UE_PTR_BYTES EQUAL 4)
   target_link_options(${PROJECT_NAME} PRIVATE -m32)
 endif()
 target_link_options(${PROJECT_NAME} PRIVATE -Wl,-export-dynamic -Wl,-rpath,.)

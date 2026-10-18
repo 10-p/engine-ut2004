@@ -208,7 +208,7 @@ public class GameActivity extends SDLActivity {
         // app's, set in the JNI bridge), which nothing on Android wants.
         //
         // CPUSPEED=3000: ARM has no rdtsc and /proc/cpuinfo has no "cpu MHz", so Core's CheckCpuSpeed
-        // (UnUnix.cpp, the UT_NO_X86_INTRIN path) appErrors ("Please specify CPUSPEED=x on cmdline.")
+        // (UnUnix.cpp, the UE_NO_X86_INTRIN path) appErrors ("Please specify CPUSPEED=x on cmdline.")
         // without it. The web passes the same value. GSecondsPerCycle is pinned on that path anyway,
         // so the exact value is non-critical.
         //

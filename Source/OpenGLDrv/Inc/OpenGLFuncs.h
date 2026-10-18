@@ -352,7 +352,7 @@ GL_PROC(_GL,void,glVertex4sv,(const GLshort *v))
 GL_PROC(_GL,void,glVertexPointer,(GLint size, GLenum type, GLsizei stride, const GLvoid *pointer))
 GL_PROC(_GL,void,glViewport,(GLint x, GLint y, GLsizei width, GLsizei height))
 
-#ifdef UT_OPENGLDRV_WGL
+#ifdef UE_OPENGLDRV_WGL
 // WGL functions.
 GL_PROC(_GL,BOOL,wglCopyContext,(HGLRC,HGLRC,UINT))
 GL_PROC(_GL,HGLRC,wglCreateContext,(HDC))
@@ -444,7 +444,7 @@ GL_PROC(_GL_ATI_map_object_buffer,void,glUnmapObjectBufferATI,(GLuint buffer))
 GL_EXT(_GL_NV_vertex_array_range)
 GL_PROC(_GL_NV_vertex_array_range,void,glFlushVertexArrayRangeNV,(void))
 GL_PROC(_GL_NV_vertex_array_range,void,glVertexArrayRangeNV,(GLsizei, const GLvoid *))
-#ifdef UT_OPENGLDRV_WGL
+#ifdef UE_OPENGLDRV_WGL
 GL_PROC(_GL_NV_vertex_array_range,void*,wglAllocateMemoryNV,(GLsizei, GLfloat, GLfloat, GLfloat))
 GL_PROC(_GL_NV_vertex_array_range,void,wglFreeMemoryNV,(void *))
 #else

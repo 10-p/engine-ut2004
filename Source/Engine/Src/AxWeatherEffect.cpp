@@ -23,7 +23,7 @@ static	FLOAT	tmp_ScaleGlow			= 1.f;
 #define USE_SSE_WEATHER __HAS_SSE__
 
 /* The 64-bit weather path is an MSVC dialect split, not a pointer-width one: GCC (MinGW x86_64
-   included) takes the MMX branch, whose helper is kept for it. See UT_MSVC_NO_MMX in Core.h. */
+   included) takes the MMX branch, whose helper is kept for it. See UE_MSVC_NO_MMX in Core.h. */
 
 #if USE_SSE_WEATHER
 const	FLOAT	INV_005					= 1.f / 0.05f;
@@ -32,7 +32,7 @@ static	FLOAT	FLOAT_255				= 255.f;
 static	F32vec4 M00, M10, M20, M30;
 static	F32vec4 SSE_ScaleGlow;
 
-#if !UT_MSVC_NO_MMX
+#if !UE_MSVC_NO_MMX
 // For some reason this didn't get inlined!
 static FORCEINLINE __m64 _mm_cvtps_pi16_EPIC(__m128 a)
 {
@@ -150,7 +150,7 @@ public:
 		INT				Rendered	= 0;
 
 #if USE_SSE_WEATHER
-		#if UT_MSVC_NO_MMX
+		#if UE_MSVC_NO_MMX
 		const UBOOL UseScalarFallback = 0;
 		M00 = _mm_loadu_ps( &WorldToCamera.M[0][0] );
 		M10 = _mm_loadu_ps( &WorldToCamera.M[1][0] );

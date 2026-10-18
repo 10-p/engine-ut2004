@@ -104,7 +104,7 @@
 // inline asm (rdtsc/rorl/roll/cpuid/int3) and no SSE; they share the portable-C fallbacks below. Only
 // x86/x86_64 (__i386__/__x86_64__) keep the x86 inline asm.
 #if !defined(__i386__) && !defined(__x86_64__)
-	#define UT_NO_X86_INTRIN 1
+	#define UE_NO_X86_INTRIN 1
 #endif
 
 // alloca
@@ -679,7 +679,7 @@ CORE_API void appArgv0(const char *argv0);  // defined in UnUnix.cpp ...
 inline DWORD appCycles()
 {
 	DWORD r;
-#ifdef UT_NO_X86_INTRIN
+#ifdef UE_NO_X86_INTRIN
 	// appCycles() is a microsecond counter here, so every clock()/unclock() pair, every `stat` timing and
 	// the `-benchmark` frame times measure real durations. This path covers Android arm64/armv7 too, so it
 	// is portable C: appSecondsSlow() (declared above, gettimeofday-based, self-initialising) is monotonic
@@ -777,7 +777,7 @@ inline void appMemzero( void* Dest, INT Count )
 #ifndef _rotr
 inline DWORD _rotr(DWORD val, INT shift)
 {
-#ifdef UT_NO_X86_INTRIN
+#ifdef UE_NO_X86_INTRIN
 	shift &= 31;
 	return (val >> shift) | (val << (32 - shift));
 #else
@@ -814,7 +814,7 @@ fprintf(stderr, "%s:%d ... This is probably wrong.\n", __FILE__, __LINE__);
 #ifndef _rotl
 inline DWORD _rotl(DWORD val, INT shift)
 {
-#ifdef UT_NO_X86_INTRIN
+#ifdef UE_NO_X86_INTRIN
 	shift &= 31;
 	return (val << shift) | (val >> (32 - shift));
 #else
@@ -852,7 +852,7 @@ extern CORE_API QWORD GBaseCycles;
 #define DEFINED_appResetTimer 1
 inline void appResetTimer(void)
 {
-#ifdef UT_NO_X86_INTRIN
+#ifdef UE_NO_X86_INTRIN
 	GBaseCycles = 0;
 #else
 	__asm__ __volatile__

@@ -80,10 +80,10 @@ static void AndroidRedirectStdioToLogcat()
 #include "UnNullRenderDevice.h"
 #define SDL2DRV_REGISTRATION_ONLY
 #include "SDL2Drv.h"	// the only viewport driver
-#if UT_RENDER_OPENGLDRV
+#if UE_RENDER_OPENGLDRV
 #include "OpenGLDrv.h"
 #endif
-#if UT_RENDER_GL4ESDRV
+#if UE_RENDER_GL4ESDRV
 #include "GL4ESDrv.h"
 #endif
 #include "UnNet.h"
@@ -94,7 +94,7 @@ static void AndroidRedirectStdioToLogcat()
 #ifdef __EMSCRIPTEN__
 #include "WebRTCDrv.h"
 #include "WebRTCDrvClasses.h"
-#ifdef UT_WITH_PROXYNET
+#ifdef UE_WITH_PROXYNET
 #include "ProxyNetDrv.h"
 #include "ProxyNetDrvClasses.h"
 #endif
@@ -1121,10 +1121,10 @@ int main(int argc, char **argv)
         AUTO_INITIALIZE_REGISTRANTS_SDL2DRV;
         AUTO_INITIALIZE_REGISTRANTS_FIRE;
         AUTO_INITIALIZE_REGISTRANTS_ALAUDIO;
-#if UT_RENDER_OPENGLDRV
+#if UE_RENDER_OPENGLDRV
         AUTO_INITIALIZE_REGISTRANTS_OPENGLDRV;
 #endif
-#if UT_RENDER_GL4ESDRV
+#if UE_RENDER_GL4ESDRV
         AUTO_INITIALIZE_REGISTRANTS_GL4ESDRV;
 #endif
         #if USE_PIXOMATIC
@@ -1133,7 +1133,7 @@ int main(int argc, char **argv)
         AUTO_INITIALIZE_REGISTRANTS_IPDRV;
 #ifdef __EMSCRIPTEN__
         AUTO_INITIALIZE_REGISTRANTS_WEBRTCDRV;
-#ifdef UT_WITH_PROXYNET
+#ifdef UE_WITH_PROXYNET
         AUTO_INITIALIZE_REGISTRANTS_PROXYNETDRV;
 #endif
 #endif
@@ -1156,10 +1156,10 @@ char blah;
 extern BYTE GLoadedPixoDrv; snprintf(&blah, 1, "%d", (int) GLoadedPixoDrv);
 #endif
 extern BYTE GLoadedSDL2Drv; snprintf(&blah, 1, "%d", (int) GLoadedSDL2Drv);
-#if UT_RENDER_OPENGLDRV
+#if UE_RENDER_OPENGLDRV
 extern BYTE GLoadedOpenGLDrv; snprintf(&blah, 1, "%d", (int) GLoadedOpenGLDrv);
 #endif
-#if UT_RENDER_GL4ESDRV
+#if UE_RENDER_GL4ESDRV
 extern BYTE GLoadedGL4ESDrv; snprintf(&blah, 1, "%d", (int) GLoadedGL4ESDrv);
 #endif
 extern BYTE GLoadedALAudio; snprintf(&blah, 1, "%d", (int) GLoadedALAudio);

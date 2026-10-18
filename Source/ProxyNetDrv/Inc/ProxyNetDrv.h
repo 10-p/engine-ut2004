@@ -12,7 +12,7 @@
 	any other driver,
 	    [Engine.Engine] NetworkDevice=ProxyNetDrv.ProxyNetDriver
 	and the launcher rewrites NetworkDevice only when it is the stock IpDrv.TcpNetDriver.
-	-DUT_WITH_PROXYNET=OFF removes it entirely.
+	-DUE_WITH_PROXYNET=OFF removes it entirely.
 
 	Client only: a browser cannot accept UDP; hosting is what P2P networking is for.
 =============================================================================*/

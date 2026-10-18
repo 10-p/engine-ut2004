@@ -604,7 +604,7 @@ CORE_API void appMemzero( void* Dest, INT Count );
 //
 // C++ style memory allocation.
 //
-// UT_REPLACEMENT_ALLOC: these six are the replaceable global forms, and a replacement operator new/delete
+// UE_REPLACEMENT_ALLOC: these six are the replaceable global forms, and a replacement operator new/delete
 // may not be `inline` (clang: -Winline-new-delete). Declared plainly they are emitted out of line as weak
 // symbols whenever the compiler does not inline them (at -O0, always), and wasm-ld then resolves the
 // program-wide operator new to one of them: Emscripten's WasmFS static initializer (priority 100, long
@@ -613,7 +613,7 @@ CORE_API void appMemzero( void* Dest, INT Count );
 // allocations go to appMalloc, system allocations to libc++. The placement form
 // `operator new(size_t, const TCHAR*)` is not a replacement function and is left alone.
 //
-#define UT_REPLACEMENT_ALLOC __attribute__((always_inline))
+#define UE_REPLACEMENT_ALLOC __attribute__((always_inline))
 inline void* operator new( size_t Size, const TCHAR* Tag )
 {
 	guardSlow(new);
@@ -621,20 +621,20 @@ inline void* operator new( size_t Size, const TCHAR* Tag )
 	return appMalloc( (DWORD) Size, Tag );
 	unguardSlow;
 }
-UT_REPLACEMENT_ALLOC inline void* operator new( size_t Size )
+UE_REPLACEMENT_ALLOC inline void* operator new( size_t Size )
 {
 	guardSlow(new);
 // !!! FIXME: Don't cast to DWORD! Fix appMalloc()'s declaration! --ryan.
 	return appMalloc( (DWORD) Size, TEXT("new") );
 	unguardSlow;
 }
-UT_REPLACEMENT_ALLOC inline void operator delete( void* Ptr )
+UE_REPLACEMENT_ALLOC inline void operator delete( void* Ptr )
 {
 	guardSlow(delete);
 	appFree( Ptr );
 	unguardSlow;
 }
-UT_REPLACEMENT_ALLOC inline void operator delete( void* Ptr, size_t )
+UE_REPLACEMENT_ALLOC inline void operator delete( void* Ptr, size_t )
 {
 	guardSlow(delete);
 	appFree( Ptr );
@@ -649,20 +649,20 @@ inline void* operator new[]( size_t Size, const TCHAR* Tag )
 	return appMalloc( (DWORD) Size, Tag );
 	unguardSlow;
 }
-UT_REPLACEMENT_ALLOC inline void* operator new[]( size_t Size )
+UE_REPLACEMENT_ALLOC inline void* operator new[]( size_t Size )
 {
 	guardSlow(new);
 // !!! FIXME: Don't cast to DWORD! Fix appMalloc()'s declaration! --ryan.
 	return appMalloc( (DWORD) Size, TEXT("new") );
 	unguardSlow;
 }
-UT_REPLACEMENT_ALLOC inline void operator delete[]( void* Ptr )
+UE_REPLACEMENT_ALLOC inline void operator delete[]( void* Ptr )
 {
 	guardSlow(delete);
 	appFree( Ptr );
 	unguardSlow;
 }
-UT_REPLACEMENT_ALLOC inline void operator delete[]( void* Ptr, size_t )
+UE_REPLACEMENT_ALLOC inline void operator delete[]( void* Ptr, size_t )
 {
 	guardSlow(delete);
 	appFree( Ptr );

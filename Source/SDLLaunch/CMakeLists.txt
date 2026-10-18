@@ -45,10 +45,10 @@ else()
     ${CMAKE_SOURCE_DIR}/Source/Engine/Src
     ${CMAKE_SOURCE_DIR}/Thirdparty/OpenAL/Inc
   )
-  if(UT_HAS_OPENGLDRV)
+  if(UE_HAS_OPENGLDRV)
     target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/Source/OpenGLDrv/Inc/linuxGL)
   endif()
-  if(UT_HAS_GL4ESDRV)
+  if(UE_HAS_GL4ESDRV)
     target_include_directories(${PROJECT_NAME} PRIVATE
       ${CMAKE_SOURCE_DIR}/Source/GL4ESDrv/Inc
       ${gl4es_SOURCE_DIR}/include
@@ -73,19 +73,19 @@ if(EMSCRIPTEN)
     GL4ESDrv ALAudio Onslaught
     zlib ogg vorbis
   )
-  if(UT_WITH_PROXYNET)
+  if(UE_WITH_PROXYNET)
     list(APPEND LINK_PACKAGES ProxyNetDrv)
   endif()
 else()
   # Native/Windows: every render driver this configure enabled links in; the choice is made at runtime.
   set(LINK_PACKAGES Engine Core Fire IpDrv UWeb XGame XInterface)
-  if(UT_HAS_OPENGLDRV)
+  if(UE_HAS_OPENGLDRV)
     list(APPEND LINK_PACKAGES OpenGLDrv)
   endif()
-  if(UT_HAS_GL4ESDRV)
+  if(UE_HAS_GL4ESDRV)
     list(APPEND LINK_PACKAGES GL4ESDrv)
   endif()
-  if(UT_HAS_PIXODRV)
+  if(UE_HAS_PIXODRV)
     list(APPEND LINK_PACKAGES PixoDrv)
   endif()
   list(APPEND LINK_PACKAGES ALAudio Onslaught zlib ogg vorbis)
@@ -97,21 +97,21 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE WITH_SPEEX=0)
 list(APPEND LINK_PACKAGES SDL2Drv)
 
 # Tell SDLLaunch.cpp which render drivers are linked in, so its includes / registrants /
-# dead-code refs match the link set exactly. An absent UT_RENDER_* macro evaluates to 0 via #if.
+# dead-code refs match the link set exactly. An absent UE_RENDER_* macro evaluates to 0 via #if.
 if(EMSCRIPTEN)
-  target_compile_definitions(${PROJECT_NAME} PRIVATE UT_RENDER_GL4ESDRV=1)
+  target_compile_definitions(${PROJECT_NAME} PRIVATE UE_RENDER_GL4ESDRV=1)
 else()
-  if(UT_HAS_OPENGLDRV)
-    target_compile_definitions(${PROJECT_NAME} PRIVATE UT_RENDER_OPENGLDRV=1)
+  if(UE_HAS_OPENGLDRV)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE UE_RENDER_OPENGLDRV=1)
   endif()
-  if(UT_HAS_GL4ESDRV)
-    target_compile_definitions(${PROJECT_NAME} PRIVATE UT_RENDER_GL4ESDRV=1)
+  if(UE_HAS_GL4ESDRV)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE UE_RENDER_GL4ESDRV=1)
   endif()
 endif()
 
 # Activate SDLLaunch.cpp's Pixomatic wiring (registrant, GLoadedPixoDrv, the
 # -SOFTWARERENDERER -> PixoDrv.PixoRenderDevice switch + ApplySoftwareRendererConfig).
-if(UT_HAS_PIXODRV)
+if(UE_HAS_PIXODRV)
   target_compile_definitions(${PROJECT_NAME} PRIVATE USE_PIXOMATIC=1)
   # pixomatic_linux.a carries MSVC-style COMDAT float-literal symbols (_real@<hex>) duplicated across its
   # object files; GNU ld doesn't merge COMDAT constants, so allow the (identical) duplicates -- ld keeps first.
@@ -127,15 +127,15 @@ if(UT_HAS_PIXODRV)
   # install. There is no 64-bit build of it and no source, which is why the top-level CMakeLists refuses
   # USE_PIXOMATIC at 64-bit.
   if(WIN32 OR MINGW)
-    set(_UT_PIXO_DLL "${CMAKE_SOURCE_DIR}/Thirdparty/Pixomatic/Bin/pixomatic.dll")
-    if(NOT EXISTS "${_UT_PIXO_DLL}")
+    set(_UE_PIXO_DLL "${CMAKE_SOURCE_DIR}/Thirdparty/Pixomatic/Bin/pixomatic.dll")
+    if(NOT EXISTS "${_UE_PIXO_DLL}")
       message(FATAL_ERROR
-        "USE_PIXOMATIC=ON on Windows needs the vendored ${_UT_PIXO_DLL}. pixomatic.lib is an import "
+        "USE_PIXOMATIC=ON on Windows needs the vendored ${_UE_PIXO_DLL}. pixomatic.lib is an import "
         "library, so the DLL is a LOAD-TIME dependency: without it the built .exe will not start at "
         "all. Vendor the DLL or configure with -DUSE_PIXOMATIC=OFF.")
     endif()
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_UT_PIXO_DLL}" "$<TARGET_FILE_DIR:${PROJECT_NAME}>/pixomatic.dll"
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_UE_PIXO_DLL}" "$<TARGET_FILE_DIR:${PROJECT_NAME}>/pixomatic.dll"
       COMMENT "Staging vendored pixomatic.dll beside the executable (load-time import)")
   endif()
 endif()
@@ -154,8 +154,8 @@ endif()
 #-----------------------------------------------------------------------------
 
 if(EMSCRIPTEN)
-  # Optimization/diagnostics mode: dev/debug (default) vs max performance (UT_WEB_PERF=ON).
-  if(UT_WEB_PERF)
+  # Optimization/diagnostics mode: dev/debug (default) vs max performance (UE_WEB_PERF=ON).
+  if(UE_WEB_PERF)
     # Max performance: optimize at link (binaryen wasm-opt -O3), no assertions, no debug/source maps.
     # -g0 ensures no DWARF reaches the linker (DWARF forces "limited binaryen optimizations").
     target_link_options(${PROJECT_NAME} PRIVATE
@@ -186,15 +186,15 @@ if(EMSCRIPTEN)
     )
   endif()
 
-  # UT_WEB_ASSERTIONS: assertions + symbols on top of the perf build, the configuration the E2E
+  # UE_WEB_ASSERTIONS: assertions + symbols on top of the perf build, the configuration the E2E
   # exercises. -sSAFE_HEAP is not an option: it is incompatible with -sWASMFS and fires inside
   # Emscripten's own wasmfs::FileTable constructor.
   #
   # Applied after the perf/debug branch: emcc takes the last flag and the perf branch sets
   # -sASSERTIONS=0 / -g0. CMAKE_EXE_LINKER_FLAGS cannot do this: CMake places it before
   # target_link_options, so the target's own flags would win.
-  option(UT_WEB_ASSERTIONS "Emscripten: keep runtime assertions + DWARF in the perf build (diagnostic)" OFF)
-  if(UT_WEB_ASSERTIONS)
+  option(UE_WEB_ASSERTIONS "Emscripten: keep runtime assertions + DWARF in the perf build (diagnostic)" OFF)
+  if(UE_WEB_ASSERTIONS)
     message(STATUS "SDLLaunch: DIAGNOSTIC build - assertions + stack checks + DWARF on top of -O3")
     target_link_options(${PROJECT_NAME} PRIVATE
       -g
@@ -269,15 +269,19 @@ if(EMSCRIPTEN)
     # webrtc_* symbols), so no DEFAULT_LIBRARY_FUNCS_TO_INCLUDE force-include is needed.
     "SHELL:--js-library ${CMAKE_SOURCE_DIR}/vendor/glue/webrtc-shim.js"
   )
-  # Game assets live out of tree. UT_ASSETS_DIR points at the asset dir holding System/ (the web link
-  # embeds System/Build.ini and System/Packages.md5 from it). Override with -DUT_ASSETS_DIR=/path.
-  set(UT_ASSETS_DIR "/home/ion/ut2004-assets" CACHE PATH
-      "Directory holding UT2004 game assets (System/*.ini are preloaded into the WASM build)")
+  # Game assets live out of tree. UE_ASSETS_DIR (required) is the UT2004 folder holding System/: the web
+  # link embeds System/Build.ini and System/Packages.md5 from it.
+  set(UE_ASSETS_DIR "" CACHE PATH
+      "UT2004 folder holding System/ (the web link embeds System/Build.ini and System/Packages.md5)")
+  if(NOT UE_ASSETS_DIR)
+    message(FATAL_ERROR "The web build needs -DUE_ASSETS_DIR=<UT2004 folder> (the one holding System/): "
+                        "its link embeds System/Build.ini and System/Packages.md5 from it.")
+  endif()
   # Fail at configure, not minutes later at the link, when the tree is not there (a fresh machine).
   foreach(_f System/Build.ini System/Packages.md5)
-    if(NOT EXISTS "${UT_ASSETS_DIR}/${_f}")
-      message(FATAL_ERROR "UT_ASSETS_DIR: ${UT_ASSETS_DIR}/${_f} not found. "
-                          "Configure with -DUT_ASSETS_DIR=<UT2004 folder> (the one holding System/).")
+    if(NOT EXISTS "${UE_ASSETS_DIR}/${_f}")
+      message(FATAL_ERROR "UE_ASSETS_DIR: ${UE_ASSETS_DIR}/${_f} not found. "
+                          "Configure with -DUE_ASSETS_DIR=<UT2004 folder> (the one holding System/).")
     endif()
   endforeach()
   # Preload the boot files into the wasm's .data (~30 KB, needed during appInit). The two config
@@ -292,8 +296,8 @@ if(EMSCRIPTEN)
   set(PRELOAD_FLAGS
     "--preload-file ${CMAKE_SOURCE_DIR}/Engine/Config/web/Default.ini@/System/Default.ini"
     "--preload-file ${CMAKE_SOURCE_DIR}/Engine/Config/web/DefUser.ini@/System/DefUser.ini"
-    "--preload-file ${UT_ASSETS_DIR}/System/Build.ini@/System/Build.ini"
-    "--preload-file ${UT_ASSETS_DIR}/System/Packages.md5@/System/Packages.md5"
+    "--preload-file ${UE_ASSETS_DIR}/System/Build.ini@/System/Build.ini"
+    "--preload-file ${UE_ASSETS_DIR}/System/Packages.md5@/System/Packages.md5"
   )
   # The preloaded inis are inputs to the link step: without LINK_DEPENDS, editing Engine/Config/web/*
   # would leave a stale .data baked (cmake sees no source change and skips the relink).
@@ -306,10 +310,10 @@ if(EMSCRIPTEN)
     "${CMAKE_SOURCE_DIR}/vendor/glue/wasmfs-shim.js"
     "${CMAKE_SOURCE_DIR}/vendor/glue/webrtc-shim.js")
   # ProxyNetDrv's own thin shim (the optional proxynet ABI module), a separate --js-library: the net shim
-  # stays identical across every engine repo, and with UT_WITH_PROXYNET=OFF the wasm has no ue_proxynet_*
+  # stays identical across every engine repo, and with UE_WITH_PROXYNET=OFF the wasm has no ue_proxynet_*
   # imports at all. Its $ueProxyNet rides in via each forwarder's __deps.
-  if(UT_WITH_PROXYNET)
-    target_compile_definitions(${PROJECT_NAME} PRIVATE UT_WITH_PROXYNET=1)
+  if(UE_WITH_PROXYNET)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE UE_WITH_PROXYNET=1)
     target_link_options(${PROJECT_NAME} PRIVATE
       "SHELL:--js-library ${CMAKE_SOURCE_DIR}/vendor/glue/proxynet-shim.js")
     set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY LINK_DEPENDS
@@ -405,9 +409,9 @@ else()
 
   # -export-dynamic: needed for the engine's reflection/class-loading system.
   # -rpath,.: allows finding vendored .so files in the same directory at runtime.
-  # -m32 is gated on UT_PTR_BYTES: a 64-bit build's objects are x86-64.
+  # -m32 is gated on UE_PTR_BYTES: a 64-bit build's objects are x86-64.
   if(NOT MINGW)
-    if(UT_PTR_BYTES EQUAL 4)
+    if(UE_PTR_BYTES EQUAL 4)
       target_link_options(${PROJECT_NAME} PRIVATE -m32)
     endif()
     target_link_options(${PROJECT_NAME} PRIVATE -Wl,-export-dynamic -Wl,-rpath,.)
@@ -416,7 +420,7 @@ else()
   # ALAudio dlopens (AL_DLL), resolved through the rpath '.' above from the System/ cwd. Copied, never
   # linked (see the Android note above for why DT_NEEDED would crash before appInit). A run tree that
   # takes the binary takes this file with it, or the game falls back to the system libopenal.
-  if(UT_LINUX_OPENALSOFT)
+  if(UE_LINUX_OPENALSOFT)
     add_dependencies(${PROJECT_NAME} OpenAL)
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:OpenAL> $<TARGET_FILE_DIR:${PROJECT_NAME}>/libopenal.so
@@ -434,20 +438,20 @@ if(ANDROID)
   # dlsym's SDL_main). Force the "lib" prefix (the root leaves the default prefix on Android).
   set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME UT2004 PREFIX "lib" SUFFIX ".so")
 elseif(NOT EMSCRIPTEN)
-  set(UT_BIN_NAME "ut2004")
+  set(UE_BIN_NAME "ut2004")
   # The name says which physics: the default (recovered Karma) is unsuffixed because it is what ships,
   # and each deviation names itself (-nokarma, -legacykarma), so the arms of an A/B run (downloaded side
   # by side from one CI run) can be told apart.
   if(BUILD_KARMA_REF)
-    set(UT_BIN_NAME "${UT_BIN_NAME}-legacykarma")
+    set(UE_BIN_NAME "${UE_BIN_NAME}-legacykarma")
   elseif(NOT USE_KARMA_DECOMP)
-    set(UT_BIN_NAME "${UT_BIN_NAME}-nokarma")
+    set(UE_BIN_NAME "${UE_BIN_NAME}-nokarma")
   endif()
-  if(UT_HAS_PIXODRV)
-    set(UT_BIN_NAME "${UT_BIN_NAME}-pixo")
+  if(UE_HAS_PIXODRV)
+    set(UE_BIN_NAME "${UE_BIN_NAME}-pixo")
   endif()
-  set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "${UT_BIN_NAME}")
-  message(STATUS "SDLLaunch output name: ${UT_BIN_NAME}")
+  set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "${UE_BIN_NAME}")
+  message(STATUS "SDLLaunch output name: ${UE_BIN_NAME}")
 endif()
 
 #-----------------------------------------------------------------------------

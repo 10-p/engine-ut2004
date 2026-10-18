@@ -33,7 +33,7 @@ endif()
 option(BUILD_STATIC "Build all modules as static libraries" ON)
 # The three web build modes (Emscripten only), the same in every engine repo:
 #
-#   preset        UT_WEB_PERF  UT_WEB_DEBUG  compile   what it is for
+#   preset        UE_WEB_PERF  UE_WEB_DEBUG  compile   what it is for
 #   wasm-perf     ON           -             -O3 -g0   shipping: fastest, smallest, no symbols
 #   wasm          OFF          OFF           -O2 -g    the dev default and the shipped -debug binary:
 #                                                      named stacks, DWARF, assertions, playable speed
@@ -42,18 +42,14 @@ option(BUILD_STATIC "Build all modules as static libraries" ON)
 # -O0 is for when the optimiser is the suspect (a bug that appears at one -O level and not another is
 # almost always undefined behaviour). The dev build is the largest of the three: DWARF makes Emscripten
 # run only limited binaryen optimizations, so -O2's inlining is never cleaned up.
-option(UT_WEB_PERF "Emscripten: shipping build — -O3, no assertions, no debug info" OFF)
-option(UT_WEB_DEBUG "Emscripten: -O0 instead of the -O2 dev default (nothing inlined, every local live)" OFF)
+option(UE_WEB_PERF "Emscripten: shipping build — -O3, no assertions, no debug info" OFF)
+option(UE_WEB_DEBUG "Emscripten: -O0 instead of the -O2 dev default (nothing inlined, every local live)" OFF)
 
 # One stack everywhere: SDL2 (SDL2Drv) + desktop OpenGL (OpenGLDrv) + GL4ES (GL4ESDrv), all in one binary,
 # the render device chosen at startup with -OPENGLRENDERER / -GL4ESRENDERER. OpenGLDrv (Mesa GL/gl.h) and
 # GL4ESDrv (gl4es GL/gl.h) set their include directories PRIVATE, so they never share a translation unit,
 # and their symbols do not collide: OpenGLDrv links no GL library (it binds through a pointer table filled
 # by SDL_GL_GetProcAddress) and gl4es compiles -fvisibility=hidden off-Windows. One device is live at a time.
-#
-# UT_GFX_BACKEND has one legal value, "gl4es".
-set(UT_GFX_BACKEND "gl4es" CACHE STRING "Graphics/driver backend (SDL 1.2 retired in 2.34; gl4es only)")
-set_property(CACHE UT_GFX_BACKEND PROPERTY STRINGS gl4es)
 
 if(BUILD_STATIC)
   set(LIB_TYPE STATIC)
@@ -64,28 +60,13 @@ else()
   add_definitions(-D__STATIC_LINK=0)
 endif()
 
-#-----------------------------------------------------------------------------
-# Graphics Backend Resolution
-#-----------------------------------------------------------------------------
-
 # The SDL 1.2 stack does not exist: refuse a request for it by name (an old script or -DUSE_SDL12=ON).
 if(DEFINED USE_SDL12 AND USE_SDL12)
   message(FATAL_ERROR
     "USE_SDL12=ON: there is no SDL 1.2 stack. The SDL2 build contains both GL "
     "render devices — run it with -OPENGLRENDERER for the desktop-GL path the legacy binary provided.")
 endif()
-if(NOT UT_GFX_BACKEND STREQUAL "gl4es")
-  message(FATAL_ERROR
-    "UT_GFX_BACKEND='${UT_GFX_BACKEND}': only 'gl4es' exists. "
-    "That stack carries OpenGLDrv as well; select it at runtime with -OPENGLRENDERER.")
-endif()
-
-# Emscripten uses the same stack; pin the knob so downstream reads agree.
-if(EMSCRIPTEN)
-  set(UT_GFX_BACKEND "gl4es")
-endif()
-
-message(STATUS "Graphics backend: ${UT_GFX_BACKEND} (SDL2; OpenGLDrv + GL4ESDrv in one binary)")
+message(STATUS "Graphics: SDL2; OpenGLDrv + GL4ESDrv in one binary (GL4ESDrv only on the web and Android)")
 
 #-----------------------------------------------------------------------------
 # Architecture Detection
@@ -110,38 +91,38 @@ endif()
 message(STATUS "Target arch: ${TARGET_ARCH}")
 message(STATUS "64-bit: ${TARGET_IS_64BIT}")
 
-option(UT_ALLOW_64BIT "Build x86_64 instead of demoting to -m32. 32-bit is the default." OFF)
-# UT_PTR_BYTES: the pointer width this build will actually produce, computed once so the gates below
+option(UE_ALLOW_64BIT "Build x86_64 instead of demoting to -m32. 32-bit is the default." OFF)
+# UE_PTR_BYTES: the pointer width this build will actually produce, computed once so the gates below
 # have something trustworthy to test. Neither obvious variable is right on its own:
 #   * CMAKE_SIZEOF_VOID_P is fixed during project() and does not see the -m32 demotion applied
 #     a few lines below, so it reads 8 for the `native` preset on an x86_64 host.
 #   * TARGET_IS_64BIT is derived by string-matching TARGET_ARCH against "86", so an aarch64
 #     Android build leaves it FALSE.
 # So: start from the compiler's answer and correct it for the three cases that override it.
-set(UT_PTR_BYTES ${CMAKE_SIZEOF_VOID_P})
+set(UE_PTR_BYTES ${CMAKE_SIZEOF_VOID_P})
 if(EMSCRIPTEN)
-  set(UT_PTR_BYTES 4)                       # wasm32; memory64 is explicitly not a target
+  set(UE_PTR_BYTES 4)                       # wasm32; memory64 is explicitly not a target
 elseif(ANDROID)
   if(ANDROID_ABI STREQUAL "armeabi-v7a" OR ANDROID_ABI STREQUAL "x86")
-    set(UT_PTR_BYTES 4)
+    set(UE_PTR_BYTES 4)
   else()
-    set(UT_PTR_BYTES 8)                     # arm64-v8a, x86_64
+    set(UE_PTR_BYTES 8)                     # arm64-v8a, x86_64
   endif()
-elseif(TARGET_IS_X86 AND NOT MSVC AND NOT UT_ALLOW_64BIT)
-  # x86 builds as 32-bit unless UT_ALLOW_64BIT says otherwise (the -m32 demotion below), so the answer
+elseif(TARGET_IS_X86 AND NOT MSVC AND NOT UE_ALLOW_64BIT)
+  # x86 builds as 32-bit unless UE_ALLOW_64BIT says otherwise (the -m32 demotion below), so the answer
   # is 4 whether that demotion is about to happen or already has. Not TARGET_IS_64BIT: CMAKE_C_FLAGS is
   # cached with `-m32`, so on a reconfigure target_architecture() probes an already 32-bit compiler,
   # while CMAKE_SIZEOF_VOID_P keeps the 8 cached on the first configure.
-  set(UT_PTR_BYTES 4)
+  set(UE_PTR_BYTES 4)
 endif()
-message(STATUS "Pointer width: ${UT_PTR_BYTES} bytes")
+message(STATUS "Pointer width: ${UE_PTR_BYTES} bytes")
 
-# x86 Linux and Windows build 32-bit by default (-m32); -DUT_ALLOW_64BIT=ON builds x86_64 (the native64
+# x86 Linux and Windows build 32-bit by default (-m32); -DUE_ALLOW_64BIT=ON builds x86_64 (the native64
 # and windows64 presets). 32-bit is the default because Pixomatic exists only for it (the prebuilts are
 # i386-only on both platforms, with no source) and because it is the ktrace control arm. The web is
 # wasm32 by nature (-m32 makes emcc fail); Android sets its width per ABI.
 if(NOT EMSCRIPTEN AND NOT ANDROID)
-  if(TARGET_IS_64BIT AND TARGET_IS_X86 AND NOT MSVC AND NOT UT_ALLOW_64BIT)
+  if(TARGET_IS_64BIT AND TARGET_IS_X86 AND NOT MSVC AND NOT UE_ALLOW_64BIT)
     message(STATUS "Building x86 binary with x86_64 compiler")
     set(TARGET_IS_64BIT FALSE)
     set(TARGET_ARCH "x86")
@@ -170,10 +151,7 @@ endif()
 # Platform Defines (reproducing Epic's makefile-header)
 #-----------------------------------------------------------------------------
 
-# PLATFORM_32BIT: read by nothing (Core.h derives the width from __x86_64__/__aarch64__/__LP64__).
-if(NOT ANDROID)
-  add_definitions(-DPLATFORM_32BIT)
-endif()
+# The pointer width needs no define: Core.h derives PLATFORM_32BITS/PLATFORM_64BITS from the compiler.
 
 # Linux platform
 # Not on Windows: LINUX/__LINUX_X86__ select the POSIX file, socket, threading and dynamic-loader paths
@@ -236,10 +214,10 @@ endif()
 if(BUILD_KARMA_REF)
   # The archives are 32-bit x86 machine code: refuse early and by name rather than let the link fail
   # with a wall of "incompatible" ld notes, or succeed against a stale cache.
-  if(EMSCRIPTEN OR ANDROID OR NOT UT_PTR_BYTES EQUAL 4 OR NOT TARGET_ARCH STREQUAL "x86")
+  if(EMSCRIPTEN OR ANDROID OR NOT UE_PTR_BYTES EQUAL 4 OR NOT TARGET_ARCH STREQUAL "x86")
     message(FATAL_ERROR
       "BUILD_KARMA_REF is 32-bit x86 ONLY -- MathEngine shipped Karma as binary-only i386 objects "
-      "and this build targets ${TARGET_ARCH}${ANDROID_ABI} at ${UT_PTR_BYTES}-byte pointers. "
+      "and this build targets ${TARGET_ARCH}${ANDROID_ABI} at ${UE_PTR_BYTES}-byte pointers. "
       "Use USE_KARMA_DECOMP (the recovered sources), which is portable and is the default.")
   endif()
   # Not Windows: the configuration compiles, links and boots, then corrupts its own stack in
@@ -253,14 +231,14 @@ if(BUILD_KARMA_REF)
       "Use USE_KARMA_DECOMP on Windows; the legacy A/B arm is Linux-only.")
   endif()
 endif()
-option(UT_FPMATH_SSE "32-bit x86 only: add -msse2 -mfpmath=sse — the ktrace control arm (the native-sse preset)" OFF)
+option(UE_FPMATH_SSE "32-bit x86 only: add -msse2 -mfpmath=sse — the ktrace control arm (the native-sse preset)" OFF)
 
 # Karma at 64-bit: the recovered code carries the LP64 post-passes (metoolkit_decomp/src's README;
 # `decomp/test/standalone/lp64_pipeline.sh` in that repository), and LP64 Karma plays on every 64-bit
 # target. KD_LP64_OK silences the note below.
-if(USE_KARMA_DECOMP AND UT_PTR_BYTES GREATER 4 AND NOT KD_LP64_OK)
+if(USE_KARMA_DECOMP AND UE_PTR_BYTES GREATER 4 AND NOT KD_LP64_OK)
   message(STATUS
-    "USE_KARMA_DECOMP on a ${UT_PTR_BYTES}-byte-pointer target (arch "
+    "USE_KARMA_DECOMP on a ${UE_PTR_BYTES}-byte-pointer target (arch "
     "${TARGET_ARCH}${ANDROID_ABI}) -- LP64 Karma, which plays: see the note above this line.")
 endif()
 
@@ -318,7 +296,7 @@ option(USE_PIXOMATIC "Build the Pixomatic software render device (PixoDrv, -SOFT
 
 # Pixomatic is a prebuilt i386 archive with no source, so it cannot follow a pointer-width change: at
 # 64-bit the link would fail at the very last step. Say so at configure time instead.
-if(USE_PIXOMATIC AND UT_PTR_BYTES EQUAL 8 AND NOT ANDROID AND NOT EMSCRIPTEN)
+if(USE_PIXOMATIC AND UE_PTR_BYTES EQUAL 8 AND NOT ANDROID AND NOT EMSCRIPTEN)
   message(FATAL_ERROR
     "USE_PIXOMATIC=ON is impossible at 64-bit, on EITHER platform, and there is no source to rebuild "
     "from: Thirdparty/Pixomatic/Lib/pixomatic_linux.a is a prebuilt 32-bit i386 archive, and the "
@@ -328,8 +306,8 @@ endif()
 
 # PixoDrv at -O2: utils_surface.h types the RAD surface shim's blit pointer cdecl off Windows (a stdcall
 # call site leaves esp 40 bytes low), and UnSkeletalMesh.cpp binds no references to element 0 of empty
-# arrays (undefined behaviour the -O2 optimiser exploits). UT_PIXODRV_O0 (Source/PixoDrv/CMakeLists.txt) pins the package
-# to -O0 as a diagnostic, off by default; UT_ENGINE_TU_FILES (Source/Engine/CMakeLists.txt) does the same
+# arrays (undefined behaviour the -O2 optimiser exploits). UE_PIXODRV_O0 (Source/PixoDrv/CMakeLists.txt) pins the package
+# to -O0 as a diagnostic, off by default; UE_ENGINE_TU_FILES (Source/Engine/CMakeLists.txt) does the same
 # per Engine source.
 
 # Emscripten: disable x86 SSE intrinsics (WASM has no x86 instruction sets)
@@ -377,9 +355,9 @@ endif()
 if(NOT EMSCRIPTEN AND NOT ANDROID)
   add_compile_options(-fshort-wchar)
 endif()
-# -m32 on every 32-bit native build. Gated on UT_PTR_BYTES (the width this build actually produces), so
+# -m32 on every 32-bit native build. Gated on UE_PTR_BYTES (the width this build actually produces), so
 # the status message and the objects cannot disagree.
-if(NOT EMSCRIPTEN AND NOT ANDROID AND UT_PTR_BYTES EQUAL 4)
+if(NOT EMSCRIPTEN AND NOT ANDROID AND UE_PTR_BYTES EQUAL 4)
   add_compile_options(-m32)
 endif()
 
@@ -414,20 +392,20 @@ foreach(_cfg DEBUG RELWITHDEBINFO RELEASE)
   set(CMAKE_CXX_FLAGS_${_cfg} "")
 endforeach()
 
-if(EMSCRIPTEN AND UT_WEB_PERF)
-  # Max-performance web build (UT_WEB_PERF=ON): optimize hard, strip debug info, assert-free.
+if(EMSCRIPTEN AND UE_WEB_PERF)
+  # Max-performance web build (UE_WEB_PERF=ON): optimize hard, strip debug info, assert-free.
   # -g0 matters: any DWARF (the RelWithDebInfo build type injects -g) makes Emscripten run only
   # "limited binaryen optimizations", so the wasm stays large.
   add_compile_options(-O3 -g0)
   add_definitions(-D_REENTRANT -D_NDEBUG=1 -DNDEBUG)
-elseif(EMSCRIPTEN AND UT_WEB_DEBUG)
+elseif(EMSCRIPTEN AND UE_WEB_DEBUG)
   # Last-resort debug build: nothing inlined, every local live, faithful stepping. Several times the
   # wasm size of the dev default and a much slower boot, so it is opt-in.
   add_compile_options(-O0 -g)
   add_definitions(-D_REENTRANT -D_NDEBUG=1)
 elseif(EMSCRIPTEN)
   # The dev default, and the shipped `-debug` binary the launcher's "launch debug binary" link loads,
-  # so it stays playable as well as symbolised. UT_WEB_DEBUG is the -O0 build.
+  # so it stays playable as well as symbolised. UE_WEB_DEBUG is the -O0 build.
   add_compile_options(-O2 -g)
   add_definitions(-D_REENTRANT -D_NDEBUG=1)
 elseif(CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -449,15 +427,15 @@ endif()
 if(TARGET_IS_X86 AND NOT EMSCRIPTEN AND NOT ANDROID)
   # `-march=pentium` is an x86-32 CPU and cc1plus refuses it at -m64, so the 64-bit build asks for a
   # 64-bit baseline instead. The 32-bit line is Epic's makefile-header instruction-set line.
-  if(UT_ALLOW_64BIT AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+  if(UE_ALLOW_64BIT AND CMAKE_SIZEOF_VOID_P EQUAL 8)
     add_compile_options(-march=x86-64 -mtune=generic -msse2)
   else()
     add_compile_options(-march=pentium -mtune=pentiumpro -msse -mmmx)
-    # UT_FPMATH_SSE: the ktrace control arm (`native-sse` preset). A 32-bit build otherwise runs its
+    # UE_FPMATH_SSE: the ktrace control arm (`native-sse` preset). A 32-bit build otherwise runs its
     # doubles on x87 at 80-bit and cannot match a 64-bit (SSE) trace.
-    if(UT_FPMATH_SSE)
+    if(UE_FPMATH_SSE)
       add_compile_options(-msse2 -mfpmath=sse)
-      message(STATUS "UT_FPMATH_SSE: 32-bit float math on SSE2 (the ktrace control arm)")
+      message(STATUS "UE_FPMATH_SSE: 32-bit float math on SSE2 (the ktrace control arm)")
     endif()
   endif()
 endif()
@@ -466,7 +444,7 @@ endif()
 # Linker Flags
 #-----------------------------------------------------------------------------
 
-if(NOT EMSCRIPTEN AND NOT ANDROID AND UT_PTR_BYTES EQUAL 4)
+if(NOT EMSCRIPTEN AND NOT ANDROID AND UE_PTR_BYTES EQUAL 4)
   add_link_options(-m32)
 endif()
 
@@ -495,9 +473,9 @@ function(ut_provide_samplerate_linker_name)
   if(_sr_rc EQUAL 0)
     return()                                    # the dev package is installed
   endif()
-  find_library(UT_SAMPLERATE_SONAME NAMES libsamplerate.so.0
+  find_library(UE_SAMPLERATE_SONAME NAMES libsamplerate.so.0
                PATHS /usr/lib/x86_64-linux-gnu /usr/lib64 /usr/lib)
-  if(NOT UT_SAMPLERATE_SONAME)
+  if(NOT UE_SAMPLERATE_SONAME)
     message(STATUS
       "libsamplerate not usable at 64-bit -- disabling SDL2's use of it. "
       "For the better resampler: sudo apt-get install libsamplerate0-dev:amd64")
@@ -506,17 +484,17 @@ function(ut_provide_samplerate_linker_name)
   endif()
   set(_dir "${CMAKE_BINARY_DIR}/complib")
   file(MAKE_DIRECTORY "${_dir}")
-  file(CREATE_LINK "${UT_SAMPLERATE_SONAME}" "${_dir}/libsamplerate.so" SYMBOLIC)
+  file(CREATE_LINK "${UE_SAMPLERATE_SONAME}" "${_dir}/libsamplerate.so" SYMBOLIC)
   # link_directories() is directory-scoped and SDL2 is added as a subdirectory
   # from HERE, so it reaches SDL's own link; the linker flag covers the targets
   # that record a link line of their own.
   link_directories("${_dir}")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -L${_dir}" PARENT_SCOPE)
   message(STATUS "libsamplerate: no amd64 dev package -- linking through "
-                 "${_dir}/libsamplerate.so -> ${UT_SAMPLERATE_SONAME}")
+                 "${_dir}/libsamplerate.so -> ${UE_SAMPLERATE_SONAME}")
 endfunction()
 
-if(NOT EMSCRIPTEN AND UT_GFX_BACKEND STREQUAL "gl4es")
+if(NOT EMSCRIPTEN)
   FetchContent_Declare(
     SDL2
     GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
@@ -550,7 +528,7 @@ if(NOT EMSCRIPTEN AND UT_GFX_BACKEND STREQUAL "gl4es")
       # Windows: SDL2 selects its own video/audio backends. The X11 forcing below is the Linux -m32
       # workaround; here it would send SDL2 looking for X11 libs a Windows target does not have.
       FetchContent_MakeAvailable(SDL2)
-    elseif(UT_PTR_BYTES EQUAL 4)
+    elseif(UE_PTR_BYTES EQUAL 4)
       # Force X11 video driver — SDL2's CMake misses 32-bit X11 libs during -m32 cross-compile.
       # Point find_library and find_path at the i386 multiarch directories.
       set(SDL_X11 ON CACHE BOOL "" FORCE)
@@ -588,21 +566,21 @@ set(OPENALSOFT_GIT_TAG "ufront/web" CACHE STRING "openal-soft git ref (a branch:
 # libopenal.so that ALAudio dlopens at audio init (never DT_NEEDED: the engine's global operator new is
 # exported and GMalloc does not exist yet at process start), copied beside the binary by SDLLaunch's
 # POST_BUILD and found through the executable's rpath '.' when run from a System/ directory.
-option(UT_BUNDLED_OPENAL "Native Linux: build openal-soft (the ufront fork, EAX on) and put libopenal.so beside the binary, instead of dlopen'ing whatever libopenal the system has" ON)
-set(UT_LINUX_OPENALSOFT OFF)
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID AND NOT EMSCRIPTEN AND UT_BUNDLED_OPENAL)
-  set(UT_LINUX_OPENALSOFT ON)
+option(UE_BUNDLED_OPENAL "Native Linux: build openal-soft (the ufront fork, EAX on) and put libopenal.so beside the binary, instead of dlopen'ing whatever libopenal the system has" ON)
+set(UE_LINUX_OPENALSOFT OFF)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID AND NOT EMSCRIPTEN AND UE_BUNDLED_OPENAL)
+  set(UE_LINUX_OPENALSOFT ON)
 endif()
 
-if(ANDROID OR UT_LINUX_OPENALSOFT)
+if(ANDROID OR UE_LINUX_OPENALSOFT)
   # openal-soft is C++20, and the engine's global C++ settings (CMAKE_CXX_STANDARD 14 and the clang
   # -fdelayed-template-parsing, which a FetchContent'd subproject inherits) miscompile its static-init
   # filter tables (core/bsinc_tables.cpp): a null-deref crash in openal's global constructors at dlopen.
   # Build it as C++20 with the compat flag dropped; save/restore so the rest of the engine keeps gnu++14.
   # openal-soft pins CXX_STANDARD 20 on its own targets; the directory-level standard covers its
   # configure-time feature checks.
-  set(_UT_SAVED_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
-  set(_UT_SAVED_CXX_STANDARD "${CMAKE_CXX_STANDARD}")
+  set(_UE_SAVED_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+  set(_UE_SAVED_CXX_STANDARD "${CMAKE_CXX_STANDARD}")
   string(REGEX REPLACE "-fdelayed-template-parsing" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
   set(CMAKE_CXX_STANDARD 20)
   FetchContent_Declare(
@@ -631,8 +609,8 @@ if(ANDROID OR UT_LINUX_OPENALSOFT)
   set(CMAKE_POLICY_VERSION_MINIMUM 3.10)
   FetchContent_MakeAvailable(OpenALSoft)
   unset(CMAKE_POLICY_VERSION_MINIMUM)
-  set(CMAKE_CXX_FLAGS "${_UT_SAVED_CXX_FLAGS}")
-  set(CMAKE_CXX_STANDARD "${_UT_SAVED_CXX_STANDARD}")
+  set(CMAKE_CXX_FLAGS "${_UE_SAVED_CXX_FLAGS}")
+  set(CMAKE_CXX_STANDARD "${_UE_SAVED_CXX_STANDARD}")
   if(NOT TARGET OpenAL)
     message(FATAL_ERROR "openal-soft: expected target 'OpenAL' was not created")
   endif()
@@ -642,72 +620,70 @@ endif()
 #-----------------------------------------------------------------------------
 # GL4ES via FetchContent (every build: GL4ESDrv is in every binary)
 #-----------------------------------------------------------------------------
-if(EMSCRIPTEN OR UT_GFX_BACKEND STREQUAL "gl4es")
-  # The GL4ES source is configurable: a clean checkout builds against the fork (which carries the
-  # cubemap/material-combiner fixes), and two -D flags repoint it at stock upstream.
-  set(GL4ES_GIT_REPOSITORY "https://github.com/10-p/gl4es.git"
-      CACHE STRING "GL4ES git remote. Default: 10-p fork (cubemap/material fixes). Upstream: https://github.com/ptitSeb/gl4es.git")
-  set(GL4ES_GIT_TAG "fix/cubemap-bind-active-unit"
-      CACHE STRING "GL4ES git ref (branch/tag/SHA). Default tracks our fork's integration branch (latest fixes). Upstream: v1.1.6")
-  FetchContent_Declare(
-    GL4ES
-    GIT_REPOSITORY ${GL4ES_GIT_REPOSITORY}
-    GIT_TAG        ${GL4ES_GIT_TAG}
-    GIT_SHALLOW    TRUE
+# The GL4ES source is configurable: a clean checkout builds against the fork (which carries the
+# cubemap/material-combiner fixes), and two -D flags repoint it at stock upstream.
+set(GL4ES_GIT_REPOSITORY "https://github.com/10-p/gl4es.git"
+    CACHE STRING "GL4ES git remote. Default: 10-p fork (cubemap/material fixes). Upstream: https://github.com/ptitSeb/gl4es.git")
+set(GL4ES_GIT_TAG "fix/cubemap-bind-active-unit"
+    CACHE STRING "GL4ES git ref (branch/tag/SHA). Default tracks our fork's integration branch (latest fixes). Upstream: v1.1.6")
+FetchContent_Declare(
+  GL4ES
+  GIT_REPOSITORY ${GL4ES_GIT_REPOSITORY}
+  GIT_TAG        ${GL4ES_GIT_TAG}
+  GIT_SHALLOW    TRUE
+)
+# GL4ES build options: static library, GLES2 target, no X11/EGL (SDL2 owns context).
+set(NOX11 ON CACHE BOOL "" FORCE)
+set(NOEGL ON CACHE BOOL "" FORCE)
+set(STATICLIB ON CACHE BOOL "" FORCE)
+set(DEFAULT_ES 2 CACHE STRING "" FORCE)
+set(NO_INIT_CONSTRUCTOR ON CACHE BOOL "" FORCE)
+# GL4ES's C sources compile as 32-bit on the 32-bit native builds, matching the engine's -m32. A
+# `CACHE ... FORCE`, so it writes `-m32` into CMAKE_C_FLAGS for the whole project (zlib, ogg, vorbis
+# and Speex too); hence only at UE_PTR_BYTES 4.
+if(NOT EMSCRIPTEN AND NOT ANDROID AND UE_PTR_BYTES EQUAL 4)
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -m32" CACHE STRING "" FORCE)
+endif()
+# CMake-policy floor: stock upstream GL4ES v1.1.6 declares cmake_minimum_required(VERSION
+# 2.8.12), which CMake 4.x rejects ("Compatibility with CMake < 3.5 has been removed"); the fork
+# declares 2.8.12...3.10, so this is a no-op for the default. GL4ES source overrides:
+#   * stock upstream:  -DGL4ES_GIT_REPOSITORY=https://github.com/ptitSeb/gl4es.git -DGL4ES_GIT_TAG=v1.1.6
+#   * local checkout:  -DFETCHCONTENT_SOURCE_DIR_GL4ES=/abs/path/to/gl4es  (FetchContent honors it automatically)
+set(CMAKE_POLICY_VERSION_MINIMUM 3.10)
+FetchContent_MakeAvailable(GL4ES)
+unset(CMAKE_POLICY_VERSION_MINIMUM)
+
+# GL4ES's CMakeLists.txt sets CMAKE_ARCHIVE_OUTPUT_DIRECTORY to ${CMAKE_SOURCE_DIR}/lib, which
+# would make every build share one libGL.a: redirect each build's output to its own binary directory.
+# gl4es names its library target after what it impersonates: `GL`, and `OPENGL32` on Windows (an
+# opengl32 replacement). Everything below refers to one handle, so the name is normalised once.
+if(TARGET GL)
+  set(_UE_GL4ES_TARGET GL)
+elseif(TARGET OPENGL32)
+  set(_UE_GL4ES_TARGET OPENGL32)
+endif()
+if(TARGET ${_UE_GL4ES_TARGET})
+  set_target_properties(${_UE_GL4ES_TARGET} PROPERTIES
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
   )
-  # GL4ES build options: static library, GLES2 target, no X11/EGL (SDL2 owns context).
-  set(NOX11 ON CACHE BOOL "" FORCE)
-  set(NOEGL ON CACHE BOOL "" FORCE)
-  set(STATICLIB ON CACHE BOOL "" FORCE)
-  set(DEFAULT_ES 2 CACHE STRING "" FORCE)
-  set(NO_INIT_CONSTRUCTOR ON CACHE BOOL "" FORCE)
-  # GL4ES's C sources compile as 32-bit on the 32-bit native builds, matching the engine's -m32. A
-  # `CACHE ... FORCE`, so it writes `-m32` into CMAKE_C_FLAGS for the whole project (zlib, ogg, vorbis
-  # and Speex too); hence only at UT_PTR_BYTES 4.
-  if(NOT EMSCRIPTEN AND NOT ANDROID AND UT_PTR_BYTES EQUAL 4)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -m32" CACHE STRING "" FORCE)
+  # Unambiguous, namespaced handle so GL4ESDrv links the translation layer's libGL.a and can
+  # never silently fall back to the system -lGL (the "two versions of OpenGL" hazard).
+  if(NOT TARGET gl4es::GL)
+    add_library(gl4es::GL ALIAS ${_UE_GL4ES_TARGET})
   endif()
-  # CMake-policy floor: stock upstream GL4ES v1.1.6 declares cmake_minimum_required(VERSION
-  # 2.8.12), which CMake 4.x rejects ("Compatibility with CMake < 3.5 has been removed"); the fork
-  # declares 2.8.12...3.10, so this is a no-op for the default. GL4ES source overrides:
-  #   * stock upstream:  -DGL4ES_GIT_REPOSITORY=https://github.com/ptitSeb/gl4es.git -DGL4ES_GIT_TAG=v1.1.6
-  #   * local checkout:  -DFETCHCONTENT_SOURCE_DIR_GL4ES=/abs/path/to/gl4es  (FetchContent honors it automatically)
-  set(CMAKE_POLICY_VERSION_MINIMUM 3.10)
-  FetchContent_MakeAvailable(GL4ES)
-  unset(CMAKE_POLICY_VERSION_MINIMUM)
 
-  # GL4ES's CMakeLists.txt sets CMAKE_ARCHIVE_OUTPUT_DIRECTORY to ${CMAKE_SOURCE_DIR}/lib, which
-  # would make every build share one libGL.a: redirect each build's output to its own binary directory.
-  # gl4es names its library target after what it impersonates: `GL`, and `OPENGL32` on Windows (an
-  # opengl32 replacement). Everything below refers to one handle, so the name is normalised once.
-  if(TARGET GL)
-    set(_UT_GL4ES_TARGET GL)
-  elseif(TARGET OPENGL32)
-    set(_UT_GL4ES_TARGET OPENGL32)
-  endif()
-  if(TARGET ${_UT_GL4ES_TARGET})
-    set_target_properties(${_UT_GL4ES_TARGET} PROPERTIES
-      ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
-      LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
-    )
-    # Unambiguous, namespaced handle so GL4ESDrv links the translation layer's libGL.a and can
-    # never silently fall back to the system -lGL (the "two versions of OpenGL" hazard).
-    if(NOT TARGET gl4es::GL)
-      add_library(gl4es::GL ALIAS ${_UT_GL4ES_TARGET})
-    endif()
-
-    # The web debug build compiles GL4ES at -O2, not -O0: GL4ES asks for -O2 itself (its build type is
-    # RelWithDebInfo), but the directory-wide `add_compile_options(-O0 -g)` comes after it, and at -O0
-    # `generateInstruction` (arbgenerator.c, a macro-expanded ARB-assembly switch) declares thousands of
-    # locals, tens of thousands after -sASYNCIFY instrumentation. V8 rejects a function with more than
-    # 50000 locals, so the whole module would fail to compile ("local count too large"). `-g` still comes
-    # from the directory options. Web only, and only in the -O0 mode: native has neither Asyncify nor
-    # V8's limit, and the -O2/-O3 builds are far below it.
-    if(EMSCRIPTEN AND UT_WEB_DEBUG)
-      target_compile_options(${_UT_GL4ES_TARGET} PRIVATE -O2)
-      message(STATUS "GL4ES: forcing -O2 in the -O0 web build (at -O0 + Asyncify, "
-                     "generateInstruction exceeds V8's 50000-local limit and the module will not compile)")
-    endif()
+  # The web debug build compiles GL4ES at -O2, not -O0: GL4ES asks for -O2 itself (its build type is
+  # RelWithDebInfo), but the directory-wide `add_compile_options(-O0 -g)` comes after it, and at -O0
+  # `generateInstruction` (arbgenerator.c, a macro-expanded ARB-assembly switch) declares thousands of
+  # locals, tens of thousands after -sASYNCIFY instrumentation. V8 rejects a function with more than
+  # 50000 locals, so the whole module would fail to compile ("local count too large"). `-g` still comes
+  # from the directory options. Web only, and only in the -O0 mode: native has neither Asyncify nor
+  # V8's limit, and the -O2/-O3 builds are far below it.
+  if(EMSCRIPTEN AND UE_WEB_DEBUG)
+    target_compile_options(${_UE_GL4ES_TARGET} PRIVATE -O2)
+    message(STATUS "GL4ES: forcing -O2 in the -O0 web build (at -O0 + Asyncify, "
+                   "generateInstruction exceeds V8's 50000-local limit and the module will not compile)")
   endif()
 endif()
 
@@ -772,22 +748,22 @@ if(USE_KARMA_DECOMP)
   # The code was decompiled from an already-optimised build, so -O0 costs less than it looks.
   #
   # Three knobs, so the pin can be measured:
-  #   UT_KARMA_O2_FILES  a regex over decomp source basenames; matching sources get UT_KARMA_O2_OPTIONS
+  #   UE_KARMA_O2_FILES  a regex over decomp source basenames; matching sources get UE_KARMA_O2_OPTIONS
   #                      (a per-source COMPILE_OPTIONS lands after the target's -O0; the last -O wins).
   #                      '.*' is the "everything -O2" arm; a narrower regex is one round of a bisect.
   #                      Empty = the pin as shipped.
-  #   UT_KARMA_O2_OPTIONS the options those sources get, default "-O2". A probe is one reconfigure:
+  #   UE_KARMA_O2_OPTIONS the options those sources get, default "-O2". A probe is one reconfigure:
   #                      "-O1", "-O2;-fwrapv", "-O2;-ftrivial-auto-var-init=zero", "-O2;-fsanitize=undefined"
   #                      (that one also needs -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=undefined). Scoped to
   #                      the matching decomp sources only, so the engine's own C never changes.
-  #   UT_KARMA_PIN_WEB   lift the NOT EMSCRIPTEN guard so the web arm can be built with the pin.
+  #   UE_KARMA_PIN_WEB   lift the NOT EMSCRIPTEN guard so the web arm can be built with the pin.
   #                      Default OFF.
-  set(UT_KARMA_O2_FILES "" CACHE STRING
+  set(UE_KARMA_O2_FILES "" CACHE STRING
       "regex over metoolkit_decomp source basenames to compile at -O2 despite the pin (bisect aid; empty = all pinned)")
-  set(UT_KARMA_O2_OPTIONS "-O2" CACHE STRING
-      "compile options (;-list) for the sources UT_KARMA_O2_FILES matches (probe aid; default -O2)")
-  option(UT_KARMA_PIN_WEB "Also pin the recovered Karma C to -O0 on Emscripten (measurement aid; the shipped wasm is -O3)" OFF)
-  if(NOT EMSCRIPTEN OR UT_KARMA_PIN_WEB)
+  set(UE_KARMA_O2_OPTIONS "-O2" CACHE STRING
+      "compile options (;-list) for the sources UE_KARMA_O2_FILES matches (probe aid; default -O2)")
+  option(UE_KARMA_PIN_WEB "Also pin the recovered Karma C to -O0 on Emscripten (measurement aid; the shipped wasm is -O3)" OFF)
+  if(NOT EMSCRIPTEN OR UE_KARMA_PIN_WEB)
     get_property(_md_targets DIRECTORY "${metoolkitkarmadecomp_SOURCE_DIR}/metoolkit_decomp"
                  PROPERTY BUILDSYSTEM_TARGETS)
     set(_md_o2 0)
@@ -795,7 +771,7 @@ if(USE_KARMA_DECOMP)
       # PRIVATE target options land after the directory-level `add_compile_options(-O2 -g)` above,
       # and the compiler takes the last -O.
       target_compile_options(${_md_t} PRIVATE -O0)
-      if(NOT UT_KARMA_O2_FILES STREQUAL "")
+      if(NOT UE_KARMA_O2_FILES STREQUAL "")
         get_target_property(_md_srcs ${_md_t} SOURCES)
         get_target_property(_md_dir ${_md_t} SOURCE_DIR)
         if(_md_srcs)
@@ -804,9 +780,9 @@ if(USE_KARMA_DECOMP)
               set(_md_s "${_md_dir}/${_md_s}")
             endif()
             get_filename_component(_md_b "${_md_s}" NAME)
-            if(_md_b MATCHES "\\.c$" AND _md_b MATCHES "${UT_KARMA_O2_FILES}")
+            if(_md_b MATCHES "\\.c$" AND _md_b MATCHES "${UE_KARMA_O2_FILES}")
               # Source-file options come after the target's, so this -O2 beats the -O0 above.
-              set_source_files_properties("${_md_s}" TARGET_DIRECTORY ${_md_t} PROPERTIES COMPILE_OPTIONS "${UT_KARMA_O2_OPTIONS}")
+              set_source_files_properties("${_md_s}" TARGET_DIRECTORY ${_md_t} PROPERTIES COMPILE_OPTIONS "${UE_KARMA_O2_OPTIONS}")
               math(EXPR _md_o2 "${_md_o2}+1")
             endif()
           endforeach()
@@ -815,12 +791,12 @@ if(USE_KARMA_DECOMP)
     endforeach()
     list(LENGTH _md_targets _md_n)
     if(EMSCRIPTEN)
-      message(STATUS "Karma decomp: ${_md_n} target(s) pinned to -O0 on the web (UT_KARMA_PIN_WEB measurement arm)")
+      message(STATUS "Karma decomp: ${_md_n} target(s) pinned to -O0 on the web (UE_KARMA_PIN_WEB measurement arm)")
     else()
       message(STATUS "Karma decomp: ${_md_n} target(s) pinned to -O0 (engine keeps -O2)")
     endif()
     if(_md_o2 GREATER 0)
-      message(STATUS "Karma decomp: ${_md_o2} source(s) compiled with '${UT_KARMA_O2_OPTIONS}' via UT_KARMA_O2_FILES='${UT_KARMA_O2_FILES}' (probe/bisect arm)")
+      message(STATUS "Karma decomp: ${_md_o2} source(s) compiled with '${UE_KARMA_O2_OPTIONS}' via UE_KARMA_O2_FILES='${UE_KARMA_O2_FILES}' (probe/bisect arm)")
     endif()
   endif()
 endif()
@@ -875,8 +851,8 @@ if(EMSCRIPTEN)
   )
   # Directory-scoped: a FetchContent subproject takes CMAKE_<LANG>_FLAGS as they are when it is added,
   # and its feature checks (xmmintrin.h & co.) compile with them too. Restored right after.
-  set(_UT_SAVED_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
-  set(_UT_SAVED_C_FLAGS "${CMAKE_C_FLAGS}")
+  set(_UE_SAVED_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+  set(_UE_SAVED_C_FLAGS "${CMAKE_C_FLAGS}")
   string(REGEX REPLACE "-fdelayed-template-parsing|-Wno-writable-strings|-Wno-reserved-user-defined-literal|-Wno-incompatible-pointer-types"
          "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
   string(APPEND CMAKE_CXX_FLAGS " -msimd128 -msse4.1 -fexceptions")
@@ -896,8 +872,8 @@ if(EMSCRIPTEN)
   set(CMAKE_POLICY_VERSION_MINIMUM 3.10)
   FetchContent_MakeAvailable(OpenALSoft)
   unset(CMAKE_POLICY_VERSION_MINIMUM)
-  set(CMAKE_CXX_FLAGS "${_UT_SAVED_CXX_FLAGS}")
-  set(CMAKE_C_FLAGS "${_UT_SAVED_C_FLAGS}")
+  set(CMAKE_CXX_FLAGS "${_UE_SAVED_CXX_FLAGS}")
+  set(CMAKE_C_FLAGS "${_UE_SAVED_C_FLAGS}")
 endif()
 
 add_subdirectory(Thirdparty/zlib)
@@ -920,7 +896,7 @@ add_subdirectory(Source/Onslaught)
 add_subdirectory(Source/ALAudio)
 
 # Viewport and render drivers. The web builds SDL2Drv + GL4ESDrv (+ WebRTCDrv, ProxyNetDrv); the native
-# builds SDL2Drv + GL4ESDrv + OpenGLDrv (+ PixoDrv). The UT_HAS_* vars propagate to SDLLaunch below.
+# builds SDL2Drv + GL4ESDrv + OpenGLDrv (+ PixoDrv). The UE_HAS_* vars propagate to SDLLaunch below.
 if(EMSCRIPTEN)
   # The web stack: SDL2 + GL4ES + WebRTC.
   add_subdirectory(Source/SDL2Drv)
@@ -928,31 +904,31 @@ if(EMSCRIPTEN)
   add_subdirectory(Source/WebRTCDrv)
   # Proxy networking: a client-only net driver that joins an ordinary native server through a WSS<->UDP
   # game proxy. Experimental, and a package of its own that shares nothing with WebRTCDrv.
-  # -DUT_WITH_PROXYNET=OFF removes the package, its JS shim and its registration; P2P is unaffected.
-  option(UT_WITH_PROXYNET "Build ProxyNetDrv (join native servers through a game proxy; web only)" ON)
-  if(UT_WITH_PROXYNET)
+  # -DUE_WITH_PROXYNET=OFF removes the package, its JS shim and its registration; P2P is unaffected.
+  option(UE_WITH_PROXYNET "Build ProxyNetDrv (join native servers through a game proxy; web only)" ON)
+  if(UE_WITH_PROXYNET)
     add_subdirectory(Source/ProxyNetDrv)
   endif()
-  set(UT_HAS_SDL2DRV ON)
-  set(UT_HAS_GL4ESDRV ON)
+  set(UE_HAS_SDL2DRV ON)
+  set(UE_HAS_GL4ESDRV ON)
 else() # gl4es
   # SDL2 + the GL4ES translation layer + desktop OpenGL.
   add_subdirectory(Source/SDL2Drv)
   add_subdirectory(Source/GL4ESDrv)
-  set(UT_HAS_SDL2DRV ON)
-  set(UT_HAS_GL4ESDRV ON)
+  set(UE_HAS_SDL2DRV ON)
+  set(UE_HAS_GL4ESDRV ON)
   # OpenGLDrv on the same SDL2 stack: one binary carries both GL render devices and the player picks at
   # startup (-OPENGLRENDERER / -GL4ESRENDERER); see the stack note at the top.
   if(NOT EMSCRIPTEN AND NOT ANDROID)
     add_subdirectory(Source/OpenGLDrv)
-    set(UT_HAS_OPENGLDRV ON)
+    set(UE_HAS_OPENGLDRV ON)
   endif()
 endif()
 
 # Optional Pixomatic software render device (-SOFTWARERENDERER). Native only.
 if(USE_PIXOMATIC AND NOT EMSCRIPTEN)
   add_subdirectory(Source/PixoDrv)
-  set(UT_HAS_PIXODRV ON)
+  set(UE_HAS_PIXODRV ON)
 endif()
 
 # The Editor and UTV2004 are not built.

@@ -2219,7 +2219,7 @@ inline void ASMTransformPoint(const FCoords &Coords, const FVector &InVector, FV
         fstp    dword ptr [edi+8]     
 	}
 }
-#elif ASMLINUX && !defined(UT_NO_X86_INTRIN)
+#elif ASMLINUX && !defined(UE_NO_X86_INTRIN)
 inline void ASMTransformPoint(const FCoords &Coords, const FVector &InVector, FVector &OutVector)
 {
 	__asm__ __volatile__ (
@@ -2342,7 +2342,7 @@ inline void ASMTransformVector(const FCoords &Coords, const FVector &InVector, F
 }
 #endif
 
-#if ASMLINUX && !defined(UT_NO_X86_INTRIN)
+#if ASMLINUX && !defined(UE_NO_X86_INTRIN)
 inline void ASMTransformVector(const FCoords &Coords, const FVector &InVector, FVector &OutVector)
 {
 	asm volatile(

@@ -6,7 +6,7 @@
 # host-injected Module.UE.proxynet, which speaks to a WSS<->UDP game proxy).
 #
 # Experimental, and detached: it shares nothing with WebRTCDrv and touches none of its files. Configure
-# with -DUT_WITH_PROXYNET=OFF and this package, its shim and its registration all disappear; P2P
+# with -DUE_WITH_PROXYNET=OFF and this package, its shim and its registration all disappear; P2P
 # networking is unaffected. Web only: a native build has real sockets and uses IpDrv.
 #=============================================================================
 

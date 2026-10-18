@@ -21,7 +21,7 @@
             "inherits": "native-base",
             "binaryDir": "${sourceDir}/build-native64",
             "cacheVariables": {
-                "UT_ALLOW_64BIT": "ON",
+                "UE_ALLOW_64BIT": "ON",
                 "USE_PIXOMATIC": "OFF"
             }
         },
@@ -32,7 +32,6 @@
             "inherits": "native-base",
             "binaryDir": "${sourceDir}/build-native",
             "cacheVariables": {
-                "UT_GFX_BACKEND": "gl4es",
                 "USE_PIXOMATIC": "ON"
             }
         },
@@ -54,9 +53,8 @@
             "inherits": "native-base",
             "binaryDir": "${sourceDir}/build-native-sse",
             "cacheVariables": {
-                "UT_GFX_BACKEND": "gl4es",
                 "USE_PIXOMATIC": "OFF",
-                "UT_FPMATH_SSE": "ON"
+                "UE_FPMATH_SSE": "ON"
             }
         },
         {
@@ -72,33 +70,33 @@
         {
             "name": "wasm",
             "displayName": "Web (Emscripten/WASM) -- dev default",
-            "description": "Emscripten web build: -O2 + DWARF + assertions + exception catching. The everyday dev build and the shipped -debug binary: named stacks and readable errors at a playable speed. The largest of the three (DWARF plus un-cleaned-up inlining). Builds in build-wasm/. Run `source <emsdk>/emsdk_env.sh` first (sets EMSDK).",
+            "description": "Emscripten web build: -O2 + DWARF + assertions + exception catching. The everyday dev build and the shipped -debug binary: named stacks and readable errors at a playable speed. The largest of the three (DWARF plus un-cleaned-up inlining). Builds in build-wasm/. Run `source <emsdk>/emsdk_env.sh` first (sets EMSDK). Requires -DUE_ASSETS_DIR=<UT2004 folder> (the link embeds System/Build.ini and System/Packages.md5 from it).",
             "generator": "Unix Makefiles",
             "binaryDir": "${sourceDir}/build-wasm",
             "toolchainFile": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
             "cacheVariables": {
-                "UT_WEB_PERF": "OFF",
-                "UT_WEB_DEBUG": "OFF"
+                "UE_WEB_PERF": "OFF",
+                "UE_WEB_DEBUG": "OFF"
             }
         },
         {
             "name": "wasm-debug",
             "displayName": "Web (Emscripten/WASM) -- -O0, last resort",
-            "description": "Emscripten web build: -O0, nothing inlined, every local live. For when the optimiser is the suspect (a bug that shows at one -O level and not another is almost always undefined behaviour). Several times the wasm size and a much slower boot. Builds in build-wasm-debug/.",
+            "description": "Emscripten web build: -O0, nothing inlined, every local live. For when the optimiser is the suspect (a bug that shows at one -O level and not another is almost always undefined behaviour). Several times the wasm size and a much slower boot. Builds in build-wasm-debug/. Requires -DUE_ASSETS_DIR=<UT2004 folder> (the link embeds System/Build.ini and System/Packages.md5 from it).",
             "inherits": "wasm",
             "binaryDir": "${sourceDir}/build-wasm-debug",
             "cacheVariables": {
-                "UT_WEB_DEBUG": "ON"
+                "UE_WEB_DEBUG": "ON"
             }
         },
         {
             "name": "wasm-perf",
             "displayName": "Web (Emscripten/WASM) -- max performance",
-            "description": "Emscripten web build: -O3, assertions off, no debug info (a side symbol map) -- the shipping build. Builds in build-wasm-perf/. Run `source <emsdk>/emsdk_env.sh` first.",
+            "description": "Emscripten web build: -O3, assertions off, no debug info (a side symbol map) -- the shipping build. Builds in build-wasm-perf/. Run `source <emsdk>/emsdk_env.sh` first. Requires -DUE_ASSETS_DIR=<UT2004 folder> (the link embeds System/Build.ini and System/Packages.md5 from it).",
             "inherits": "wasm",
             "binaryDir": "${sourceDir}/build-wasm-perf",
             "cacheVariables": {
-                "UT_WEB_PERF": "ON",
+                "UE_WEB_PERF": "ON",
                 "CMAKE_BUILD_TYPE": "Release"
             }
         },
@@ -110,7 +108,7 @@
             "binaryDir": "${sourceDir}/build-windows64",
             "cacheVariables": {
                 "MINGW_TARGET_ARCH": "x86_64",
-                "UT_ALLOW_64BIT": "ON",
+                "UE_ALLOW_64BIT": "ON",
                 "USE_KARMA_DECOMP": "ON",
                 "USE_PIXOMATIC": "OFF"
             }
@@ -126,7 +124,6 @@
                 "CMAKE_BUILD_TYPE": "RelWithDebInfo",
                 "CMAKE_C_FLAGS": "-fno-omit-frame-pointer",
                 "CMAKE_CXX_FLAGS": "-fno-omit-frame-pointer",
-                "UT_GFX_BACKEND": "gl4es",
                 "MINGW_TARGET_ARCH": "i686",
                 "MINGW_THREAD_MODEL": "posix",
                 "USE_PIXOMATIC": "ON"

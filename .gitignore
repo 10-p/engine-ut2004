@@ -1,7 +1,7 @@
 # ──────────────────────────────────────────────────────────────────────────
 # engine-ut2004 — ignore rules. This repo holds the UT2004 PORT SOURCE only;
-# game assets (~5.8 GB) live OUT of tree at $UT_ASSETS_DIR (default
-# /home/ion/ut2004-assets) and are never tracked here.
+# game assets (~5.8 GB) live out of tree (the web build reads two files from
+# $UE_ASSETS_DIR) and are never tracked here.
 # ──────────────────────────────────────────────────────────────────────────
 
 # CMake build trees — one locked dir per backend (build-legacy/, build-gl4es/,
@@ -36,7 +36,7 @@ System/Shot*.bmp
 # (Removing this bloat is deferred re-architecture work, not Phase 0.)
 # ──────────────────────────────────────────────────────────────────────────
 
-# Game content must never enter this repo (it belongs in $UT_ASSETS_DIR). These
+# Game content must never enter this repo (it belongs in $UE_ASSETS_DIR). These
 # guard against an accidental in-tree drop; normally none of these exist here.
 /System/*.u
 /System/*.ucl

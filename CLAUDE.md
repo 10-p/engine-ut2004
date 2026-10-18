@@ -11,7 +11,7 @@ ABI shim.
 |-------|------|------|
 | This engine repo (private) | `10-p/engine-ut2004` | engine source → WASM/native artifacts |
 | Public monorepo | `10-p/unreal-frontend-arch-private` | consumes the artifact; host/UI/glue/build; **migration state lives here** |
-| Game assets (never in git) | any local folder | canonical ~5.8 GB; `$UT_ASSETS_DIR` |
+| Game assets (never in git) | any local folder | canonical ~5.8 GB; `$UE_ASSETS_DIR` |
 | Old monolith (rollback only) | `ut2004-exps` | the pre-split repo; do not develop here |
 
 > **Migration plan & durable state are in the monorepo**, not here:
@@ -44,8 +44,8 @@ cmake --preset wasm   && cmake --build --preset wasm   -j"$(nproc)"        # the
   `wasm-debug` is the `-O0` last resort; `wasm-perf` is `-O3 -g0` shipping.
 - Prerequisites for a from-scratch host (the system GCC, 13 and 16 tested, the i386
   sysroot, emsdk 5.0.7) are in `README.md` — a default install cannot build the 32-bit native presets.
-- Assets path is `UT_ASSETS_DIR` (pass `-DUT_ASSETS_DIR=`); only 2 files come from it.
-  **If it is a mount it may not survive a reboot** — `ls $UT_ASSETS_DIR` before
+- Assets path is `UE_ASSETS_DIR` (pass `-DUE_ASSETS_DIR=`); only 2 files come from it.
+  **If it is a mount it may not survive a reboot** — `ls $UE_ASSETS_DIR` before
   blaming the engine.
 - GL4ES is fetched from our **fork by default** (`10-p/gl4es@fix/cubemap-bind-active-unit`). First
   configure of a fresh build dir needs network (FetchContent clone of GL4ES + SDL2/OpenAL ports).
@@ -126,7 +126,7 @@ or to test an unpushed change to the recovered sources, point
   for the OPTIONAL `proxynet` ABI module (`vendor/glue/ue_proxynet_abi.h` + `proxynet-shim.js`).
   **The two are DETACHED on purpose** (ufrontend `docs/12` ADR-16): `ProxyNetDrv` shares nothing with
   `WebRTCDrv` and must never edit its files; `vendor/glue/webrtc-shim.js` stays byte-identical across all
-  engine repos; `-DUT_WITH_PROXYNET=OFF` removes the package, its shim and its registration. It is selected
+  engine repos; `-DUE_WITH_PROXYNET=OFF` removes the package, its shim and its registration. It is selected
   by `NetworkDevice=ProxyNetDrv.ProxyNetDriver` — the launcher only rewrites `NetworkDevice` when it is the
   stock `IpDrv.TcpNetDriver`, so naming it simply works. The UE connection stays `USOCK_Pending` through the
   whole handshake (only `HandleClientPlayer` opens it); the driver only ever CLOSES. Verified against a stock
@@ -137,7 +137,7 @@ or to test an unpushed change to the recovered sources, point
   open/poll/read/close) and polls it; the native state machine is untouched. **IpDrv imports nothing from
   JavaScript**: `ProxyNetDrv` owns the `ue_proxynet_http_*` imports and registers the table at `InitConnect`,
   and its `Open` turns away any connection that is not a `UProxyNetConnection`. **No hook (P2P mode, or
-  `UT_WITH_PROXYNET=OFF`) = an immediate `DownloadError`** and the next manager (`Engine.ChannelDownload`)
+  `UE_WITH_PROXYNET=OFF`) = an immediate `DownloadError`** and the next manager (`Engine.ChannelDownload`)
   takes over — what a web build always did, minus the doomed `socket()` and, for a host NAME, the doomed
   resolver thread. ⚠ Nothing may follow `DownloadDone()` in `WebTick`: it can start the next download, which
   deletes the object. Verified through the real proxy (2026-09-20): DM-SakuraGarden's two `.uz2` files
@@ -176,12 +176,12 @@ or to test an unpushed change to the recovered sources, point
 ## Do NOT
 - **Do NOT** recreate the in-tree content symlinks (`Maps`, `Textures`, `System/*.int`, … →
   `../ut2004-assets`). They were native-runtime conveniences in the old repo and are intentionally
-  absent here; content is reached via `UT_ASSETS_DIR` (wasm) or a runtime dir (native).
+  absent here; content is reached via `UE_ASSETS_DIR` (wasm) or a runtime dir (native).
 - **Do NOT** commit build trees (`build-*/`) or game assets — both are gitignored.
 - **Do NOT** add a blanket `*.a`/`*.lib`/`*.dll` ignore — vendored flex/DirectX/Pixomatic blobs are
   intentionally tracked (see `.gitignore`).
 - **Do NOT** try to fix the recovered Karma sources here. They are not in this repository; the
   change belongs in `10-p/metoolkit-karma-decomp`, where the generator and its gates live, and
   every fix there goes into the GENERATOR rather than into generated output.
-- **Do NOT** make engine source changes for the relocation beyond the `UT_ASSETS_DIR`
+- **Do NOT** make engine source changes for the relocation beyond the `UE_ASSETS_DIR`
   parameterization — that would be re-architecture, not Phase 0. Stop and re-scope.

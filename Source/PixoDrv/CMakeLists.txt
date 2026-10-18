@@ -37,14 +37,14 @@ add_library(${PROJECT_NAME} ${LIB_TYPE} ${SRC_FILES})
 # GPackage=PixoDrv per the makefile; __LINUX_X86__ (already global) selects the SDL Linux path in PixoDrv.h.
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Src ${PIXOMATIC_INC})
 target_compile_definitions(${PROJECT_NAME} PRIVATE GPackage=PixoDrv)
-# UT_PIXODRV_O0: pin this directory (and only this directory) to -O0 while the engine keeps -O2, a
+# UE_PIXODRV_O0: pin this directory (and only this directory) to -O0 while the engine keeps -O2, a
 # containment and measurement aid for a PixoDrv defect that only exists at -O2 ("is this an
 # optimiser-only fault?"). The same last-wins mechanism as the Karma pin in the top-level CMakeLists.
 # Off by default.
-option(UT_PIXODRV_O0 "Compile Source/PixoDrv at -O0 (measurement aid / fallback containment; the engine stays -O2)" OFF)
-if(UT_PIXODRV_O0)
+option(UE_PIXODRV_O0 "Compile Source/PixoDrv at -O0 (measurement aid / fallback containment; the engine stays -O2)" OFF)
+if(UE_PIXODRV_O0)
   target_compile_options(${PROJECT_NAME} PRIVATE -O0)
-  message(STATUS "PixoDrv: pinned to -O0 (UT_PIXODRV_O0; engine keeps -O2)")
+  message(STATUS "PixoDrv: pinned to -O0 (UE_PIXODRV_O0; engine keeps -O2)")
 endif()
 target_link_libraries(${PROJECT_NAME} PRIVATE Core Engine ${PIXOMATIC_LIB})
 

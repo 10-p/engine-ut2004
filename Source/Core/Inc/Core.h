@@ -172,17 +172,17 @@ public:
 
 // SSE or not?
 //
-// UT_MSVC_NO_MMX: this compiler has no MMX intrinsics (MSVC x64, which dropped `__m64`). Epic wrote
+// UE_MSVC_NO_MMX: this compiler has no MMX intrinsics (MSVC x64, which dropped `__m64`). Epic wrote
 // second copies of three inner loops for it that read a packed `__m128i` back through `m128i_u32`, an
 // MSVC extension. GCC keeps MMX on x86-64 and its `__m128i` has no members, so a GCC build (MinGW, which
 // defines `_WIN64` too) keeps the MMX loops.
 #if defined(_WIN64) && defined(_MSC_VER)
-  #define UT_MSVC_NO_MMX 1
+  #define UE_MSVC_NO_MMX 1
 #else
-  #define UT_MSVC_NO_MMX 0
+  #define UE_MSVC_NO_MMX 0
 #endif
 
-#if ((__INTEL__) && (!NO_SSE_SUPPORT) && !defined(UT_NO_X86_INTRIN))
+#if ((__INTEL__) && (!NO_SSE_SUPPORT) && !defined(UE_NO_X86_INTRIN))
   #define __HAS_SSE__ 1
   #if defined(__GNUC__)
     #include <xmmintrin.h>

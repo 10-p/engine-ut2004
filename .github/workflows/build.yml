@@ -4,7 +4,7 @@ name: build
 # workflow artifacts (and the newest build of a tracked branch as the rolling "latest" release).
 #
 # It does not run the game (a hosted runner has no GPU) and does not build the web target: the web link
-# of this engine embeds `${UT_ASSETS_DIR}/System/Build.ini`, a file of the retail asset tree, which is not
+# of this engine embeds `${UE_ASSETS_DIR}/System/Build.ini`, a file of the retail asset tree, which is not
 # in this repository.
 
 on:

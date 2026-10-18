@@ -110,22 +110,22 @@ if(USE_KARMA_DECOMP)
       "if you are offline, point FETCHCONTENT_SOURCE_DIR_METOOLKITKARMADECOMP at "
       "a local checkout of it.")
   endif()
-  # UT_ENGINE_TU_FILES: a per-source measurement knob (the Engine-side twin of UT_KARMA_O2_FILES), a
-# regex over this module's source basenames; matching sources get UT_ENGINE_TU_OPTIONS (a ;-list) appended
+  # UE_ENGINE_TU_FILES: a per-source measurement knob (the Engine-side twin of UE_KARMA_O2_FILES), a
+# regex over this module's source basenames; matching sources get UE_ENGINE_TU_OPTIONS (a ;-list) appended
 # after the module flags, e.g. one file at -O1 or with -fsanitize=undefined. Empty by default.
-set(UT_ENGINE_TU_FILES "" CACHE STRING "regex over Engine source basenames to compile with UT_ENGINE_TU_OPTIONS (measurement aid)")
-set(UT_ENGINE_TU_OPTIONS "" CACHE STRING "compile options (;-list) for the sources UT_ENGINE_TU_FILES matches")
-if(NOT UT_ENGINE_TU_FILES STREQUAL "")
+set(UE_ENGINE_TU_FILES "" CACHE STRING "regex over Engine source basenames to compile with UE_ENGINE_TU_OPTIONS (measurement aid)")
+set(UE_ENGINE_TU_OPTIONS "" CACHE STRING "compile options (;-list) for the sources UE_ENGINE_TU_FILES matches")
+if(NOT UE_ENGINE_TU_FILES STREQUAL "")
   file(GLOB _ut_tu_srcs "${CMAKE_CURRENT_SOURCE_DIR}/Src/*.cpp")
   set(_ut_tu_n 0)
   foreach(_ut_s IN LISTS _ut_tu_srcs)
     get_filename_component(_ut_b "${_ut_s}" NAME)
-    if(_ut_b MATCHES "${UT_ENGINE_TU_FILES}")
-      set_source_files_properties("${_ut_s}" PROPERTIES COMPILE_OPTIONS "${UT_ENGINE_TU_OPTIONS}")
+    if(_ut_b MATCHES "${UE_ENGINE_TU_FILES}")
+      set_source_files_properties("${_ut_s}" PROPERTIES COMPILE_OPTIONS "${UE_ENGINE_TU_OPTIONS}")
       math(EXPR _ut_tu_n "${_ut_tu_n}+1")
     endif()
   endforeach()
-  message(STATUS "Engine: ${_ut_tu_n} source(s) compiled with '${UT_ENGINE_TU_OPTIONS}' via UT_ENGINE_TU_FILES='${UT_ENGINE_TU_FILES}'")
+  message(STATUS "Engine: ${_ut_tu_n} source(s) compiled with '${UE_ENGINE_TU_OPTIONS}' via UE_ENGINE_TU_FILES='${UE_ENGINE_TU_FILES}'")
 endif()
 add_library(KarmaDecomp INTERFACE)
   target_link_libraries(KarmaDecomp INTERFACE metoolkit_decomp::all)

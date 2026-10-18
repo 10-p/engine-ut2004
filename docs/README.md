@@ -4,14 +4,14 @@ Engine-repo documentation. Build/toolchain details are in [`../BUILD.md`](../BUI
 conventions in [`../CLAUDE.md`](../CLAUDE.md).
 
 ## Contents
-- [`../BUILD.md`](../BUILD.md) — repository layout, build matrix, presets, `UT_ASSETS_DIR`, GL4ES fork, toolchain.
+- [`../BUILD.md`](../BUILD.md) — repository layout, build matrix, presets, `UE_ASSETS_DIR`, GL4ES fork, toolchain.
 
 ## Repository layout (2026 reorg)
 The tree was reorganized to mirror the sibling engine repos: `Source/` (engine C++), `Thirdparty/`
 (vendored deps: zlib, Vorbis, Speex, OpenAL, SDL12, metoolkit, Pixomatic), `Engine/Config/` (reference
 boot inis), `Android/` (NDK project), `vendor/glue/` (monorepo ABI shim), plus `cmake/` + `docs/`. The
 retail `System/` runtime dir and `Content/` game-content archive were removed (redundant with the
-out-of-tree asset tree at `$UT_ASSETS_DIR`); the engine builds from `Source/` + `Thirdparty/` only.
+out-of-tree asset tree at `$UE_ASSETS_DIR`); the engine builds from `Source/` + `Thirdparty/` only.
 Full table in `../BUILD.md`.
 
 ## Done

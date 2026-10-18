@@ -25,7 +25,7 @@ android {
                 // environment points at a local clone (skips the download and guarantees C/Java SDL
                 // parity); with neither, FetchContent clones the pinned SDL2 itself.
                 def sdl2Dir = project.findProperty('sdl2Dir') ?: System.getenv('SDL2_SOURCE_DIR')
-                def cmakeArgs = ['-DANDROID_STL=c++_shared', '-DUT_GFX_BACKEND=gl4es']
+                def cmakeArgs = ['-DANDROID_STL=c++_shared']
                 // The recovered Karma is FetchContent'd from its own repository at `main`;
                 // `-PkarmaDir=/abs/path` (or KARMA_DECOMP_DIR) passes
                 // FETCHCONTENT_SOURCE_DIR_METOOLKITKARMADECOMP, so a change to the recovered sources can

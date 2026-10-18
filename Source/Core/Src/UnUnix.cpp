@@ -1612,7 +1612,7 @@ void* appGetDllExport( void* DllHandle, const TCHAR* ProcName )
 void appDebugBreak()
 {
 	guard(appDebugBreak);
-#if defined(ASMLINUX) && !defined(UT_NO_X86_INTRIN)
+#if defined(ASMLINUX) && !defined(UE_NO_X86_INTRIN)
 	asm("int $03");
 #else
 	raise(SIGTRAP);
@@ -2535,7 +2535,7 @@ FScopeCriticalSection::~FScopeCriticalSection()
 static void DoCPUID( int i, DWORD *A, DWORD *B, DWORD *C, DWORD *D )
 {
 // !!! FIXME: Crashes on Hammer after ASM block!  --ryan.
-#if ((__LINUX_X86__) && (!defined __x86_64__) && !defined(UT_NO_X86_INTRIN))
+#if ((__LINUX_X86__) && (!defined __x86_64__) && !defined(UE_NO_X86_INTRIN))
     DWORD buf[4];
 
  	__asm__ __volatile__ (
@@ -2982,7 +2982,7 @@ void appPlatformInit()
 	// CPU speed.
 	guard(CheckCpuSpeed);
 
-#if ((ASMLINUX) || (MACOSX)) && !defined(UT_NO_X86_INTRIN)
+#if ((ASMLINUX) || (MACOSX)) && !defined(UE_NO_X86_INTRIN)
 	try
 	{
 		GSecondsPerCycle = 1.f;
@@ -3068,7 +3068,7 @@ void appPlatformInit()
 		appStrcat( GMachineCPU, *FString::Printf(TEXT(" @ %d MHz"), appRound(0.000001 / GSecondsPerCycle) ) ); // gam
 	}
 
-#ifdef UT_NO_X86_INTRIN
+#ifdef UE_NO_X86_INTRIN
 	// appCycles() counts microseconds on this path, so the conversion factor is fixed and the CPUSPEED=
 	// override above must not scale it. CPUSPEED= is still needed: it keeps the `#else` branch above from
 	// appErrorf'ing (there is no CPU-speed detection for wasm or arm) and it is what GMachineCPU reports.

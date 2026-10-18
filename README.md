@@ -51,7 +51,7 @@ The first configure of each preset needs network access: SDL2, OpenAL Soft, GL4E
 1. Install [emsdk](https://github.com/emscripten-core/emsdk) 5.0.7 and load it: `./emsdk install 5.0.7 && ./emsdk activate 5.0.7 && source ./emsdk_env.sh`
 2. Build (the link embeds two files from the game's `System/` folder):
    ```
-   cmake --preset wasm-perf -DUT_ASSETS_DIR=<UT2004 folder> && cmake --build --preset wasm-perf -j$(nproc)
+   cmake --preset wasm-perf -DUE_ASSETS_DIR=<UT2004 folder> && cmake --build --preset wasm-perf -j$(nproc)
    ```
 3. The result is `build-wasm-perf/Source/SDLLaunch/` (`SDLLaunch.{js,wasm,data}` + `meta.json`). It is not playable on its own: the frontend repo serves it.
 

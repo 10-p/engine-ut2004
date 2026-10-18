@@ -2,7 +2,7 @@
 
 This is the **private engine repo** for the UT2004 (UE2.5) web port — engine source only. Game
 assets (~5.8 GB: maps, textures, meshes, sounds, animations, compiled `.u` packages) live **out of
-tree** and are never tracked here; only the wasm link reads two files from them (`-DUT_ASSETS_DIR`).
+tree** and are never tracked here; only the wasm link reads two files from them (`-DUE_ASSETS_DIR`).
 
 > Status: the heavy browser glue has been **extracted** to the public monorepo (`@ufront/glue`,
 > Phase 1 steps 1.3/1.4) and is injected at runtime — the WASM build bakes only the thin `webrtc_*`
@@ -61,10 +61,10 @@ directory reuse that and are offline.
 
 **Assets.** Only the wasm link reads them, and only `System/{Build.ini,Packages.md5}` (the two boot INIs come
 from `Engine/Config/web`), which it `--preload-file`s into MEMFS. Point at the game folder with
-`-DUT_ASSETS_DIR=/abs/path`; the configure stops early if the two files are not there. The native presets
+`-DUE_ASSETS_DIR=/abs/path`; the configure stops early if the two files are not there. The native presets
 read no assets at build time.
 
-> If a wasm configure fails on the preload step, check `ls $UT_ASSETS_DIR` is non-empty first — the
+> If a wasm configure fails on the preload step, check `ls $UE_ASSETS_DIR` is non-empty first — the
 > asset volume is a mount and does not survive a reboot.
 
 ### 2. Build
@@ -122,7 +122,7 @@ native stack* below) and any script still calling them will fail with "no such p
 | Preset | What it is | Build dir | Output |
 |--------|-----------|-----------|--------|
 | `native` | **32-bit native, and still the DEFAULT.** SDL2 + `OpenGLDrv` + `GL4ESDrv` + `PixoDrv`, **all in one binary**; pick at startup. The WASM stack's native twin. ★ It is also the pointer-width **CONTROL arm** of `decomp/test/ut2004/ktrace_gate.sh`, which compares a 64-bit candidate against it byte-for-byte — which is why the default did not move to 64-bit. | `build-native/` | `Source/SDLLaunch/ut2004-pixo.bin` |
-| `native-sse` | **The ktrace CONTROL arm (ufront 2.58).** 32-bit with `-msse2 -mfpmath=sse` (`UT_FPMATH_SSE=ON`), no Pixomatic: the same recovered Karma at 32-bit pointer width and SSE float math, so the only variable against `native64` is the pointer width. `native` cannot be that control (x87, `81b06b0cf715`). | `build-native-sse/` | `Source/SDLLaunch/ut2004.bin` |
+| `native-sse` | **The ktrace CONTROL arm (ufront 2.58).** 32-bit with `-msse2 -mfpmath=sse` (`UE_FPMATH_SSE=ON`), no Pixomatic: the same recovered Karma at 32-bit pointer width and SSE float math, so the only variable against `native64` is the pointer width. `native` cannot be that control (x87, `81b06b0cf715`). | `build-native-sse/` | `Source/SDLLaunch/ut2004.bin` |
 | `native64` | **64-bit native (ufront 2.54).** Same engine and recovered Karma at LP64. ⚠ **No Pixomatic** — the prebuilts are i386-only on *both* platforms and there is no source, so `-SOFTWARERENDERER` does not exist here; gl4es (built from source) is the fallback. Configure reports `Pointer width: 8 bytes` and an explicit LP64-Karma note. | `build-native64/` | `Source/SDLLaunch/ut2004.bin` |
 
 > ⚠ **A build dir created BEFORE the 2.44 Karma relocation will not configure**, and the message points
@@ -185,7 +185,7 @@ falls back to the distro's `libopenal` (Ubuntu's has no EAX → `ALAudio: EAX of
 host's headers allowed at configure time, each dlopen'd at run time; the configure log says which. ⚠ On this
 box the 64-bit `native64` tree gets only `OSS, Null` — the ALSA/PulseAudio dev packages are installed for
 i386 only — so the 64-bit binary opens no device (`ALAudio: no OpenAL devices found`); `libasound2-dev:amd64`
-fixes that, the 32-bit shipping build gets `PulseAudio, ALSA, OSS, Null`. `-DUT_BUNDLED_OPENAL=OFF` restores
+fixes that, the 32-bit shipping build gets `PulseAudio, ALSA, OSS, Null`. `-DUE_BUNDLED_OPENAL=OFF` restores
 the old behaviour (dlopen of the system library).
 
 **The binary name says WHICH PHYSICS it contains**: `ut2004`, plus `-legacykarma` when
@@ -213,7 +213,7 @@ silently. The owner's call was to fix LP64 first rather than ship an APK whose p
 which phone you have. Deleting that one line is the whole change once `tools/layout_check.py` is
 clean.
 
-CMakeLists enforces this rather than trusting it: `UT_PTR_BYTES` is computed once and a
+CMakeLists enforces this rather than trusting it: `UE_PTR_BYTES` is computed once and a
 `USE_KARMA_DECOMP` build on a 64-bit-pointer target is a **hard error**, not a warning.
 
 > ### ✅ RE-VALIDATED IN ufront 2.55 — AND IT FOUND TWO REAL REGRESSIONS
@@ -221,7 +221,7 @@ CMakeLists enforces this rather than trusting it: `UT_PTR_BYTES` is computed onc
 > ### ufront 2.58 (2026-09-11) — both `-O2` items diagnosed; the pin stays by the owner's decision
 >
 > **1. The Karma `-O2` divergence is ONE FILE and ONE GCC PASS.** Complement bisect over all 146
-> recovered sources (`UT_KARMA_O2_FILES`, below) names
+> recovered sources (`UE_KARMA_O2_FILES`, below) names
 > `MdtKea/keaCalcIworldandNonInertialForceandVhmf_vanilla.c` alone. Ghidra flattened its two 3x3
 > matrix loops into `m1[0][iVar9 + k]` with `iVar9 = 0,3,6` on `MeReal m1[3][3]`, so iterations 2-3
 > subscript past the inner array — undefined in C, exactly what the machine code does. GCC's
@@ -254,7 +254,7 @@ CMakeLists enforces this rather than trusting it: `UT_PTR_BYTES` is computed onc
 > `PIXO_BUF_LOCK_COMPOSITE` → `PixoSurface_BufferLock` → `scale_buffer`; with `Zoom2X=False` the same
 > `-O2` binary ran clean. Fix: the typedef is `__stdcall` only under `_WIN32`. Verified at `-O2`,
 > `Zoom2X=True`: 40 traced frames, 600/1396, a rendered 1280x720 frame grab, and MATCH 15/15 against
-> the archived x87 trace. The configure WARNING is gone. `UT_PIXODRV_O0` (in `Source/PixoDrv/CMakeLists.txt`)
+> the archived x87 trace. The configure WARNING is gone. `UE_PIXODRV_O0` (in `Source/PixoDrv/CMakeLists.txt`)
 > is the owner's fallback pin, OFF.
 >
 > **4. Windows 32-bit with Pixomatic — the second GPU-free target, two defects fixed, one open.**
@@ -308,19 +308,19 @@ CMakeLists enforces this rather than trusting it: `UT_PTR_BYTES` is computed onc
 > with the clone receiving a foreign local as its bound, and with every mitigation above. Why only
 > the software renderer reaches the empty-`TrafoHeap` state at that call is NOT explained; it is
 > recorded as data-dependence, measured, not understood. The fix is the two guards (`Num() ? &X(0) : NULL`),
-> which are also simply correct C++. `UT_ENGINE_TU_FILES`/`UT_ENGINE_TU_OPTIONS` in
+> which are also simply correct C++. `UE_ENGINE_TU_FILES`/`UE_ENGINE_TU_OPTIONS` in
 > `Source/Engine/CMakeLists.txt` is the per-source knob that found it, kept.
 >
-> **5. The control arm is a preset now** — `native-sse` (`UT_FPMATH_SSE=ON`). Before 2.58 the
+> **5. The control arm is a preset now** — `native-sse` (`UE_FPMATH_SSE=ON`). Before 2.58 the
 > `-msse2 -mfpmath=sse` flags were passed by hand and never reached the cache: `build-b32-sse` was an
 > SSE binary (DWARF producer, 605 SSE / 1 x87 in `MdtBclAddAngular3`) in an x87 build tree, and one
 > rebuild would have silently regressed it. The `windows64` preset also could not configure at all
 > (it inherited `USE_PIXOMATIC=ON` into the 64-bit guard); it states `OFF` now.
 >
-> **The knobs** (top-level `CMakeLists.txt`, Karma pin block): `UT_KARMA_O2_FILES` — a regex over
-> decomp source basenames compiled with `UT_KARMA_O2_OPTIONS` (default `-O2`) despite the pin; `.*`
+> **The knobs** (top-level `CMakeLists.txt`, Karma pin block): `UE_KARMA_O2_FILES` — a regex over
+> decomp source basenames compiled with `UE_KARMA_O2_OPTIONS` (default `-O2`) despite the pin; `.*`
 > is the everything-`-O2` arm, a narrower regex one bisect round, `-O2;-fno-tree-vrp` or
-> `-O2;-fsanitize=undefined` a probe. `UT_KARMA_PIN_WEB` lifts the `NOT EMSCRIPTEN` guard for a
+> `-O2;-fsanitize=undefined` a probe. `UE_KARMA_PIN_WEB` lifts the `NOT EMSCRIPTEN` guard for a
 > measurement build (OFF; the shipped wasm stays `-O3`).
 >
 > 2.54 restored optimisation to the native builds and said "re-validate rather than assume". The
@@ -529,7 +529,7 @@ So a complete recovered physics engine costs **756 KB** of shipping wasm, about 
 
 ---
 
-## `UT_ALLOW_64BIT` — the x86-64 Linux debugging vehicle
+## `UE_ALLOW_64BIT` — the x86-64 Linux debugging vehicle
 
 **NOT a shipping target.** D-05 stands: the shipped Linux binary is 32-bit. This option exists
 for one job — debugging the LP64 defects that only appear at 8-byte pointers.
@@ -544,7 +544,7 @@ build is the same data model with all of those.
 rm -rf /tmp/kd_b64          # SDL caches its failed X11 probes in SDL_config.h
 cmake -S . -B /tmp/kd_b64 -G "Unix Makefiles" \
   -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-  -DUT_GFX_BACKEND=gl4es -DUSE_PIXOMATIC=OFF -DUT_ALLOW_64BIT=ON -DUSE_KARMA_DECOMP=ON
+  -DUSE_PIXOMATIC=OFF -DUE_ALLOW_64BIT=ON -DUSE_KARMA_DECOMP=ON
 cmake --build /tmp/kd_b64 -j 24
 file /tmp/kd_b64/Source/SDLLaunch/ut2004.bin    # MUST say ELF 64-bit ... x86-64
 ```
@@ -555,7 +555,7 @@ file /tmp/kd_b64/Source/SDLLaunch/ut2004.bin    # MUST say ELF 64-bit ... x86-64
 `set(CMAKE_C_FLAGS "... -m32" CACHE STRING "" FORCE)` for gl4es that rewrote the flags for the
 *whole project*, taking zlib, ogg, vorbis and Speex with it. The build printed
 `Pointer width: 8 bytes` and emitted `ELF 32-bit LSB relocatable, Intel i386`. All four are now
-gated on `UT_PTR_BYTES`, the variable that already existed to be the width the build actually
+gated on `UE_PTR_BYTES`, the variable that already existed to be the width the build actually
 produces — but the one-line `file` check is what makes the claim true.
 
 Two things this configuration cannot have:
@@ -590,13 +590,13 @@ Symlink the content directories in and keep a real, writable `System/`.
 cmake -S . -B build-windows64 -G "Unix Makefiles" \
   -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-mingw-w64.cmake \
   -DMINGW_TARGET_ARCH=x86_64 -DMINGW_THREAD_MODEL=posix \
-  -DCMAKE_BUILD_TYPE=RelWithDebInfo -DUT_GFX_BACKEND=gl4es \
-  -DUSE_PIXOMATIC=OFF -DUT_ALLOW_64BIT=ON -DUSE_KARMA_DECOMP=ON
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+  -DUSE_PIXOMATIC=OFF -DUE_ALLOW_64BIT=ON -DUSE_KARMA_DECOMP=ON
 cmake --build build-windows64 -j 12
 file build-windows64/Source/SDLLaunch/ut2004.exe   # MUST say PE32+ ... x86-64
 ```
 
-⚠ **`UT_ALLOW_64BIT=ON` is required even here.** The `-m32` demotion block is gated on
+⚠ **`UE_ALLOW_64BIT=ON` is required even here.** The `-m32` demotion block is gated on
 `TARGET_IS_X86 AND NOT MSVC`, and a MinGW x86_64 compiler matches it — without the option the
 build hands `-m32` to a toolchain that has no 32-bit sysroot.
 
@@ -609,7 +609,7 @@ this tree had never built for, and all three build failures it caused read as so
   `uintptr_t` everywhere — would have **broken web and i386 Linux**, where `uintptr_t` IS
   `unsigned int` IS `DWORD` and the same redefinition appears. Only LLP64 moves
   (`Source/Core/Inc/UnGnuG.h`).
-- **`UT_MSVC_NO_MMX`** (`Source/Core/Inc/Core.h`) — three inner loops in `AxWeatherEffect.cpp` and
+- **`UE_MSVC_NO_MMX`** (`Source/Core/Inc/Core.h`) — three inner loops in `AxWeatherEffect.cpp` and
   `UnParticleEmitter.cpp` were guarded on `_WIN64` when the real question is *"is this MSVC?"*.
   MSVC's x64 compiler dropped the MMX intrinsics; GCC keeps them at every width. MinGW defines
   `_WIN64` **and is GCC**, so it took MSVC's branch and failed on `__m128i::m128i_u32` — an MSVC
@@ -707,8 +707,7 @@ carrying only `?Game=` loads the level, burns CPU and never leaves the pre-match
 BUILD.md used to describe a "hard backend split" between a `legacy` preset (SDL 1.2 + `OpenGLDrv`)
 and a `gl4es` preset (SDL 2 + `GL4ESDrv`), each locked to its own build directory. **Both presets
 are gone and so is the split.** SDL 1.2 is retired: `SDLDrv` and `Thirdparty/SDL12` no longer exist,
-and asking for it (`-DUSE_SDL12=ON`, `-DUT_GFX_BACKEND=` anything but `gl4es`) is now a
-`FATAL_ERROR` rather than a silently different build.
+and asking for it (`-DUSE_SDL12=ON`) is a `FATAL_ERROR` rather than a silently different build.
 
 The two halves of the old argument:
 
@@ -720,8 +719,7 @@ The two halves of the old argument:
   filled by `SDL_GL_GetProcAddress`) and gl4es compiles `-fvisibility=hidden` off-Windows.
 
 So `native` carries **both** GL render devices plus Pixomatic in one binary and the choice moves to
-startup. `UT_GFX_BACKEND` survives only so existing build directories and the Android/web branches
-have a value to read; `gl4es` is the only accepted setting.
+startup.
 
 ## Render-device selection (`-*RENDERER` switches)
 
@@ -847,8 +845,7 @@ byte-identical:** every Android delta is behind `#if defined(__ANDROID__)` (C++)
   `libUT2004.so` (whole-archive, same package set as the native preset). No wrapper CMake — keeps
   `CMAKE_SOURCE_DIR` = repo root, so the existing `${CMAKE_SOURCE_DIR}` refs + the single
   FetchContent hold.
-- **Android divergences from the `native` preset:** 64-bit (drop `-m32` / `-DPLATFORM_32BIT` /
-  x86 `-march`); clang leniency instead of gcc `-fpermissive`; the **ANSI `NO_UNICODE_OS_SUPPORT`
+- **Android divergences from the `native` preset:** 64-bit (drop `-m32` / x86 `-march`); clang leniency instead of gcc `-fpermissive`; the **ANSI `NO_UNICODE_OS_SUPPORT`
   path (like wasm)**, NOT `-fshort-wchar`/UNICODE — bionic's 32-bit `wchar_t` + non-glibc
   `<wchar.h>` guard clash with the engine's 16-bit `wcs*` redeclarations; SDL2 built SHARED
   (`libSDL2.so`, aliased to `SDL2::SDL2-static`); stdout/stderr → logcat (`UT2004` tag; SELinux
@@ -886,13 +883,13 @@ adb shell am start -n com.ut2004.android/.GameActivity                # SDL_main
   **2.10b**). arm64-v8a, file management, gamepad, touch, net, and lifecycle follow — see the
   monorepo `docs/migration/steps/2.10-android.md`.
 
-## Assets (`UT_ASSETS_DIR`)
+## Assets (`UE_ASSETS_DIR`)
 
 The WASM link **preloads 4 INIs** into MEMFS (needed during `appInit`): `System/{Default.ini,DefUser.ini}`
-from the tracked `Engine/Config/web`, and `System/{Build.ini,Packages.md5}` from `$UT_ASSETS_DIR`:
+from the tracked `Engine/Config/web`, and `System/{Build.ini,Packages.md5}` from `$UE_ASSETS_DIR`:
 
 ```bash
-cmake --preset wasm -DUT_ASSETS_DIR=/abs/path/to/ut2004-assets
+cmake --preset wasm -DUE_ASSETS_DIR=/abs/path/to/ut2004-assets
 ```
 
 The native presets do **not** read assets at build time (the
@@ -925,9 +922,9 @@ cmake --preset native -DFETCHCONTENT_SOURCE_DIR_GL4ES=/abs/path/to/gl4es
 
 ## WASM: the three modes
 
-Two knobs, both set by the presets: `UT_WEB_PERF` and `UT_WEB_DEBUG`.
+Two knobs, both set by the presets: `UE_WEB_PERF` and `UE_WEB_DEBUG`.
 
-| preset | `UT_WEB_PERF` | `UT_WEB_DEBUG` | compile | for |
+| preset | `UE_WEB_PERF` | `UE_WEB_DEBUG` | compile | for |
 |---|---|---|---|---|
 | `wasm-perf` | ON | – | `-O3 -g0` | shipping: fastest, smallest, no symbols |
 | `wasm` | OFF | OFF | `-O2 -g` | **the dev default**: named stacks, DWARF, assertions |
@@ -974,7 +971,7 @@ system `<netfw.h>`/`<d3d8.h>` includes for a future Windows port), retail instal
 (`Help/`, `Manual/`, `Tools/`, `RemoteDebugging/`, `unxutils/`), the dead pre-CMake MSVC/makefile
 build, and the retail `System/` runtime dir + `Content/` game-content archive (both redundant with
 the asset tree). Nothing here is a build input beyond `Source/` + `Thirdparty/` (+ the fetched recovery
-for `USE_KARMA_DECOMP`); the engine builds/runs from prebuilt `.u` + assets in `$UT_ASSETS_DIR`.
+for `USE_KARMA_DECOMP`); the engine builds/runs from prebuilt `.u` + assets in `$UE_ASSETS_DIR`.
 
 ## Verifying a build did what you asked
 

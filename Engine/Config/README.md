@@ -13,7 +13,7 @@ single source of truth for the web boot config** — and the ufront manifest exc
 
 ## Why this exists
 
-The web config used to be sourced from the out-of-tree asset dir (`UT_ASSETS_DIR/System/*.ini`), i.e. it
+The web config used to be sourced from the out-of-tree asset dir (`UE_ASSETS_DIR/System/*.ini`), i.e. it
 lived only in the untracked game install. Rebuilding the asset image silently reverted it and broke every
 WebRTC download: a game install ships a **native** config (D3DDrv/WinDrv, desktop resolutions) with no
 `[WebRTCDrv.WebRTCNetDriver]` section at all, and `AllowDownloads` is a **per-class** config property — with

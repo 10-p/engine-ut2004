@@ -16,9 +16,9 @@
 #include "FFileManagerGeneric.h"
 // Windows' mkdir takes no mode: permissions are not a filesystem attribute there.
 #ifdef _WIN32
-#  define UT_MKDIR(p) mkdir(p)
+#  define UE_MKDIR(p) mkdir(p)
 #else
-#  define UT_MKDIR(p) mkdir((p), S_IRUSR | S_IWUSR | S_IXUSR)
+#  define UE_MKDIR(p) mkdir((p), S_IRUSR | S_IWUSR | S_IXUSR)
 #endif
 
 // MinGW's open() defaults to text mode, which translates CRLF and stops at Ctrl-Z, so read() would return
@@ -515,7 +515,7 @@ public:
                     {
                         *ptr = '\0';
                         // don't care if it fails, since fopen() will tell us.
-                        UT_MKDIR(ansitmp);
+                        UE_MKDIR(ansitmp);
                         *ptr = '/';
                     }
                 }
@@ -608,7 +608,7 @@ public:
 			return FFileManagerGeneric::MakeDirectory( Path, Tree );
 
         unixToANSI(ansipath, tmp);
-		return UT_MKDIR(appUnixPath(ansipath))==0 || errno==EEXIST;
+		return UE_MKDIR(appUnixPath(ansipath))==0 || errno==EEXIST;
 		unguard;
 	}
 	UBOOL DeleteDirectory( const TCHAR* FakePath, UBOOL RequireExists=0, UBOOL Tree=0 )
@@ -757,9 +757,9 @@ public:
 	#if MACOSX
 		// Make sure these two parent folders exist...
 		appStrcat( tmp, TEXT("/Library") );
-		UT_MKDIR(appToAnsi(tmp));
+		UE_MKDIR(appToAnsi(tmp));
 		appStrcat( tmp, TEXT("/Application Support") );
-		UT_MKDIR(appToAnsi(tmp));
+		UE_MKDIR(appToAnsi(tmp));
 
 		#if DEMOVERSION
 			appStrcat( tmp, TEXT("/Unreal Tournament 2004 Demo") );
@@ -774,9 +774,9 @@ public:
 		#endif
 	#endif
 
-        UT_MKDIR(appToAnsi(tmp));
+        UE_MKDIR(appToAnsi(tmp));
         appStrcat( tmp, TEXT("/System") );
-        UT_MKDIR(appToAnsi(tmp));
+        UE_MKDIR(appToAnsi(tmp));
 
         // If STILL not accessible don't use it.
         if ( access( appToAnsi(tmp), F_OK ) == -1 )
