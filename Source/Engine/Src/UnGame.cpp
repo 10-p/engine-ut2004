@@ -910,9 +910,7 @@ void UGameEngine::CancelPending()
 	guard(UGameEngine::CancelPending);
 	if( GPendingLevel )
 	{
-#ifdef __EMSCRIPTEN__
-		printf("[WebRTC] CancelPending called! GPendingLevel=%p NetDriver=%p\n", (void*)GPendingLevel, GPendingLevel ? (void*)GPendingLevel->NetDriver : NULL);
-#endif
+		debugf( NAME_DevNet, TEXT("CancelPending: closing the pending level's control channel") );
 		if( GPendingLevel->NetDriver && GPendingLevel->NetDriver->ServerConnection && GPendingLevel->NetDriver->ServerConnection->Channels[0] )
 		{
 			GPendingLevel->NetDriver->ServerConnection->Channels[0]->Close();
@@ -1314,19 +1312,13 @@ UBOOL UGameEngine::Browse( FURL URL, const TMap<FString,FString>* TravelInfo, FS
 	// WebRTC client connect: when the URL has a "connect" travel option, the "map" name is a room
 	// name. Re-interpret it as a network Host so the engine takes the UNetPendingLevel path instead
 	// of LoadMap.
-	printf("[WebRTC] Browse: PRE-REDIRECT Map='%s' Host='%s' IsLocalInternal=%d HasConnect=%d GIsClient=%d\n",
-		TCHAR_TO_ANSI(*URL.Map), TCHAR_TO_ANSI(*URL.Host),
-		(INT)URL.IsLocalInternal(), (INT)URL.HasOption(TEXT("connect")), (INT)GIsClient);
 	if( URL.IsLocalInternal() && URL.HasOption(TEXT("connect")) && URL.Map.Len() > 0 )
 	{
-		printf("[WebRTC] Browse: REDIRECT — treating '%s' as WebRTC room name\n", TCHAR_TO_ANSI(*URL.Map));
+		debugf( NAME_Log, TEXT("[WebRTC] Browse: treating '%s' as a WebRTC room name"), *URL.Map );
 		URL.Host = URL.Map;
 		URL.Map = TEXT("");
 		// Fall through to the network URL path below
 	}
-	printf("[WebRTC] Browse: POST-REDIRECT Map='%s' Host='%s' IsLocalInternal=%d IsInternal=%d GIsClient=%d\n",
-		TCHAR_TO_ANSI(*URL.Map), TCHAR_TO_ANSI(*URL.Host),
-		(INT)URL.IsLocalInternal(), (INT)URL.IsInternal(), (INT)GIsClient);
 #endif
 	if( URL.IsLocalInternal() )
 	{
@@ -1360,27 +1352,17 @@ UBOOL UGameEngine::Browse( FURL URL, const TMap<FString,FString>* TravelInfo, FS
 	{
 		// Network URL.
 		guard(NetworkURL);
-#ifdef __EMSCRIPTEN__
-		printf("[WebRTC] Browse: Network URL path — Host='%s' Map='%s'\n", TCHAR_TO_ANSI(*URL.Host), TCHAR_TO_ANSI(*URL.Map));
-#endif
+		debugf( NAME_DevNet, TEXT("Browse: network URL, Host='%s' Map='%s'"), *URL.Host, *URL.Map );
 		if( GPendingLevel )
 			CancelPending();
 		GPendingLevel = new UNetPendingLevel( this, URL );
 		if( !GPendingLevel->NetDriver )
 		{
-#ifdef __EMSCRIPTEN__
-			printf("[WebRTC] Browse: NetDriver is NULL after UNetPendingLevel — InitConnect failed. Error: %s\n", TCHAR_TO_ANSI(*GPendingLevel->Error));
-#endif
+			debugf( NAME_Log, TEXT("Browse: the net driver's InitConnect failed: %s"), *GPendingLevel->Error );
 			SetProgress( *FString::Printf(TEXT("menu:%s"),*DisconnectMenuClass), TEXT("Networking Failed"), *GPendingLevel->Error );
 			delete GPendingLevel;
 			GPendingLevel = NULL;
 		}
-#ifdef __EMSCRIPTEN__
-		else
-		{
-			printf("[WebRTC] Browse: UNetPendingLevel created OK, NetDriver=%p, returning 0\n", (void*)GPendingLevel->NetDriver);
-		}
-#endif
 		return 0;
 		unguard;
 	}
@@ -3986,6 +3968,7 @@ void UGameEngine::Tick( FLOAT DeltaSeconds )
 			// Pending connect failed.
 			guard(PendingFailed);
 #ifdef __EMSCRIPTEN__
+			// A printf, not debugf: the host page's player notices match this exact console line.
 			printf("[WebRTC] TickPending: FAILED — Error='%s'\n", TCHAR_TO_ANSI(*GPendingLevel->Error));
 #endif
 
