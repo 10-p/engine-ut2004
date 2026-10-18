@@ -672,28 +672,20 @@ static UEngine* InitEngine()
 	GConfig->GetInt( TEXT("FirstRun"), TEXT("FirstRun"), FirstRun );
 
     // Replace any driver the ini names but this build lacks (IsRenderDeviceAvailable: the class is registered),
-    // in preference order, so one binary boots from a retail Windows ini (WinDrv + D3D) or any earlier one. A
-    // device the build has is left alone.
-    if( !ParseParam(appCmdLine(),TEXT("NoForceSDLDrv")) )
+    // so one binary boots from a retail Windows ini (WinDrv + D3D) or any earlier one. A device the build has is
+    // left alone. -NoReplaceViewport / -NoReplaceRenderDevice keep the ini's choice, missing or not.
+    if( !ParseParam(appCmdLine(),TEXT("NoReplaceViewport")) )
     {
-        // Viewport client.
+        // Viewport client: SDL2Drv is the one every build has.
         const TCHAR* Viewport = GConfig->GetStr(TEXT("Engine.Engine"),TEXT("ViewportManager"),TEXT("System"));
-        if( !IsRenderDeviceAvailable(Viewport) )
+        if( !IsRenderDeviceAvailable(Viewport) && IsRenderDeviceAvailable(TEXT("SDL2Drv.SDL2Client")) )
         {
-            static const TCHAR* const ViewportPreference[] = { TEXT("SDL2Drv.SDL2Client"), TEXT("SDLDrv.SDLClient") };
-            for( INT i=0; i<ARRAY_COUNT(ViewportPreference); i++ )
-            {
-                if( IsRenderDeviceAvailable(ViewportPreference[i]) )
-                {
-                    debugf(TEXT("ViewportManager=%s is not in this build -> %s"), Viewport, ViewportPreference[i]);
-                    GConfig->SetString(TEXT("Engine.Engine"), TEXT("ViewportManager"), ViewportPreference[i]);
-                    break;
-                }
-            }
+            debugf(TEXT("ViewportManager=%s is not in this build -> %s"), Viewport, TEXT("SDL2Drv.SDL2Client"));
+            GConfig->SetString(TEXT("Engine.Engine"), TEXT("ViewportManager"), TEXT("SDL2Drv.SDL2Client"));
         }
     }
 
-    if( !ParseParam(appCmdLine(),TEXT("NoForceGL4ES")) )
+    if( !ParseParam(appCmdLine(),TEXT("NoReplaceRenderDevice")) )
     {
         // Render device: desktop GL leads where it is compiled in (native); GL4ES is the only one on the web and
         // Android.

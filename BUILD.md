@@ -742,6 +742,9 @@ drivers, coupled 1:1 to an SDL viewport manager) its matching `ViewportManager`:
   auto-switch guards (`WinDrv`→SDL, `D3D`→OpenGL, `OpenGL`/`GLES3`→`GL4ES` on SDL2) — those guards
   already normalize the persisted/default choice to the built stack, so `SelectRenderDevice()`
   doesn't duplicate or fight them (the no-switch boot is unchanged).
+- Before that, the launcher replaces a `ViewportManager` or `RenderDevice` the ini names but the build lacks:
+  the viewport with `SDL2Drv.SDL2Client`, the render device with `OpenGLDrv` then `GL4ESDrv`.
+  `-NoReplaceViewport` and `-NoReplaceRenderDevice` turn those replacements off and keep the ini's choice.
 - A switch that survives `Engine->Init()` is persisted to the ini (`PersistRenderChoiceIfSwitched()`
   → `GConfig->Flush`) so the pick sticks next boot (on the web, via the user-data IDB layer). The
   frontend's per-target `videoDrivers` DATA maps a friendly label → the switch.
