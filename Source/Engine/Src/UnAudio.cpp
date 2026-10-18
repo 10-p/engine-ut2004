@@ -1012,10 +1012,9 @@ FLOAT FSoundData::GetPeriod()
 		if( WaveInfo.ReadWaveInfo(*this) )
 		{
 			#define DEFAULT_FREQUENCY (22050)
-#if defined(__ANDROID__) && defined(__arm__)
-			// ARM (32-bit armv7 in particular) faults with SIGBUS/BUS_ADRALN on unaligned multi-byte
-			// loads, and these WaveInfo pointers point at raw WAV-header offsets that are not
-			// naturally aligned. Each field is read via appMemcpy into an aligned local.
+			// These WaveInfo pointers point at raw WAV-header offsets that are not naturally aligned
+			// (an unaligned dereference is undefined behaviour, and a SIGBUS on ARM): each field is read
+			// via appMemcpy into an aligned local.
 			_WORD Channels = 0, BitsPerSample = 0;
 			DWORD SamplesPerSec = 0, WaveDataSize = 0;
 			appMemcpy( &Channels,      WaveInfo.pChannels,      sizeof(Channels) );
@@ -1024,10 +1023,6 @@ FLOAT FSoundData::GetPeriod()
 			appMemcpy( &WaveDataSize,  WaveInfo.pWaveDataSize,  sizeof(WaveDataSize) );
 			INT DurDiv = Channels * BitsPerSample * SamplesPerSec;
 			if ( DurDiv ) Period = WaveDataSize * 8.f / (FLOAT)DurDiv;
-#else
-			INT DurDiv =  *WaveInfo.pChannels * *WaveInfo.pBitsPerSample  * *WaveInfo.pSamplesPerSec;
-			if ( DurDiv ) Period = *WaveInfo.pWaveDataSize * 8.f / (FLOAT)DurDiv;
-#endif
 		}
 		return Period;
 	} else {

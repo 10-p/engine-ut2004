@@ -646,14 +646,13 @@ void UObject::execBoolVariable( FFrame& Stack, RESULT_DECL )
 	BYTE B = *Stack.Code++;
 
 	UBoolProperty* Property;
+	// Bytecode operands are not aligned: read through appMemcpy.
 #if SERIAL_POINTER_INDEX
-	Property = (UBoolProperty*) UObject::SerialIndexPointer( *(INT*)Stack.Code );
+	INT PropertyIndex;
+	appMemcpy(&PropertyIndex, Stack.Code, sizeof(INT));
+	Property = (UBoolProperty*) UObject::SerialIndexPointer( PropertyIndex );
 #else
-  #if __PSX2_EE__ || __GCN__
 	appMemcpy(&Property, Stack.Code, sizeof(INT));
-  #else
-	Property = *(UBoolProperty**)Stack.Code;
-  #endif
 #endif
 
 	(this->*GNatives[B])( Stack, NULL );
@@ -2747,11 +2746,7 @@ IMPLEMENT_FUNCTION( UObject, EX_RotationConst, execRotationConst );
 void UObject::execVectorConst( FFrame& Stack, RESULT_DECL )
 {
 	guardSlow(UObject::execVectorConst);
-#if __PSX2_EE__ || __GCN__ || (defined(__ANDROID__) && defined(__arm__))
-	appMemcpy(Result, Stack.Code, sizeof(FVector));
-	#else
-	*(FVector*)Result = *(FVector*)Stack.Code;
-	#endif
+	appMemcpy(Result, Stack.Code, sizeof(FVector));	// bytecode operands are not aligned
 	Stack.Code += sizeof(FVector);
 	unguardexecSlow;
 }
