@@ -87,14 +87,9 @@ void AUdpLink::execBindPort( FFrame& Stack, RESULT_DECL )
 			}
 			else Stack.Logf( TEXT("BindPort: socket failed") );
 			closesocket(GetSocket());
-#if defined(__ANDROID__)
 			// Reset to INVALID_SOCKET, not 0: fd 0 is stdin, and PostScriptDestroyed's close-guard
-			// tests `!= INVALID_SOCKET`, so a 0 sentinel makes it later closesocket(0), which bionic's
-			// fdsan aborts on (a double close of stdin).
+			// tests `!= INVALID_SOCKET`, so a 0 sentinel would make it closesocket(0) later.
 			GetSocket()=INVALID_SOCKET;
-#else
-			GetSocket()=0;
-#endif
 		}
 		else Stack.Logf( TEXT("BindPort: already bound") );
 	}
