@@ -91,7 +91,7 @@ FString WebRTCDiscovery_RoomForHost( const TCHAR* Host )
 		return FString(TEXT(""));
 	return GDiscoveredRooms( Index );
 }
-// Kick a peer-list query + per-server status pings ("" = all rooms).
+// Kick a peer-list query + per-server status pings ("" = this browser's room, "*" = every room).
 void WebRTCDiscovery_Begin( const char* room )
 {
 	ue_net_discover_servers( room ? room : "" );

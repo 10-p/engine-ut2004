@@ -8,8 +8,6 @@
 #include "UnIpDrv.h"
 
 #ifdef __EMSCRIPTEN__
-#include <emscripten.h>
-
 // WebRTC server discovery lives in WebRTCDrv (WebRTCDiscovery.cpp): the host-glue calls and the
 // FServerResponseLine building are kept out of the stock IpDrv query path. Resolved at link time;
 // FServerResponseLine is an Engine type, so this is a one-way IpDrv -> WebRTCDrv dependency.
@@ -172,7 +170,7 @@ public:
 		// status ping); Poll() emits the results via OnReceivedPingInfo. The UDP send below is skipped.
 		if( Addr.Addr == INADDR_BROADCAST )
 		{
-			WebRTCDiscovery_Begin( "" );  // all rooms; Poll() drains the results
+			WebRTCDiscovery_Begin( "" );  // this browser's room; Poll() drains the results
 			bWebRTCBroadcastPending = 1;
 			WebRTCServerID  = ServerID;   // -1 for a broadcast request
 			WebRTCPingCause = PingCause;  // PC_LANBroadcast
@@ -1261,27 +1259,14 @@ void AMasterServerClient::execStartQuery( FFrame& Stack, RESULT_DECL )
 		return;
 	}
 
-	// Use WebRTC discovery (the room's peer list) instead of connecting to the master server. The room
-	// name is read from localStorage['ut2004_net_room'], "default" when it is absent, and sanitized to
-	// alphanumerics and dashes.
-	char roomBuf[128];
-	EM_ASM({
-		var room = '';
-		if (typeof localStorage !== 'undefined') {
-			room = localStorage.getItem('ut2004_net_room') || '';
-		}
-		if (!room) room = 'default';
-		// Sanitize: alphanumeric and dash only (T-10-13)
-		room = room.replace(/[^a-zA-Z0-9\-]/g, '');
-		if (!room) room = 'default';
-		stringToUTF8(room, $0, $1);
-	}, roomBuf, sizeof(roomBuf));
-
+	// Use WebRTC discovery (the room's peer list) instead of connecting to the master server. The room is
+	// the host's net glue's to know (the one this browser hosts or joined, else the one it saved): "" asks
+	// for that room. The engine worker has no localStorage to read it from.
 	ResultCount = 0;
 	GActiveWebRTCBrowser = this;
 	GWebRTCDiscoveryPending = 1;
-	debugf( NAME_DevNet, TEXT("[WebRTC-Discovery] StartQuery: room='%s', querying PeerJS for servers..."), ANSI_TO_TCHAR(roomBuf) );
-	WebRTCDiscovery_Begin(roomBuf);
+	debugf( NAME_DevNet, TEXT("[WebRTC-Discovery] StartQuery: querying this browser's room for servers...") );
+	WebRTCDiscovery_Begin( "" );
 #else
 	Init();
     ResultCount = 0; // gam
