@@ -94,8 +94,7 @@ void UGL4ESRenderDevice::StaticConstructor()
 	new(GetClass(),TEXT("ReduceMouseLag"),      RF_Public)UBoolProperty ( CPP_PROPERTY(ReduceMouseLag      ), TEXT("Options"), CPF_Config );
 	new(GetClass(),TEXT("ForceCompression"),    RF_Public)UBoolProperty ( CPP_PROPERTY(ForceCompression    ), TEXT("Options"), CPF_Config );
 	new(GetClass(),TEXT("DesiredRefreshRate"),	RF_Public)UIntProperty  ( CPP_PROPERTY(DesiredRefreshRate  ), TEXT("Options"), CPF_Config );
-	new(GetClass(),TEXT("MultisampleBuffers"),	RF_Public)UIntProperty  ( CPP_PROPERTY(MultisampleBuffers  ), TEXT("Options"), CPF_Config );
-	new(GetClass(),TEXT("MultisampleSamples"),	RF_Public)UIntProperty  ( CPP_PROPERTY(MultisampleSamples  ), TEXT("Options"), CPF_Config );
+	new(GetClass(),TEXT("NumAASamples"),		RF_Public)UIntProperty  ( CPP_PROPERTY(NumAASamples        ), TEXT("Options"), CPF_Config );
 	new(GetClass(),TEXT("MultisampleHint"),		RF_Public)UIntProperty  ( CPP_PROPERTY(MultisampleHint     ), TEXT("Options"), CPF_Config );
 	new(GetClass(),TEXT("LevelOfAnisotropy"),	RF_Public)UFloatProperty( CPP_PROPERTY(LevelOfAnisotropy   ), TEXT("Options"), CPF_Config );
 	new(GetClass(),TEXT("UseHardwareGamma"),	RF_Public)UBoolProperty ( CPP_PROPERTY(UseHardwareGamma    ), TEXT("Options"), CPF_Config );
@@ -145,9 +144,8 @@ void UGL4ESRenderDevice::StaticConstructor()
 
 	// MSAA on by default (4x). On the threaded web this is on/off only: the viewport creates the WebGL
 	// context itself (SDL2Viewport.cpp) and WebGL's `antialias` flag lets the browser pick the sample count.
-	// The viewport reads these from the active render device's ini section.
-	MultisampleBuffers				= 1;
-	MultisampleSamples				= 4;
+	// The viewport reads NumAASamples from the active render device's ini section.
+	NumAASamples					= 4;
 
 	SupportsCubemaps				= 1;
 	SupportsZBIAS					= 1;
@@ -279,6 +277,23 @@ UBOOL UGL4ESRenderDevice::Init()
 
 	debugf( TEXT("Initializing GL4ESDrv...") );
 
+	// NumAASamples replaces the MultisampleBuffers/MultisampleSamples pair: an ini without the new key
+	// is read through the old pair once (MSAA on when buffers > 0 and samples > 1).
+	{
+		const TCHAR* Section = TEXT("GL4ESDrv.GL4ESRenderDevice");
+		INT NewKey = 0, OldBuffers = 1, OldSamples = 4;
+		if( !GConfig->GetInt( Section, TEXT("NumAASamples"), NewKey ) )
+		{
+			UBOOL HaveOld = GConfig->GetInt( Section, TEXT("MultisampleBuffers"), OldBuffers );
+			HaveOld = GConfig->GetInt( Section, TEXT("MultisampleSamples"), OldSamples ) || HaveOld;
+			if( HaveOld )
+			{
+				NumAASamples = ( OldBuffers > 0 && OldSamples > 1 ) ? OldSamples : 0;
+				debugf( TEXT("GL4ES: NumAASamples=%i from the old MultisampleBuffers=%i MultisampleSamples=%i"), NumAASamples, OldBuffers, OldSamples );
+			}
+		}
+	}
+
 	printf("[GL4ES-DBG] Init: start\n");
 
 	GIsOpenGL						= 1;
@@ -372,8 +387,7 @@ UBOOL UGL4ESRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Ful
 	// Hint is: 0 == GL_DONT_CARE, 1 == GL_FASTEST, 2 == GL_NICEST.  --ryan.
 	MultisampleHint    = Max(MultisampleHint, 0);
 	MultisampleHint    = Min(MultisampleHint, 2);
-	MultisampleBuffers = Max(MultisampleBuffers, 0);
-	MultisampleSamples = Max(MultisampleSamples, 0);
+	NumAASamples       = Max(NumAASamples, 0);
 
 #if (defined USE_SDL)
 	SDL_GL_SetAttribute( SDL_GL_RED_SIZE, ColorBytes<=2 ? 5 : 8 );
@@ -381,8 +395,8 @@ UBOOL UGL4ESRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Ful
 	SDL_GL_SetAttribute( SDL_GL_BLUE_SIZE, ColorBytes<=2 ? 5 : 8 );
 	SDL_GL_SetAttribute( SDL_GL_DEPTH_SIZE, ColorBytes<=2 ? 16 : 24 );
 	SDL_GL_SetAttribute( SDL_GL_DOUBLEBUFFER, 1 );
-	SDL_GL_SetAttribute( SDL_GL_MULTISAMPLEBUFFERS, MultisampleBuffers );
-	SDL_GL_SetAttribute( SDL_GL_MULTISAMPLESAMPLES, MultisampleSamples );
+	SDL_GL_SetAttribute( SDL_GL_MULTISAMPLEBUFFERS, NumAASamples > 1 ? 1 : 0 );
+	SDL_GL_SetAttribute( SDL_GL_MULTISAMPLESAMPLES, NumAASamples > 1 ? NumAASamples : 0 );
 
 	// Change window size.
 	Viewport->ResizeViewport( Fullscreen ? (BLIT_Fullscreen|BLIT_OpenGL) : (BLIT_OpenGL), NewX, NewY );

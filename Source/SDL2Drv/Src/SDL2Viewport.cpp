@@ -986,20 +986,25 @@ UBOOL USDL2Viewport::ResizeViewport( DWORD NewBlitFlags, INT InNewX, INT InNewY,
         Attrs.stencil                   = 0;
         // MSAA is decided here on the threaded web build (SDL never creates the context, so
         // GL4ESRenderDevice::SetRes's SDL_GL_MULTISAMPLE* hints do not apply). WebGL exposes a boolean and picks
-        // the sample count itself, so the configured count only decides on/off. Read from the active render
-        // device's ini section; the fallbacks match UGL4ESRenderDevice::StaticConstructor.
+        // the sample count itself, so the configured count only decides on/off. NumAASamples (0 = off) is read
+        // from the active render device's ini section, through the old MultisampleBuffers/MultisampleSamples
+        // pair when it is absent; the default (4) is UGL4ESRenderDevice::StaticConstructor's.
         {
-            INT MsBuffers = 1, MsSamples = 4;
+            INT AASamples = 4;
             const TCHAR* RenDevStr = GConfig->GetStr( TEXT("Engine.Engine"), TEXT("RenderDevice"), TEXT("System") );
-            if( RenDevStr && *RenDevStr )
+            if( RenDevStr && *RenDevStr && !GConfig->GetInt( RenDevStr, TEXT("NumAASamples"), AASamples, TEXT("System") ) )
             {
-                GConfig->GetInt( RenDevStr, TEXT("MultisampleBuffers"), MsBuffers, TEXT("System") );
-                GConfig->GetInt( RenDevStr, TEXT("MultisampleSamples"), MsSamples, TEXT("System") );
+                INT MsBuffers = 1, MsSamples = 4;
+                UBOOL HaveOld = GConfig->GetInt( RenDevStr, TEXT("MultisampleBuffers"), MsBuffers, TEXT("System") );
+                HaveOld = GConfig->GetInt( RenDevStr, TEXT("MultisampleSamples"), MsSamples, TEXT("System") ) || HaveOld;
+                if( HaveOld )
+                    AASamples = ( MsBuffers > 0 && MsSamples > 1 ) ? MsSamples : 0;
             }
-            Attrs.antialias = ( MsBuffers > 0 && MsSamples > 1 ) ? 1 : 0;
-            // NAME_Log: the inis suppress Init once the engine is up, and the viewport comes after.
+            Attrs.antialias = AASamples > 1 ? 1 : 0;
+            // NAME_Log: the inis suppress Init once the engine is up, and the viewport comes after. The
+            // buffers/samples wording is the one the host's antialiasing check matches.
             debugf( NAME_Log, TEXT("WebGL antialias=%i (buffers=%i samples=%i from [%s])"),
-                (INT)Attrs.antialias, MsBuffers, MsSamples, RenDevStr ? RenDevStr : TEXT("<none>") );
+                (INT)Attrs.antialias, AASamples > 1 ? 1 : 0, AASamples > 1 ? AASamples : 0, RenDevStr ? RenDevStr : TEXT("<none>") );
         }
         // explicitSwapControl + renderViaOffscreenBackBuffer make the frame ours to present: without them
         // the browser composites at its own cadence and commit_frame() does nothing on a worker.
