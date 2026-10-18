@@ -960,7 +960,6 @@ UBOOL USDL2Viewport::ResizeViewport( DWORD NewBlitFlags, INT InNewX, INT InNewY,
 
     // GL context creation.
     // GL4ESDrv: GLES 2.0 context for GL4ES output.
-    // GLES3Drv: GL 3.3 Core context for Mesa llvmpipe.
     // OpenGLDrv: Compatibility profile for fixed-function pipeline.
     if( !GLContext )
     {
@@ -1042,12 +1041,6 @@ UBOOL USDL2Viewport::ResizeViewport( DWORD NewBlitFlags, INT InNewX, INT InNewY,
             SDL_GL_SetAttribute( SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES );
             SDL_GL_SetAttribute( SDL_GL_CONTEXT_MAJOR_VERSION, 2 );
             SDL_GL_SetAttribute( SDL_GL_CONTEXT_MINOR_VERSION, 0 );
-        }
-        else if( appStrfind(RenDevStr, TEXT("GLES3Drv")) )
-        {
-            SDL_GL_SetAttribute( SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE );
-            SDL_GL_SetAttribute( SDL_GL_CONTEXT_MAJOR_VERSION, 3 );
-            SDL_GL_SetAttribute( SDL_GL_CONTEXT_MINOR_VERSION, 3 );
         }
         else
         {

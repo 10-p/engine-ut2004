@@ -1186,15 +1186,9 @@ void UOpenGLRenderDevice::UpdateGamma(UViewport* Viewport)
 		Ramp.red[i] = Ramp.green[i] = Ramp.blue[i] = Clamp<INT>( appRound( (Contrast+0.5f)*appPow(i/255.f,1.0f/Gamma)*65535.f + (Brightness-0.5f)*32768.f - Contrast*32768.f + 16384.f ), 0, 65535 );
 
 #if (defined USE_SDL)
-#if USE_SDL12
-	if( !GOriginalGammaSaved )
-		GOriginalGammaSaved = ( SDL_GetGammaRamp( GOriginalGammaRamp[0], GOriginalGammaRamp[1], GOriginalGammaRamp[2] ) == 0 );
-	SDL_SetGammaRamp( Ramp.red, Ramp.green, Ramp.blue );
-#else
 	if( !GOriginalGammaSaved )
 		GOriginalGammaSaved = ( SDL_GetWindowGammaRamp( (SDL_Window*)Viewport->GetWindow(), GOriginalGammaRamp[0], GOriginalGammaRamp[1], GOriginalGammaRamp[2] ) == 0 );
 	SDL_SetWindowGammaRamp( (SDL_Window*)Viewport->GetWindow(), Ramp.red, Ramp.green, Ramp.blue );
-#endif
 #elif (defined UE_OPENGLDRV_WGL)
 	if( !GOriginalGammaSaved )
 		GOriginalGammaSaved = GetDeviceGammaRamp( hDC, GOriginalGammaRamp );
@@ -1220,13 +1214,9 @@ void UOpenGLRenderDevice::RestoreGamma()
 		return;
 
 #if (defined USE_SDL)
-#if USE_SDL12
-	SDL_SetGammaRamp( GOriginalGammaRamp[0], GOriginalGammaRamp[1], GOriginalGammaRamp[2] );
-#else
 	SDL_Window* GammaWindow = SDL_GetKeyboardFocus();
 	if( GammaWindow )
 		SDL_SetWindowGammaRamp( GammaWindow, GOriginalGammaRamp[0], GOriginalGammaRamp[1], GOriginalGammaRamp[2] );
-#endif
 #elif (defined UE_OPENGLDRV_WGL)
 	HDC DesktopDC = GetDC( GetDesktopWindow() );
 	SetDeviceGammaRamp( DesktopDC, GOriginalGammaRamp );
@@ -1500,11 +1490,7 @@ void UOpenGLRenderDevice::Present(UViewport* Viewport)
 #endif
 
 #if (defined USE_SDL)
-#if USE_SDL12
-	SDL_GL_SwapBuffers();
-#else
 	SDL_GL_SwapWindow((SDL_Window*)Viewport->GetWindow());
-#endif
 #elif (defined UE_OPENGLDRV_WGL)
 	verify( SwapBuffers( hDC ) );
 #else

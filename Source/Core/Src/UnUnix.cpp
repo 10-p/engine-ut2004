@@ -32,9 +32,6 @@
 #include <signal.h>
 #include <process.h>	// _spawnv
 #include <unistd.h>
-#if defined(__ANDROID__)
-#include <sys/system_properties.h>   // __system_property_get for debug.ut2004.nofault
-#endif
 #include <dirent.h>
 #include <utime.h>
 #include <sys/time.h>
@@ -63,6 +60,9 @@
 #include <pthread.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#if defined(__ANDROID__)
+#include <sys/system_properties.h>   // __system_property_get for debug.ut2004.nofault
+#endif
 #endif
 
 #if __FILE_NOCASE

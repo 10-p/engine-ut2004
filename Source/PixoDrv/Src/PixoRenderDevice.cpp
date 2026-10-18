@@ -116,24 +116,7 @@ UBOOL UPixoRenderDevice::Init()
 
 	debugf( NAME_Init, TEXT("Initializing PixoDrv...") );
 
-	#if USE_SDL12  //(not actually used; SDLDrv doesn't need this. --ryan)
-		SDL_PixelFormat *vfmt = SDL_GetVideoInfo()->vfmt;
-		SDL_Rect **sdlmodes = SDL_ListModes(vfmt, SDL_FULLSCREEN);
-		if ( (sdlmodes == NULL) || (sdlmodes == (SDL_Rect **) -1) )
-		{
-			debugf( NAME_Init, TEXT("PixoDrv: SDL found no modes?!") );
-			//return 0;
-		}
-		else
-		{
-			for (INT j = 0; sdlmodes[j] != NULL; j++)
-			{
-				SDL_Rect *mode = sdlmodes[j];
-				Modes.AddUniqueItem( FPlane( mode->w, mode->h, vfmt->BitsPerPixel, 60 ) );
-			}
-		}
-
-	#elif USE_SDL
+	#if USE_SDL
 		// SDL2: the fullscreen mode list is unused (the engine drives resolution through the viewport),
 		// and SDL2 has no SDL_GetVideoInfo/SDL_ListModes -- skip enumeration.
 	#else
@@ -376,10 +359,7 @@ UBOOL UPixoRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Full
 
 	// Change window size.
 
-#if USE_SDL12   // Teh Lame.  --ryan.  (SDL 1.2 software video surface -- no GL context)
-	UBOOL Result = Viewport->ResizeViewport(
-		(Fullscreen ? BLIT_Fullscreen : 0), NewX, NewY );
-#elif USE_SDL
+#if USE_SDL
 	// SDL2: PixoDrv presents through the GL window, so request a GL viewport and context.
 	UBOOL Result = Viewport->ResizeViewport(
 		(Fullscreen ? BLIT_Fullscreen | BLIT_OpenGL : BLIT_OpenGL), NewX, NewY );
@@ -612,9 +592,7 @@ void UPixoRenderDevice::UpdateGamma(UViewport* Viewport)
 		Ramp.red[i] = Ramp.green[i] = Ramp.blue[i] = Clamp<INT>( appRound( Value ), 0, 65535 );
 	}
 
-#if USE_SDL12
-	SDL_SetGammaRamp( Ramp.red, Ramp.green, Ramp.blue );
-#elif USE_SDL
+#if USE_SDL
 	// SDL2: per-window gamma ramp.
 	if( Viewport && Viewport->GetWindow() )
 	{
@@ -646,9 +624,7 @@ void UPixoRenderDevice::RestoreGamma()
 	if( !UseHardwareGamma || !GPixoOriginalGammaSaved )
 		return;
 
-#if USE_SDL12
-	SDL_SetGammaRamp( GPixoOriginalGammaRamp[0], GPixoOriginalGammaRamp[1], GPixoOriginalGammaRamp[2] );
-#elif USE_SDL
+#if USE_SDL
 	// SDL2: the window that has the focus is the game's.
 	SDL_Window* GammaWindow = SDL_GetKeyboardFocus();
 	if( GammaWindow )
@@ -857,7 +833,7 @@ void UPixoRenderDevice::Unlock(FRenderInterface* RI)
 }
 
 
-#if USE_SDL && !USE_SDL12
+#if USE_SDL
 // ===== SDL2 GL present path for the Pixomatic software renderer (through gl4es) =====
 #include <stdlib.h>
 #include "GL/gl.h"
@@ -943,7 +919,7 @@ static void PixoPresentGL( SDL_Window* Window, const void* Pixels, INT W, INT H,
 
 	SDL_GL_SwapWindow( Window );
 }
-#endif // USE_SDL && !USE_SDL12
+#endif // USE_SDL
 
 //
 // UPixoRenderDevice::Present
@@ -952,24 +928,7 @@ void UPixoRenderDevice::Present(UViewport* Viewport)
 {
 	guard(UPixoRenderDevice::Present);
 
-#if USE_SDL12
-    // !!! FIXME: cache the screen surface pointer somewhere...  --ryan.
-    SDL_Surface *screen = SDL_GetVideoSurface();
-
-    // !!! FIXME: Don't recalculate the blit function every frame! --ryan.
-	PIXOSURFACE_BLITFUNC *BlitFunc = GetPixoBlitFunc(
-	                                        screen->format->BitsPerPixel,
-	                                        screen->format->Amask,
-	                                        screen->format->Rmask,
-	                                        screen->format->Gmask,
-	                                        screen->format->Bmask);
-
-	if (SDL_MUSTLOCK(screen)) SDL_LockSurface(screen);
-	PixoSurface_BufferBlitDest(PixoBuffer, screen->pixels, 0, 0,
-	                            screen->pitch, BlitFunc);
-	if (SDL_MUSTLOCK(screen)) SDL_UnlockSurface(screen);
-	SDL_Flip(screen);
-#elif USE_SDL
+#if USE_SDL
 	// SDL2 has no software video surface to blit+flip on a GL window, so present the Pixomatic software
 	// framebuffer through GL: upload the ARGB8888 buffer to a texture, draw a fullscreen quad, then
 	// SDL_GL_SwapWindow (GL4ES translates the fixed-function calls to GLES2). With Zoom2X the 3D scene is
