@@ -66,7 +66,8 @@ public:
 									Zoom2X,
 									LimitTextureSize,
 									SimpleMaterials,
-									UseVisibilityQuery;
+									UseVisibilityQuery,
+									UseHardwareGamma;
 
 	// Status/ system information.
 	FRenderCaps                     RenderCaps;

@@ -67,6 +67,9 @@ void UPixoRenderDevice::StaticConstructor()
 	new(GetClass(),TEXT("LimitTextureSize"),    RF_Public)UBoolProperty ( CPP_PROPERTY(LimitTextureSize    ), TEXT("Options"), CPF_Config );
 	new(GetClass(),TEXT("SimpleMaterials"),		RF_Public)UBoolProperty ( CPP_PROPERTY(SimpleMaterials     ), TEXT("Options"), CPF_Config );
 	new(GetClass(),TEXT("UseVisibilityQuery"),	RF_Public)UBoolProperty ( CPP_PROPERTY(UseVisibilityQuery  ), TEXT("Options"), CPF_Config );
+	new(GetClass(),TEXT("UseHardwareGamma"),	RF_Public)UBoolProperty ( CPP_PROPERTY(UseHardwareGamma    ), TEXT("Options"), CPF_Config );
+	// Off: UpdateGamma reprograms the display's ramp, not the game's (as OpenGLDrv's UseHardwareGamma).
+	UseHardwareGamma					= 0;
 
 	GIsPixomatic						= 1;
 	GIsOpenGL							= 0;
@@ -560,6 +563,11 @@ void UPixoRenderDevice::Flush(UViewport* Viewport)
 }
 
 
+// Hardware gamma is opt-in (UseHardwareGamma, off by default; -NOGAMMA forces it off): the ramp is the
+// display's, not the game's. RestoreGamma puts back the ramp found before the first change.
+static _WORD GPixoOriginalGammaRamp[3][256];
+static UBOOL GPixoOriginalGammaSaved = 0;
+
 //
 // UPixoRenderDevice::UpdateGamma
 //
@@ -567,7 +575,7 @@ void UPixoRenderDevice::UpdateGamma(UViewport* Viewport)
 {
 	guard(UPixoRenderDevice::UpdateGamma);
 
-	if( ParseParam(appCmdLine(),TEXT("NOGAMMA")) )
+	if( !UseHardwareGamma || ParseParam(appCmdLine(),TEXT("NOGAMMA")) )
 		return;
 
 #if !USE_SDL
@@ -609,8 +617,14 @@ void UPixoRenderDevice::UpdateGamma(UViewport* Viewport)
 #elif USE_SDL
 	// SDL2: per-window gamma ramp.
 	if( Viewport && Viewport->GetWindow() )
+	{
+		if( !GPixoOriginalGammaSaved )
+			GPixoOriginalGammaSaved = ( SDL_GetWindowGammaRamp( (SDL_Window*)Viewport->GetWindow(), GPixoOriginalGammaRamp[0], GPixoOriginalGammaRamp[1], GPixoOriginalGammaRamp[2] ) == 0 );
 		SDL_SetWindowGammaRamp( (SDL_Window*)Viewport->GetWindow(), Ramp.red, Ramp.green, Ramp.blue );
+	}
 #elif WIN32
+	if( !GPixoOriginalGammaSaved )
+		GPixoOriginalGammaSaved = GetDeviceGammaRamp( hDC, GPixoOriginalGammaRamp );
 	SetDeviceGammaRamp( hDC, &Ramp );
 	ReleaseDC(hWnd, hDC);
 #else
@@ -628,25 +642,19 @@ void UPixoRenderDevice::RestoreGamma()
 {
 	guard(UPixoRenderDevice::RestoreGamma);
 
-	if( ParseParam(appCmdLine(), TEXT("NOGAMMA")) )
+	// Nothing was changed unless gamma was opted into and applied, so there is nothing to undo.
+	if( !UseHardwareGamma || !GPixoOriginalGammaSaved )
 		return;
 
-	struct
-	{
-		_WORD red[256];
-		_WORD green[256];
-		_WORD blue[256];
-	} Ramp;
-
-	for(INT i=0; i<256; i++)
-		Ramp.red[i] = Ramp.green[i] = Ramp.blue[i] = i << 8;
-
 #if USE_SDL12
-	SDL_SetGammaRamp( Ramp.red, Ramp.green, Ramp.blue );
+	SDL_SetGammaRamp( GPixoOriginalGammaRamp[0], GPixoOriginalGammaRamp[1], GPixoOriginalGammaRamp[2] );
 #elif USE_SDL
-	// SDL2: no window handle here; the per-window gamma resets when the GL window closes.
+	// SDL2: the window that has the focus is the game's.
+	SDL_Window* GammaWindow = SDL_GetKeyboardFocus();
+	if( GammaWindow )
+		SDL_SetWindowGammaRamp( GammaWindow, GPixoOriginalGammaRamp[0], GPixoOriginalGammaRamp[1], GPixoOriginalGammaRamp[2] );
 #elif WIN32
-	SetDeviceGammaRamp( GetDC( GetDesktopWindow() ), &Ramp );
+	SetDeviceGammaRamp( GetDC( GetDesktopWindow() ), GPixoOriginalGammaRamp );
 #else
 #   error Please handle this for your platform.
 #endif

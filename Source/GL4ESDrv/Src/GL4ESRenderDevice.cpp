@@ -98,6 +98,7 @@ void UGL4ESRenderDevice::StaticConstructor()
 	new(GetClass(),TEXT("MultisampleSamples"),	RF_Public)UIntProperty  ( CPP_PROPERTY(MultisampleSamples  ), TEXT("Options"), CPF_Config );
 	new(GetClass(),TEXT("MultisampleHint"),		RF_Public)UIntProperty  ( CPP_PROPERTY(MultisampleHint     ), TEXT("Options"), CPF_Config );
 	new(GetClass(),TEXT("LevelOfAnisotropy"),	RF_Public)UFloatProperty( CPP_PROPERTY(LevelOfAnisotropy   ), TEXT("Options"), CPF_Config );
+	new(GetClass(),TEXT("UseHardwareGamma"),	RF_Public)UBoolProperty ( CPP_PROPERTY(UseHardwareGamma    ), TEXT("Options"), CPF_Config );
 	new(GetClass(),TEXT("UseRenderTargets"),	RF_Public)UBoolProperty	( CPP_PROPERTY(UseRenderTargets    ), TEXT("Options"), CPF_Config );
 	new(GetClass(),TEXT("UsePixelShaders"),		RF_Public)UBoolProperty ( CPP_PROPERTY(UsePixelShaders     ), TEXT("Options"), CPF_Config );
 
@@ -128,9 +129,12 @@ void UGL4ESRenderDevice::StaticConstructor()
 	AppleVA							= 1;
 	MultisampleHint					= 2;
 
+	// Off: UpdateGamma reprograms the display's ramp, not the game's (as OpenGLDrv's UseHardwareGamma).
+	UseHardwareGamma				= 0;
+
 	// Not raised:
 	//   UsePixelShaders   0 - the fixed-function path is the one this device actually implements.
-	//   ForceCompression  0 - forcing DXT on already-decoded textures LOSES quality; off is better.
+	//   ForceCompression  0 - forcing DXT on already-decoded textures loses quality.
 	//   UseVSync          0 - the browser paces frames; vsync here fights the host's own scheduling.
 	//   ReduceMouseLag    0 - a stall-and-sync that costs frames; the shipped config disables it.
 	UsePixelShaders					= 0;
@@ -669,6 +673,10 @@ UBOOL UGL4ESRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Ful
 		LevelOfAnisotropy = Max<FLOAT>( 1.0f, Min<FLOAT>( MaxAnisotropy, LevelOfAnisotropy ) );
 		debugf( TEXT("GL4ES: Level of anisotropy is %f (max %f)."), (float) LevelOfAnisotropy, (float) MaxAnisotropy );
 	}
+	debugf( TEXT("GL4ES: UseHardwareGamma=%s (%s) -- the display's gamma ramp is %s"),
+		UseHardwareGamma ? TEXT("True") : TEXT("False"),
+		ParseParam(appCmdLine(),TEXT("NOGAMMA")) ? TEXT("-NOGAMMA forces off") : TEXT("[GL4ESDrv.GL4ESRenderDevice]"),
+		(UseHardwareGamma && !ParseParam(appCmdLine(),TEXT("NOGAMMA"))) ? TEXT("set and restored by the game") : TEXT("left alone") );
 
 #ifndef WIN32
 	if( !SUPPORTS_GL_ARB_multisample )
@@ -1063,6 +1071,11 @@ void UGL4ESRenderDevice::Flush(UViewport* Viewport)
 }
 
 
+// Hardware gamma is opt-in (UseHardwareGamma, off by default; -NOGAMMA forces it off): the ramp is the
+// display's, not the game's. RestoreGamma puts back the ramp found before the first change.
+static _WORD GGL4ESOriginalGammaRamp[3][256];
+static UBOOL GGL4ESOriginalGammaSaved = 0;
+
 //
 // UGL4ESRenderDevice::UpdateGamma
 //
@@ -1070,7 +1083,7 @@ void UGL4ESRenderDevice::UpdateGamma(UViewport* Viewport)
 {
 	guard(UGL4ESRenderDevice::UpdateGamma);
 
-	if( ParseParam(appCmdLine(),TEXT("NOGAMMA")) )
+	if( !UseHardwareGamma || ParseParam(appCmdLine(),TEXT("NOGAMMA")) )
 		return;
 
 	FLOAT	Gamma		= Viewport->GetOuterUClient()->Gamma,
@@ -1088,6 +1101,8 @@ void UGL4ESRenderDevice::UpdateGamma(UViewport* Viewport)
 		Ramp.red[i] = Ramp.green[i] = Ramp.blue[i] = Clamp<INT>( appRound( (Contrast+0.5f)*appPow(i/255.f,1.0f/Gamma)*65535.f + (Brightness-0.5f)*32768.f - Contrast*32768.f + 16384.f ), 0, 65535 );
 
 	// Gamma through SDL2.
+	if( !GGL4ESOriginalGammaSaved )
+		GGL4ESOriginalGammaSaved = ( SDL_GetWindowGammaRamp( (SDL_Window*)Viewport->GetWindow(), GGL4ESOriginalGammaRamp[0], GGL4ESOriginalGammaRamp[1], GGL4ESOriginalGammaRamp[2] ) == 0 );
 	SDL_SetWindowGammaRamp( (SDL_Window*)Viewport->GetWindow(), Ramp.red, Ramp.green, Ramp.blue );
 
 	unguard;
@@ -1101,23 +1116,14 @@ void UGL4ESRenderDevice::RestoreGamma()
 {
 	guard(UGL4ESRenderDevice::RestoreGamma);
 
-	if( ParseParam(appCmdLine(),TEXT("NOGAMMA")) )
+	// Nothing was changed unless gamma was opted into and applied, so there is nothing to undo.
+	if( !UseHardwareGamma || !GGL4ESOriginalGammaSaved )
 		return;
-
-	struct
-	{
-		_WORD red[256];
-		_WORD green[256];
-		_WORD blue[256];
-	} Ramp;
-
-	for(INT i=0; i<256; i++)
-		Ramp.red[i] = Ramp.green[i] = Ramp.blue[i] = i << 8;
 
 	// Restore the gamma through SDL2.
 	SDL_Window* GammaWindow = SDL_GetKeyboardFocus();
 	if( GammaWindow )
-		SDL_SetWindowGammaRamp( GammaWindow, Ramp.red, Ramp.green, Ramp.blue );
+		SDL_SetWindowGammaRamp( GammaWindow, GGL4ESOriginalGammaRamp[0], GGL4ESOriginalGammaRamp[1], GGL4ESOriginalGammaRamp[2] );
 
 	unguard;
 }
