@@ -14,24 +14,22 @@
 #include <unistd.h>
 #include <limits.h>
 #include "FFileManagerGeneric.h"
-// ufront 2.33: Windows' mkdir takes no mode — permissions are not a filesystem attribute there.
+// Windows' mkdir takes no mode: permissions are not a filesystem attribute there.
 #ifdef _WIN32
 #  define UT_MKDIR(p) mkdir(p)
 #else
 #  define UT_MKDIR(p) mkdir((p), S_IRUSR | S_IWUSR | S_IXUSR)
 #endif
 
-// ufront 2.33 ★ THE ut2004 WINDOWS STARTUP CRASH. MinGW's open() defaults to TEXT mode, which translates
-// CRLF and stops at Ctrl-Z — so read() returns FEWER bytes than asked for, every archive read "fails",
-// and the engine died reading its own ini before it could log a word. The fopen() calls in this file
-// already say "rb"; these open() calls said nothing. O_BINARY is 0 on POSIX (no text/binary distinction),
-// so OR-ing it in is a no-op for Linux and the web.
+// MinGW's open() defaults to text mode, which translates CRLF and stops at Ctrl-Z, so read() would return
+// fewer bytes than asked for. The fopen() calls in this file say "rb"; the open() calls OR in O_BINARY,
+// which is 0 on POSIX.
 #ifndef O_BINARY
 #  define O_BINARY 0
 #endif
 
 #ifndef _WIN32
-#include <pwd.h>	// ufront 2.33: no passwd database on Windows (see the home-dir lookup below)
+#include <pwd.h>	// no passwd database on Windows (see the home-dir lookup below)
 #endif
 #include <stdlib.h>
 #include <ctype.h>
@@ -418,8 +416,8 @@ public:
             return 0;
 
         struct tm tm;
-        // ufront 2.33: Windows spells the reentrant localtime `localtime_s`, with the arguments reversed
-        // and an errno_t return (0 == success).
+        // Windows spells the reentrant localtime `localtime_s`, with the arguments reversed and an
+        // errno_t return (0 == success).
 #ifdef _WIN32
         if (localtime_s(&tm, &statbuf.st_mtime) != 0)
 #else
@@ -693,13 +691,9 @@ public:
         unguard;
 	}
 	// --- gam
-	// ufront 2.37: the home-dir redirect is now OPT-IN, and the default is what every one of our
-	// launchers already asked for. It used to be the other way round -- user files (log, User.ini,
-	// saves, the download cache) went to ~/.ut2004/System/ unless you remembered `-nohomedir` --
-	// which meant EVERY caller carried the flag (web ENGINE_OPTS_DEFAULT, the Android bridge, the
-	// native smoke harness, every doc'd command line) and the one that forgot silently wrote its
-	// state somewhere nobody looked. `-nohomedir` is still ACCEPTED and is now a no-op, so no
-	// existing command line, ini or script breaks; `-usehomedir` restores the old behaviour.
+	// The home-dir redirect is opt-in: user files (log, User.ini, saves, the download cache) stay
+	// beside the game unless -usehomedir asks for ~/.ut2004/System/. -nohomedir is accepted and is
+	// the default.
 	void Init(UBOOL Startup)
 	{
         if (UseHomeDir())
@@ -708,8 +702,7 @@ public:
             BaseDir[0] = 0;
 	}
 
-    // Opt in with -usehomedir. -nohomedir is the default and is kept only so old command lines
-    // keep parsing.
+    // Opt in with -usehomedir. -nohomedir is the default and is still accepted.
     UBOOL UseHomeDir(void)
     {
         return ParseParam(appCmdLine(),TEXT("usehomedir"));
@@ -727,15 +720,15 @@ public:
 
 	    char *Home = getenv("HOME");
 #if defined(_WIN32)
-    	// ufront 2.33: Windows has no $HOME and no passwd database. USERPROFILE is its equivalent
-    	// (C:\Users\<name>); fall back to the base dir, which is where we land by default anyway.
+    	// Windows has no $HOME and no passwd database. USERPROFILE is its equivalent
+    	// (C:\Users\<name>); fall back to the base dir.
     	if ( Home == NULL )
     		Home = getenv("USERPROFILE");
     	if ( Home == NULL )
     		return(appBaseDir());
 #elif defined(__ANDROID__)
     	// bionic has no getpwent/setpwent/endpwent (no passwd-db enumeration). $HOME is provided
-    	// by the Android app shell (set in the JNI bridge, step 2.10b); fall back to cwd otherwise.
+    	// by the Android app's JNI bridge; fall back to cwd otherwise.
     	if ( Home == NULL )
     		Home = (char*)".";
 #else
@@ -800,10 +793,9 @@ public:
 
 
 protected:
-	// ufront (from engine-uc2, which took this file from here and fixed it): Windows FindFirstFile wildcard semantics:
-	// '*' and '?', "*.*" matches every name, and (with __FILE_NOCASE, which UT2004 defines) letters match regardless
-	// of case. The stock matcher was case-sensitive (GetOGGList's "..\\Music\\*.OGG" found none of the .ogg files) and took
-	// "*.ext" as a substring test; "*.*" missed names without a dot.
+	// Windows FindFirstFile wildcard semantics: '*' and '?', "*.*" matches every name, and (with
+	// __FILE_NOCASE, which UT2004 defines) letters match regardless of case, so GetOGGList's
+	// "..\\Music\\*.OGG" finds the .ogg files.
 	static UBOOL WildcardMatch( const char* Pattern, const char* Name )
 	{
 		if( strcmp( Pattern, "*.*" ) == 0 )

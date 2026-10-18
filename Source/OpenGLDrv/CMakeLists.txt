@@ -1,7 +1,7 @@
 #=============================================================================
 # OpenGLDrv - OpenGL render device
 #
-# Cross-platform OpenGL renderer with Linux-specific GL headers.
+# The desktop-GL renderer for native Linux and Windows, on SDL2.
 #=============================================================================
 
 project(OpenGLDrv CXX)
@@ -28,11 +28,9 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
   GPackage=OpenGLDrv
 )
 
-# SDL2 supplies the GL context functions (ufront 2.34: the SDL 1.2 branch is gone with SDL 1.2). Note
-# what is NOT here: any GL library. This driver binds every entry point through its own pointer table
-# (GL_PROC -> SDL_GL_GetProcAddress), which is exactly why it can share a binary with GL4ESDrv — there
-# are no duplicate GL symbols to collide, and neither driver's GL headers are visible to the other
-# (both include sets are PRIVATE).
+# SDL2 supplies the GL context functions. No GL library is linked: the driver binds every entry point
+# through its own pointer table (GL_PROC -> SDL_GL_GetProcAddress), which is why it can share a binary
+# with GL4ESDrv (no duplicate GL symbols, and each driver's GL headers are PRIVATE).
 if(EMSCRIPTEN)
   target_link_libraries(${PROJECT_NAME} PRIVATE Core Engine)
 else()

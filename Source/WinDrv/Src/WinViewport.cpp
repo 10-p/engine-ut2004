@@ -9,8 +9,7 @@
 #include "WinDrv.h"
 #include "UnDebuggerCore.h"
 
-// netfw.h (Windows Firewall COM API) — pulled from the system Windows SDK / mingw-w64
-// (the bundled "Microsoft Platform SDK for Windows XP SP2" copy was removed).
+// netfw.h (Windows Firewall COM API) comes from the system Windows SDK / mingw-w64.
 #include <netfw.h>
 
 #define WM_MOUSEWHEEL 0x020A

@@ -8,9 +8,9 @@
 #ifndef EAX30_H_INCLUDED
 #define EAX30_H_INCLUDED
 
-// ufront 2.61: every `long` in this header was the 32-bit Windows LONG, and the OpenAL that receives these
-// structs (openal-soft's EAXSet) reads 32-bit fields on every ABI. They are spelled `int` now, because a C
-// `long` is 64-bit on LP64 (linux64, Android arm64) and would shift every field after the first.
+// Every `long` of the original header was the 32-bit Windows LONG, and the OpenAL that receives these
+// structs (openal-soft's EAXSet) reads 32-bit fields on every ABI. They are spelled `int`: a C `long` is
+// 64-bit on LP64 (linux64, Android arm64) and would shift every field after the first.
 
 #ifdef __cplusplus
 extern "C" {

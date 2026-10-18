@@ -27,9 +27,9 @@ Revision history:
 // OpenAL functions.
 #define INITGUID 1
 #undef DEFINE_GUID
-// ufront 2.61 -- the EAX property-set GUIDs get INTERNAL linkage. eax2.h/eax3.h would define them extern,
-// which is fine against an OpenAL DLL/.so but collides with openal-soft's own DSPROPSETID_EAX* objects when
-// it is linked statically (the web). The values are identical; each side keeps its own copy.
+// The EAX property-set GUIDs get internal linkage. eax2.h/eax3.h would define them extern, which is fine
+// against an OpenAL DLL/.so but collides with openal-soft's own DSPROPSETID_EAX* objects when it is linked
+// statically (the web). The values are identical; each side keeps its own copy.
 #define DEFINE_GUID(name, l, w1, w2, b1, b2, b3, b4, b5, b6, b7, b8) \
 	static const GUID name = { l, w1, w2, { b1, b2, b3, b4, b5, b6, b7, b8 } }
 #define OPENAL
@@ -50,7 +50,7 @@ Revision history:
 // The below two headers are not standard EAX SDK headers!
 #include "eax3.h"
 #include "eax2.h"
-// ufront 2.61: these structs cross into openal-soft's EAXSet, which reads 32-bit fields on every ABI.
+// These structs cross into openal-soft's EAXSet, which reads 32-bit fields on every ABI.
 static_assert( sizeof(GUID) == 16, "EAX GUID must be 16 bytes" );
 static_assert( sizeof(((_EAXLISTENERPROPERTIES*)0)->lRoom) == 4, "EAX long fields must be 32-bit" );
 static_assert( sizeof(((_EAXBUFFERPROPERTIES*)0)->ulFlags) == 4, "EAX unsigned long fields must be 32-bit" );
@@ -102,8 +102,8 @@ void UALAudioSubsystem::StaticConstructor()
 	new(GetClass(),TEXT("EnhancedDenoiser"		), RF_Public) UBoolProperty	(CPP_PROPERTY(EnhancedDenoiser		), TEXT("ALAudio"), CPF_Config );
 	new(GetClass(),TEXT("UseSpatializedVoice"	), RF_Public) UBoolProperty	(CPP_PROPERTY(UseSpatializedVoice	), TEXT("ALAudio"), CPF_Config );
 	new(GetClass(),TEXT("UseHRTF"				), RF_Public) UBoolProperty	(CPP_PROPERTY(UseHRTF				), TEXT("ALAudio"), CPF_Config );
-	// ufront 2.61 -- compiled defaults for an ini that lacks the keys. EAX is on (every platform has it now
-	// through openal-soft, and the stock menu cannot turn it on); HRTF stays the player's explicit choice.
+	// Compiled defaults for an ini that lacks the keys. EAX is on (openal-soft provides it on every platform,
+	// and the stock menu cannot turn it on); HRTF stays the player's explicit choice.
 	UseEAX	= 1;
 	UseHRTF	= 0;
 	unguard;
@@ -274,26 +274,17 @@ UBOOL UALAudioSubsystem::Init()
 	if( USound::Audio )
 		return 1;
 
-	// Which OpenAL actually got loaded -- reported in the failure messages below, because
-	// "audio failed" without naming the driver is what made this take three rounds to find.
+	// Which OpenAL got loaded, named in the failure messages below.
 	UBOOL UsingDefaultDriverDLL = 0;
 
 #if DYNAMIC_BIND
 	guard(DynamicBinding);
 	// Find DLL's.
 	DLLHandle = NULL;
-	// ufront 2.37: appGetSystemDllHandle, not appGetDllHandle. The latter answers "is this PACKAGE
-	// already in the exe?", which on the static Windows build is a sentinel that made every AL lookup
-	// miss -- see UnFile.h. OpenAL is an external library, so it needs the loader that actually loads.
-	//
-	// ★ ufront 2.37b: AL_DLL is tried FIRST now, whatever UseDefaultDriver says. That flag meant
-	// something in 2004 -- "prefer the copy we shipped (DefOpenAL32.dll) over whatever OpenAL32.dll the
-	// system has" -- and today it means the opposite of what anyone wants: OpenAL32.dll is the modern
-	// OpenAL Soft this build ships beside the exe, while DefOpenAL32.dll is a 2004 binary sitting in the
-	// asset tree that binds fine and then cannot open a device on a current OS. ⚠ Every retail ini has
-	// UseDefaultDriver=True, so the shipped DLL was never even tried: the owner's second log bound
-	// OpenAL successfully (no "Missing function") and still ended in "Audio initialization failed.".
-	// UseDefaultDriver now only decides whether the 2004 DLL is an acceptable FALLBACK.
+	// appGetSystemDllHandle, not appGetDllHandle: the latter answers "is this package already in the exe?",
+	// which on the static Windows build is a sentinel (UnFile.h). AL_DLL (the OpenAL Soft this build ships
+	// beside the binary) is tried first, then AL_DEFAULT_DLL; UseDefaultDriver is read but does not change
+	// the order (a retail DefOpenAL32.dll binds and then cannot open a device on a current OS).
 	DLLHandle = appGetSystemDllHandle( AL_DLL );
 	UsingDefaultDriverDLL = 0;
 	if( !DLLHandle )
@@ -307,9 +298,8 @@ UBOOL UALAudioSubsystem::Init()
 			return 0;
 		}
 	}
-	// ⚠ NOT NAME_Init: a stock UT2004.ini carries `Suppress=Init`, which silently hides every
-	// diagnostic this subsystem emits -- which is why two crash reports in a row contained no clue at
-	// all about what audio was doing. Say which DLL won, at a level nobody suppresses.
+	// Not NAME_Init: a stock UT2004.ini carries `Suppress=Init`, which would hide this subsystem's
+	// diagnostics. Say which DLL won, at a level nobody suppresses.
 	debugf( TEXT("ALAudio: bound to %s"), UsingDefaultDriverDLL ? AL_DEFAULT_DLL : AL_DLL );
 	
 	// Find functions.
@@ -336,18 +326,16 @@ UBOOL UALAudioSubsystem::Init()
 		return 0;
 	}
 
-	// ufront 2.61 -- HRTF is asked for EXPLICITLY, on or off, whenever the library knows the attribute
-	// (ALC_SOFT_HRTF: openal-soft on every platform we ship). Left to itself openal-soft decides from
-	// whether the output "is headphones", which a browser can never tell it and a desktop only sometimes
-	// can -- and HRTF played over speakers sounds wrong. So it is the player's setting, off by default.
-	// 0x1992 is ALC_HRTF_SOFT; spelled out because the native headers here predate <AL/alext.h>.
+	// HRTF is asked for explicitly, on or off, whenever the library knows the attribute (ALC_SOFT_HRTF:
+	// openal-soft on every platform). Left to itself openal-soft decides from whether the output "is
+	// headphones", which a browser cannot tell it, and HRTF over speakers sounds wrong, so it is the
+	// player's setting, off by default. 0x1992 is ALC_HRTF_SOFT, spelled out because the native headers
+	// here predate <AL/alext.h>.
 	//
-	// ★ HRTF IS A STEREO RENDERING. Asked for on its own it only changes how STEREO output is encoded: on a
-	// 5.1/7.1 device openal-soft renders surround and reports ALC_HRTF_UNSUPPORTED_FORMAT_SOFT, so the
-	// setting silently does nothing. That is a real player, not a corner: Firefox reports a 5.1 device's six
-	// channels to the page (measured, ufront 2.61 §3.1). So UseHRTF=True also asks for the output mode
+	// HRTF is a stereo rendering: on a 5.1/7.1 device (which a browser may report) openal-soft renders
+	// surround and reports ALC_HRTF_UNSUPPORTED_FORMAT_SOFT. So UseHRTF=True also asks for the output mode
 	// ALC_STEREO_HRTF_SOFT (0x19AC = ALC_OUTPUT_MODE_SOFT, 0x19B2 = ALC_STEREO_HRTF_SOFT), which makes the
-	// device stereo. The player who ticked "headphones" gets headphone audio whatever the OS speaker setup.
+	// device stereo: headphone audio whatever the OS speaker setup.
 	ALint Caps[] = { ALC_FREQUENCY, 44100, 0, 0, 0, 0, 0 };
 	const UBOOL HasHRTF = alcIsExtensionPresent( SoundDevice, (ALubyte*)"ALC_SOFT_HRTF" );
 	if( HasHRTF )
@@ -404,7 +392,7 @@ UBOOL UALAudioSubsystem::Init()
 	// No channels, no sound.
 	if ( MaxChannels <= 4 )
 	{
-		// This used to return 0 with NO log line whatsoever -- a completely silent audio failure.
+		// Log the reason: without it this is a silent audio failure.
 		debugf( NAME_Warning, TEXT("ALAudio: only %i channels available (need >4) -- no sound."), MaxChannels );
 		return 0;
 	}
@@ -736,11 +724,9 @@ UBOOL UALAudioSubsystem::Update( FSceneNode* SceneNode )
 	clock(GStats.DWORDStats(AudioStats.STATS_UpdateCycles));
 
 #ifdef __EMSCRIPTEN__
-	// Single-threaded web build: the background file-streaming thread that normally
-	// decodes the next Ogg/Vorbis music chunk does not exist (see
-	// FALAudioStreamManager::Init). Pump the stream manager here, BEFORE the per-source
-	// update consumes a decoded chunk, so streaming music keeps advancing its read
-	// position instead of replaying its initial buffers forever.
+	// On the web the background file-streaming thread is not started (FALAudioStreamManager::Init), so
+	// the stream manager is pumped here, before the per-source update consumes a decoded chunk; streaming
+	// music then keeps advancing its read position.
 	if( StreamManager )
 		StreamManager->Tick();
 #endif
@@ -1324,12 +1310,10 @@ void UALAudioSubsystem::FindProcs( UBOOL AllowExt )
 {
 	guard(UALAudioSubsystem::FindProcs);
 #ifdef __EMSCRIPTEN__
-	// Emscripten statically links OpenAL (openal-soft since ufront 2.61; the -lopenal port before). dlopen/dlsym
-	// (appGetDllExport -> dlsym(RTLD_DEFAULT,...)) cannot see the in-binary AL
-	// symbols, so the normal FindProc path reports "Missing function 'alEnable'"
-	// and Init() fails. Bind each member entry point straight to the real,
-	// statically-linked global symbol instead. ABI matches the legacy ALubyte*
-	// member-pointer prototypes (string args are layout-identical to const char*).
+	// The web links openal-soft statically, and dlsym (appGetDllExport -> dlsym(RTLD_DEFAULT,...)) cannot
+	// see the in-binary AL symbols, so FindProc would report "Missing function 'alEnable'". Bind each
+	// member entry point straight to the statically linked global symbol instead. The ABI matches the
+	// legacy ALubyte* member-pointer prototypes (string args are layout-identical to const char*).
 	(void)AllowExt;
 	#define AL_EXT(name) SUPPORTS##name = 1;
 	#define ALC_EXT(name) SUPPORTS##name = 1;
@@ -1365,7 +1349,7 @@ void UALAudioSubsystem::SetEAXEffect()
 	if( !GIsEditor && (Listener->EAXEffect == Listener->LastEAXEffect) )
 		return;
 
-	ALenum EAXResult = AL_NO_ERROR;	// ufront 2.61: checked below, logged once
+	ALenum EAXResult = AL_NO_ERROR;	// checked below, logged once
 
 	if( EAXVersion >= 3 )
 	{
@@ -1530,8 +1514,8 @@ void UALAudioSubsystem::SetEAXEffect()
 		}
 	}
 
-	// ufront 2.61 -- EAX used to be unreachable outside Windows, so say once that it really works here: the
-	// first zone room effect the library accepted, or the first one it refused (and why).
+	// Say once that EAX works: the first zone room effect the library accepted, or the first one it
+	// refused (and why).
 	static UBOOL LoggedRoom = 0, LoggedFailure = 0;
 	if( EAXResult != AL_NO_ERROR )
 	{

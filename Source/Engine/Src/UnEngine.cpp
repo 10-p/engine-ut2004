@@ -78,11 +78,7 @@ void UEngine::InitAudio()
 		if( !Audio->Init() )
 		{
 #if defined(__ANDROID__)
-			// Fail-soft on Android: UT2004's ALAudio dlopens libopenal.so (not bundled) and its
-			// subsystem class doesn't resolve, so audio init fails. Continue SILENT with an
-			// informational log instead of a hard error (owner-accepted). Full Android audio
-			// (openal-soft OpenSL ES/AAudio + ALAudio package resolution) is a follow-up stage.
-			// Guarded so web/desktop keep the hard error and stay byte-identical.
+			// Android: audio init failure is a warning, and the game continues without sound.
 			debugf( NAME_Warning, TEXT("Audio unavailable on Android (no OpenAL) -- continuing without sound.") );
 #else
 			debugf( NAME_Error, TEXT("Audio initialization failed.") );
@@ -305,17 +301,12 @@ UBOOL UEngine::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 {
 	guard(UEngine::Exec);
 
-	// ufront 2.28: force the config cache out to the filesystem, on demand.
+	// FLUSHCONFIG: force the config cache out to the filesystem, on demand.
 	//
-	// WHY IT IS FIRST. Every handler below gets the command before the engine's own block, so a subsystem
-	// could shadow this one; persistence is not something a render device may override. It is also why it
-	// lives in UEngine rather than a game class: UEngine::Exec is the one point all four ufront engines
-	// reach from `ue_exec_command`.
-	//
-	// This engine's SaveConfig already ends in GConfig->Flush(0), so an in-game setting change reaches the
-	// filesystem by itself. What this adds is the EXPLICIT "persist now" the host calls before harvesting
-	// the files into durable storage — a browser tab is closed, never shut down, so nothing may be left
-	// waiting for an exit that does not happen.
+	// First, so no handler below can shadow it, and in UEngine because UEngine::Exec is the point
+	// `ue_exec_command` reaches. SaveConfig already ends in GConfig->Flush(0); this is the explicit
+	// "persist now" the host calls before harvesting the files into durable storage (a browser tab is
+	// closed, never shut down).
 	{
 		const TCHAR* FlushStr = Cmd;
 		if( ParseCommand(&FlushStr,TEXT("FLUSHCONFIG")) )

@@ -1,16 +1,12 @@
 /*=============================================================================
 	WebRTCDiscovery.cpp - WebRTC server discovery for the in-game server browser.
 
-	"Our stuff" — kept OUT of the stock IpDrv query path (MasterServerClient.cpp),
-	which only keeps a thin hook that calls these and fires the stock delegates.
-	A true ini-pluggable driver isn't possible (the frozen GUI2K4.u hardcodes
-	Spawn(class'LANQueryClient'), and we can't compile a new script class without
-	ucc), so this is the next-best separation: the JS-bridge glue + the
-	FServerResponseLine building live here, in our own native package.
-
-	FServerResponseLine is an Engine type, so this is a one-way IpDrv -> WebRTCDrv
-	dependency resolved at link time (exactly like the webrtc-net.js bridges) — no
-	module cycle. See [[webrtc-discovery-architecture]].
+	Kept out of the stock IpDrv query path (MasterServerClient.cpp), which only
+	keeps a thin hook that calls these and fires the stock delegates. A script-level
+	driver is not possible (the shipped GUI2K4.u hardcodes Spawn(class'LANQueryClient')
+	and the build has no ucc to compile a new class), so the host-glue calls and the
+	FServerResponseLine building live here, in this package. FServerResponseLine is an
+	Engine type, so this is a one-way IpDrv -> WebRTCDrv dependency resolved at link time.
 =============================================================================*/
 
 #include "Engine.h"
@@ -19,7 +15,7 @@
 
 #ifdef __EMSCRIPTEN__
 
-// WebRTC discovery bridge (webrtc-net.js --js-library functions; WASM-link resolved).
+// WebRTC discovery imports (the host's net glue, resolved at the wasm link).
 extern "C"
 {
 	void webrtc_discover_servers(const char* room);
@@ -37,27 +33,14 @@ extern "C"
 /*-----------------------------------------------------------------------------
 	Room <-> synthetic address.
 
-	★ ufront 2.38 — THIS IS WHY "JOIN" DID NOTHING.
-
-	The row used to carry the ROOM NAME in FServerResponseLine::IP, which reads fine and travels
-	straight into the stock join: Browser_ServersList.Connect() builds
-	    unreal://<IP>:<Port>
-	and hands it to ClientTravel. But FURL only recognises a HOST in a token that contains a '.'
-	(UnURL.cpp's "Parse optional host name and port" branch) — and a room name is a bare token like
-	`joinrepro-msy0x0sj`. So the room landed in URL.Map with URL.Host EMPTY, Browse took the
-	IsLocalInternal path, and the engine tried to LOAD THE ROOM NAME AS A MAP FILE:
-
-	    Browse: PRE-REDIRECT Map='joinrepro-msy0x0sj:7777' Host='' IsLocalInternal=1
-	    Package file not found: joinrepro-msy0x0sj:7777 (returning NULL, not throwing)
-
-	…and the fail-soft loader then made that silent. From the player's chair: the server is listed,
-	JOIN does nothing. Exactly what the owner reported.
-
-	So hand the browser something that IS a host. 10.199.0.0/16, low 16 bits indexing an append-only
-	table, translated back in UWebRTCNetDriver::InitConnect. ⚠ The table must be append-only: a player
-	can click JOIN minutes after the row was drawn, and the address has to still mean the same room.
-	(engine-ut99 / engine-unreal1 use the same scheme in WebRTCLan.cpp — there it also has to survive a
-	round trip through IpAddrToString, which can only render an IPv4.)
+	A discovery row carries a dotted address, not the room name, in FServerResponseLine::IP: the
+	stock join (Browser_ServersList.Connect()) builds `unreal://<IP>:<Port>` and hands it to
+	ClientTravel, and FURL only recognises a host in a token that contains a '.' (UnURL.cpp's
+	"Parse optional host name and port" branch). A bare room name would land in URL.Map and be
+	loaded as a map file. So the browser gets 10.199.0.0/16, the low 16 bits indexing an
+	append-only table, translated back in UWebRTCNetDriver::InitConnect. The table must be
+	append-only: a player can click JOIN minutes after the row was drawn, and the address has to
+	still mean the same room.
 -----------------------------------------------------------------------------*/
 
 #define WEBRTC_LAN_ADDR_BASE  0x0AC70000u
@@ -70,14 +53,9 @@ static INT WebRTCRoomIndex( const FString& Room )
 	for( INT i=0; i<GDiscoveredRooms.Num(); i++ )
 		if( appStricmp( *GDiscoveredRooms(i), *Room )==0 )
 			return i;
-	// ⚠ PLACEMENT NEW, NOT AddItem. `TArray<T>` is a POD container:
-	//     INT AddItem( const T& Item ) { INT Index=Add(); (*this)(Index)=Item; }
-	// and `FArray::Add` neither zeroes nor constructs the slot, so assigning an FString into it runs
-	//     ArrayNum=ArrayMax=Other.Num(); Realloc(...);   // -> appRealloc( <garbage Data>, … )
-	// on whatever the allocator left behind. It survives only when that memory happens to be zeroed,
-	// which fresh dlmalloc pages are — so it looks fine until the heap is busy.
-	// ★ Measured on the UE1 siblings (2.38): identical code, ut99 died 3 runs of 3 with `memory access
-	// out of bounds` while unreal1 drained 4 of 4. `TArray::operator=` itself uses placement new.
+	// Placement new, not AddItem: `TArray<T>` is a POD container (AddItem is `Add()` then assignment),
+	// and `FArray::Add` neither zeroes nor constructs the slot, so assigning an FString into it would
+	// Realloc whatever garbage Data the allocator left there. `TArray::operator=` itself uses placement new.
 	new( GDiscoveredRooms )FString( Room );
 	return GDiscoveredRooms.Num() - 1;
 }
@@ -124,7 +102,7 @@ FString WebRTCDiscovery_RoomForHost( const TCHAR* Host )
 		return FString(TEXT(""));
 	return GDiscoveredRooms( Index );
 }
-// Kick a PeerJS peer-list query + per-server status pings ("" = all rooms).
+// Kick a peer-list query + per-server status pings ("" = all rooms).
 void WebRTCDiscovery_Begin( const char* room )
 {
 	webrtc_discover_servers( room ? room : "" );
@@ -137,8 +115,8 @@ UBOOL WebRTCDiscovery_Ready()
 }
 
 // Build one FServerResponseLine per discovered server (name/map/players/ping from the
-// JS status handshake). IP = the room/join key (unique -> the stock browser dedupes by
-// IP+Port). Returns the count appended. The IpDrv hooks fire the delegates over these.
+// JS status handshake). IP = the room's synthetic address (unique, so the stock browser's
+// IP+Port dedupe keeps every row). Returns the count appended. The IpDrv hooks fire the delegates over these.
 INT WebRTCDiscovery_Drain( TArray<FServerResponseLine>& Out )
 {
 	const INT Count = webrtc_get_server_count();
@@ -162,9 +140,7 @@ INT WebRTCDiscovery_Drain( TArray<FServerResponseLine>& Out )
 		// profile matches the original inline path the delegate expects.
 		FServerResponseLine& Server = Out( Out.AddZeroed() );
 		Server.ServerName     = ANSI_TO_TCHAR(nameBuf);
-		Server.IP             = WebRTCHostForRoom( ANSI_TO_TCHAR(joinBuf) ); // ★ a HOST, not the room —
-		                                                     // see the note above; the room name has no
-		                                                     // dot, so FURL would read it as a MAP.
+		Server.IP             = WebRTCHostForRoom( ANSI_TO_TCHAR(joinBuf) ); // a host, not the room (see above)
 		Server.Port           = 7777;
 		Server.QueryPort      = 7777;
 		Server.MapName        = (mapBuf[0] != 0) ? FString(ANSI_TO_TCHAR(mapBuf)) : FString(TEXT("?"));

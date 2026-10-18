@@ -1013,11 +1013,9 @@ FLOAT FSoundData::GetPeriod()
 		{
 			#define DEFAULT_FREQUENCY (22050)
 #if defined(__ANDROID__) && defined(__arm__)
-			// ARM (esp. 32-bit armv7) faults with SIGBUS/BUS_ADRALN on unaligned multi-byte
+			// ARM (32-bit armv7 in particular) faults with SIGBUS/BUS_ADRALN on unaligned multi-byte
 			// loads, and these WaveInfo pointers point at raw WAV-header offsets that are not
-			// naturally aligned -- this is what kills the armv7 boot in USound::Serialize. Read
-			// each field via appMemcpy (aligned local), which is a normal load on x86 so the
-			// #else keeps web/desktop byte-identical.
+			// naturally aligned. Each field is read via appMemcpy into an aligned local.
 			_WORD Channels = 0, BitsPerSample = 0;
 			DWORD SamplesPerSec = 0, WaveDataSize = 0;
 			appMemcpy( &Channels,      WaveInfo.pChannels,      sizeof(Channels) );

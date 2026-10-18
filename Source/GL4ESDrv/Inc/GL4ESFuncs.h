@@ -352,7 +352,7 @@ GL_PROC(_GL,void,glVertex4sv,(const GLshort *v))
 GL_PROC(_GL,void,glVertexPointer,(GLint size, GLenum type, GLsizei stride, const GLvoid *pointer))
 GL_PROC(_GL,void,glViewport,(GLint x, GLint y, GLsizei width, GLsizei height))
 
-// WIN32 WGL/GDI functions removed for GL4ESDrv (Linux/SDL2-only).
+// WGL/GDI functions are not declared: gl4es and SDL2 provide the context on every platform.
 
 
 /*-----------------------------------------------------------------------------

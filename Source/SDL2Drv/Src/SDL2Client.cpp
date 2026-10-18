@@ -1,6 +1,5 @@
 /*=============================================================================
-    SDL2Client.cpp: USDL2Client code.
-    SDL2 viewport client implementation for UT2004 web port.
+    SDL2Client.cpp: USDL2Client, the SDL2 viewport manager.
 =============================================================================*/
 
 #include "SDL2Drv.h"
@@ -33,33 +32,22 @@ void USDL2Client::StaticConstructor()
 {
     guard(USDL2Client::StaticConstructor);
     new(GetClass(),TEXT("StartupFullscreen"), RF_Public)UBoolProperty(CPP_PROPERTY(StartupFullscreen), TEXT("Display"), CPF_Config );
-    // ufront 2.91 (the owner: "UseJoystick on by default, but it can still be disabled"): the retail key the game's own
-    // "Enable Joystick" option writes (GUI2K4: `set ini:Engine.Engine.ViewportManager UseJoystick`).
+    // The retail key the game's own "Enable Joystick" option writes (GUI2K4: `set ini:Engine.Engine.ViewportManager
+    // UseJoystick`); on by default.
     new(GetClass(),TEXT("UseJoystick"),       RF_Public)UBoolProperty(CPP_PROPERTY(UseJoystick),       TEXT("Joystick"), CPF_Config );
 
-    // ★ COMPILED DEFAULTS FOR THE INHERITED UClient SETTINGS (ufront 2.35).
+    // Compiled defaults for the inherited UClient settings. UClient::StaticConstructor (Engine/Src/UnCamMgr.cpp)
+    // registers its CPF_Config properties without values, and a retail UT2004.ini has no [SDL2Drv.SDL2Client]
+    // section, so without these every one would be zero, and the zeroes are wrong:
     //
-    // UClient::StaticConstructor (Engine/Src/UnCamMgr.cpp) REGISTERS ~30 CPF_Config properties and assigns
-    // NOT ONE VALUE, so without a [SDL2Drv.SDL2Client] ini section every one of them falls back to a
-    // zero-initialised default -- and the zeroes are not merely conservative, they are wrong:
-    //
-    //   TextureLODSet[*] = 0  -> UltraHigh. The ETextureDetail enum lists UltraHigh FIRST, so the zero
-    //                            default is the single MOST EXPENSIVE value, not a safe middle.
+    //   TextureLODSet[*] = 0  -> UltraHigh. The ETextureDetail enum lists UltraHigh first, so the zero
+    //                            default is the most expensive value, not a safe middle.
     //   Brightness/Contrast/Gamma = 0 -> a black picture.
     //   WindowedViewportX/Y = 0 -> a 0x0 window.
     //   Decals/Coronas/DecoLayers/Projectors/ScreenFlashes = 0 -> silently off.
     //
-    // This is the same trap GL4ESDrv had before DetailTextures and UseVBO got real compiled defaults (see
-    // UGL4ESRenderDevice::StaticConstructor) -- and it is not hypothetical here either: a RETAIL UT2004.ini
-    // has no [SDL2Drv.SDL2Client] section at all, because SDL2 did not exist in 2004, so any install seeded
-    // from one gets the whole table above. Measured in the sibling engine on 2026-08-11: engine-ut99's
-    // run-tree ini has [NSDLDrv.NSDLClient] WindowedViewportX=0 -> a 320x240 window under Xvfb, and
-    // Brightness=0.000000 -> CityIntro renders as an apparently black frame.
-    //
-    // The values below are exactly the ones Engine/Config/Default.ini already ships for this section (and
-    // its web/ twin, byte-identical), so the compiled default and the documented ini now AGREE -- which is
-    // the property that was missing. Nothing visible changes for an install that has the section; this is
-    // for the installs that do not. Every line stays overridable by ini, like any other config option.
+    // The values are the ones Engine/Config/Default.ini (and its web twin) ships for this section; the ini wins
+    // wherever it sets a value.
     CaptureMouse            = 1;
     ScreenFlashes           = 1;
     NoLighting              = 0;
@@ -74,9 +62,8 @@ void USDL2Client::StaticConstructor()
     StartupFullscreen       = 0;
     UseJoystick             = 1;
 
-    // ⚠ The web build does NOT take its render size from these: USDL2Viewport::ResizeViewport queries the
-    // canvas whenever the requested size is 0x0, and the browser viewport is what governs there (measured
-    // 2026-08-11 across a 640x480 -> 2560x1440 sweep). These are the NATIVE window size and the fallback.
+    // The web build does not take its render size from these: USDL2Viewport::ResizeViewport queries the canvas
+    // whenever the requested size is 0x0. These are the native window size and the fallback.
     WindowedViewportX       = 1024;
     WindowedViewportY       = 768;
     FullscreenViewportX     = 1280;
@@ -93,9 +80,7 @@ void USDL2Client::StaticConstructor()
     AnimMeshDynamicLOD      = 0.0f;
     DrawDistanceLOD         = 1.0f;
 
-    // UltraHigh (== 0) for every LOD set: what SDL1's section shipped, what this section ships today, and
-    // -- by coincidence -- what the zero default already produced. Written out so it is a DECISION rather
-    // than an accident; the accident is exactly what made the table above survive this long.
+    // UltraHigh (== 0) for every LOD set, as the shipped section says.
     for( INT i=0; i<LODSET_MAX; i++ )
         TextureLODSet[i] = 0;
 
@@ -113,16 +98,13 @@ void USDL2Client::Init( UEngine* InEngine )
     UClient::Init( InEngine );
 
 #if defined(__ANDROID__)
-    // Android also brings up the game-controller subsystem (2.10d gamepad).
-    // SDL_INIT_GAMECONTROLLER implies SDL_INIT_JOYSTICK and makes SDL emit
-    // SDL_CONTROLLER* events, which USDL2Viewport::UpdateInput turns into IK_Joy*
-    // input.
+    // The game-controller subsystem: SDL_INIT_GAMECONTROLLER implies SDL_INIT_JOYSTICK and makes SDL emit
+    // SDL_CONTROLLER* events, which USDL2Viewport::UpdateInput turns into IK_Joy* input.
     const Uint32 SDL2DrvInitFlags = SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER;
 #else
-    // ufront (the UC2 port's pads): the web and the desktop get pads too (one pad, the first connected;
-    // USDL2Viewport::UpdateInput). The game-controller subsystem is always up; whether a pad is USED is UseJoystick,
-    // read every tick, so the game's own option takes effect at once. Pads already connected arrive as
-    // SDL_CONTROLLERDEVICEADDED events like later ones.
+    // The game-controller subsystem (one pad, the first connected; USDL2Viewport::UpdateInput). Whether a pad is
+    // used is UseJoystick, read every tick, so the game's own option takes effect at once. Pads already connected
+    // arrive as SDL_CONTROLLERDEVICEADDED events like later ones.
     const Uint32 SDL2DrvInitFlags = SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER;
 #endif
     if (SDL_Init(SDL2DrvInitFlags) == -1)
@@ -137,11 +119,9 @@ void USDL2Client::Init( UEngine* InEngine )
     // Initialize scancode-to-EInputKey mapping table.
     USDL2Viewport::InitKeyMap();
 
-    // ★ UseJoystick: ON ONCE for every ini written before it was honoured (ufront 2.91). The inis shipped
-    // `[SDL2Drv.SDL2Client] UseJoystick=False` since the fork, read by nothing (pads were always on, 2026-10-11), and
-    // every web player's saved UT2004.ini still carries that False: honoured as it stands it would turn their pads off,
-    // which nobody chose. So the first engine that honours the key turns it on, once, and records it
-    // (UseJoystickDefaulted); from then on the player's own choice stands.
+    // UseJoystick is turned on once for an ini that has not recorded UseJoystickDefaulted: older inis carry
+    // `[SDL2Drv.SDL2Client] UseJoystick=False`, which no build read, and honoured as it stands it would turn
+    // pads off. From then on the player's own choice stands.
     {
         UBOOL Defaulted = 0;
         GConfig->GetBool( TEXT("SDL2Drv.SDL2Client"), TEXT("UseJoystickDefaulted"), Defaulted );

@@ -29,8 +29,8 @@
 
 // !!! FIXME: Big Fucking Hack.
 #if USE_SDL
-#include "SDL.h"        // SDL 1.2 or SDL2 — the CMake include path selects which (single-source, ufront 2.12)
-#define HWND void*      // window handle is only cast into CreatePixoBuffers; void* is correct for both SDLs
+#include "SDL.h"        // SDL2
+#define HWND void*      // window handle is only cast into CreatePixoBuffers
 #include "pixomatic_linux.h"
 #include "Engine.h"
 #include "utils_surface.h"
@@ -63,12 +63,8 @@
 #define SPEW_PIXO_WARNING(_x)
 #endif
 
-// ufront 2.34 — PURE_C=0 selects Epic's hand-written MMX blocks, which are `__asm { mov eax, ... }`:
-// MSVC *syntax*, not Windows syntax. MinGW GCC cannot parse a line of it, so the guard has to say
-// _MSC_VER — the same mistake, in the same shape, as UnVcWin32.cpp and utglr's asm gate. The C paths it
-// falls back to are the ones every non-Windows build has always used, so the Windows binary loses some
-// software-rasterizer speed and nothing else. (Same trap as everywhere in 2.33/2.34: "the compiler is not
-// the platform".)
+// PURE_C=0 selects Epic's hand-written MMX blocks, which are MSVC `__asm { mov eax, ... }` syntax, so the
+// guard is _MSC_VER: MinGW GCC takes the C paths every non-Windows build uses.
 #if WIN32 && defined(_MSC_VER)
 #  if defined(_WIN64) || defined(_DEBUG)
 #     define PURE_C      1
@@ -79,9 +75,8 @@
 #  define PURE_C      1
 #endif
 
-// The POSIX stand-ins below are about the PLATFORM, not the compiler: MinGW gets POINT and _vsnprintf
-// from the Windows headers, so defining them here would be a redeclaration (ufront 2.34 — the PURE_C
-// guard above and this block used to be one #if, and separating them is the whole fix).
+// The POSIX stand-ins below are about the platform, not the compiler: MinGW gets POINT and _vsnprintf
+// from the Windows headers, so defining them here would be a redeclaration.
 #if !WIN32
 #  ifndef _vsnprintf
 #    define _vsnprintf vsnprintf

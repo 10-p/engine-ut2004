@@ -250,24 +250,19 @@ public:
 //	UShadowBitmapMaterial::Get
 //
 
-// ★★ ufront 2.53 — [ufront.Shadows]: the pawn-shadow fade, exposed so it can be tuned without a rebuild.
-//
-// Reported by the owner as "shadows fade out too close". Retail draws a shadow with
+// [ufront.Shadows]: the pawn-shadow range and fade. Retail draws a shadow with
 //     ShadowAtten = 1 - clamp( (dist / CullDistance)^2, 0, 1 )
-// where CullDistance comes from ShadowProjector.uc's `CullDistance=1200.0` in Engine.u. Two things make
-// that feel early, and BOTH are exposed here, because raising only the distance keeps the shape of the
-// curve: the falloff is SQUARED, so a shadow is already 25% faded at half the cull distance and ~51% at
-// 0.7 of it. FadeExponent 1.0 is linear; higher than 2.0 holds full strength longer and then drops fast.
+// where CullDistance comes from ShadowProjector.uc's `CullDistance=1200.0` in Engine.u. Both are exposed,
+// because raising only the distance keeps the shape of the curve: the falloff is squared, so a shadow is
+// already 25% faded at half the cull distance and ~51% at 0.7 of it. FadeExponent 1.0 is linear; higher
+// than 2.0 holds full strength longer and then drops fast.
 //
-// ⚠ A FREE CONFIG SECTION, NOT A CLASS — the same decision (and the same reasoning) as [ufront.AutoFOV]
-// in UnRender.cpp: the value belongs to a retail Engine.u class that cannot gain properties, a free
-// section is readable from anywhere, and it is one obvious block for a human to edit. It is NOT a
-// renderer-device setting — this fade is computed in Engine, not in the GL driver — and not a per-player
-// profile field, so it belongs in the system ini rather than User.ini.
+// A free config section, not a class, as [ufront.AutoFOV] (UnRender.cpp): the value belongs to a retail
+// Engine.u class that cannot gain properties. It is computed in Engine, not in the GL driver, and is not
+// a per-player profile field, so it lives in the system ini.
 //
-// ⚠ DEFAULTS ARE THE RETAIL VALUES, so an absent or partial section is a NO-OP. Nothing changes until
-// somebody sets something — and what the WEB BUILD sets is `CullDistance=4800.0` (4x the retail range,
-// step 2.57) in Engine/Config/web/Default.ini. Only the RANGE ships changed; the falloff stays retail 2.0.
+// The defaults are the retail values, so an absent or partial section changes nothing. The web ini sets
+// `CullDistance=4800.0` (4x the retail range); the falloff stays retail 2.0.
 static UBOOL  GShadowCfgParsed  = 0;
 static FLOAT  GShadowCullDist   = 1200.0f;	// ShadowProjector.uc default
 static FLOAT  GShadowFadeExp    = 2.0f;		// retail's squared falloff
@@ -282,15 +277,9 @@ static void ufrontParseShadowCfg()
 	GConfig->GetFloat( TEXT("ufront.Shadows"), TEXT("CullDistance"), Dist );
 	GConfig->GetFloat( TEXT("ufront.Shadows"), TEXT("FadeExponent"), Exp  );
 
-	// ⚠ NO COMMAND-LINE SWITCHES AT ALL (removed 2026-09-10, owner's rule). `SHADOWDIST=`/`SHADOWFADE=`
-	// duplicated the two keys above — a setting has ONE home, and this one's is the section. `SHADOWDEBUG`
-	// went with them: it was development scaffolding for 2.53d, and a debug switch that outlives the
-	// development of its feature is just surface. Both reasons compound when an ini option already exists.
-	//
-	// Anything that still needs to change these per launch uses the engine's GENERIC config switch rather
-	// than a bespoke one:  -ini:System:[ufront.Shadows]:CullDistance=6000  (appApplyIniOverrides,
-	// UnMisc.cpp). ⚠ That WRITES the value rather than overriding it for one run — the deliberate trade
-	// for having one mechanism instead of seven.
+	// No command-line switches: per launch, use the generic config switch
+	// -ini:System:[ufront.Shadows]:CullDistance=6000 (appApplyIniOverrides, UnMisc.cpp), which writes the
+	// value into the ini.
 
 	// 0 or less would divide by zero / invert the curve; the ceilings are sanity, not policy.
 	GShadowCullDist = Clamp( Dist, 1.0f, 65536.0f );
@@ -305,18 +294,13 @@ static void ufrontParseShadowCfg()
 // Apply the configured shadow distance to the ShadowProjector CLASS DEFAULT. Called once from
 // UGameEngine::Init, after Engine.u is loaded.
 //
-// ★★ WHY THIS IS NEEDED AND WHY THE FADE ALONE IS NOT ENOUGH — MEASURED, NOT ASSUMED. `CullDistance`
-// is used TWICE for a shadow, and they are different mechanisms:
-//   1. the FADE below, via the material's copy (InitShadow does `ShadowTexture.CullDistance = CullDistance`);
-//   2. the ACTOR-level visibility cull, `CheckCullDistance` in UnRenderVisibility.cpp, which reads the
-//      PROJECTOR ACTOR's own `CullDistance` and stops drawing it entirely.
-// Raising only (1) gives a shadow that is still near-full-strength when (2) deletes it — a hard pop
-// instead of a longer fade. Measured in 2.53d with a temporary per-shadow log on two different maps
-// (the instrumentation and its switch are gone; re-add a debugf here if that reading is ever needed
-// again): with the fade pushed
-// to 6000 the attenuation at 1250-1499 was still 0.954, and the samples STOPPED at 1324 on DM-Antalus
-// and 1312 on DM-Rankin. That ceiling is the retail 1200 plus the pawn's bounding-box radius, because
-// CheckCullDistance measures to the box rather than the centre.
+// `CullDistance` is used twice for a shadow, by different mechanisms:
+//   1. the fade below, via the material's copy (InitShadow does `ShadowTexture.CullDistance = CullDistance`);
+//   2. the actor-level visibility cull, `CheckCullDistance` in UnRenderVisibility.cpp, which reads the
+//      projector actor's own `CullDistance` and stops drawing it entirely (measured to the pawn's bounding
+//      box, so the effective ceiling is the distance plus the box radius).
+// Raising only (1) gives a shadow that is still near full strength when (2) removes it: a hard pop
+// instead of a longer fade.
 //
 // Patching the class default fixes both at once — the actor cull and the material's own copy — so the
 // two can never disagree, and a mod that overrides CullDistance on its own projector subclass still wins.
@@ -406,12 +390,11 @@ UBitmapMaterial* UShadowBitmapMaterial::Get(FTime Time,UViewport* Viewport)
 		{
 			// sjs --- distance fade shadows
             float ShadowAtten = 1.0f;
-            // ufront 2.53 — the DISTANCE arrives through this material's own CullDistance, which
-            // InitShadow copies from the projector actor, whose class default ufrontApplyShadowCfg has
-            // already set from [ufront.Shadows]. Only the CURVE is overridden here. Keeping the distance
-            // on the instance means a mod that overrides CullDistance on its own projector still wins,
-            // and the fade can never disagree with the actor-level cull that decides when it stops
-            // being drawn at all.
+            // The distance arrives through this material's own CullDistance, which InitShadow copies
+            // from the projector actor, whose class default ufrontApplyShadowCfg has set from
+            // [ufront.Shadows]; only the curve is overridden here. Keeping the distance on the instance
+            // means a mod that overrides CullDistance on its own projector still wins, and the fade
+            // never disagrees with the actor-level cull.
             if( !GShadowCfgParsed )
                 ufrontParseShadowCfg();
             if( CameraActor && CullDistance > 0.0f )

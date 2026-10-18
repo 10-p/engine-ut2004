@@ -44,24 +44,12 @@ UExporter* UExporter::FindExporter( UObject* Object, const TCHAR* FileType )
 	guard(UExporter::FindExporter);
 	check(Object);
 
-	// ★ ufront 2.37b — DO NOT walk the object table while a load is in progress.
-	//
-	// This function's first act is a TObjectIterator over EVERY object, and that is only safe when the
-	// table is quiescent. It is not, here: UClass::Serialize (UnClass.cpp:1049) generates DefaultPropText
-	// for each class as it loads, in the GAME as well as the editor, and ExportProperties then calls
-	// ExportToOutputDevice for every CPF_ExportObject property -- so a full object-table walk runs from
-	// INSIDE ULinkerLoad::Preload, while the package's other objects exist in the table but have not been
-	// serialized yet. Reading ->Class on one of those and following its SuperField chain is exactly the
-	// crash the owner hit opening the Settings menu (a script DynamicLoadObject triggers the class load).
-	//
-	// ⚠ WHY ONLY WINDOWS, and why this hid for so long: a not-yet-filled entry reads as a NULL Class on
-	// Linux, and IsA's `for( TempClass=Class; TempClass; ... )` simply terminates -- the walk is wrong
-	// there too, it just cannot fault. On Windows the same memory holds live data (the deterministic
-	// 0x206c6c95 is ASCII text), so the chain walks into garbage. Same defect, one platform faults.
-	//
-	// Returning NULL costs nothing real: an exporter is a T3D/editor concern, there is nothing to export
-	// TO mid-load, and this build compiles no UExporter subclass at all (no Editor package), so the loop
-	// was always going to return NULL after touching every object in memory.
+	// Do not walk the object table while a load is in progress. The TObjectIterator below visits every
+	// object, and UClass::Serialize generates DefaultPropText for each class as it loads (in the game too),
+	// whose ExportProperties calls ExportToOutputDevice for every CPF_ExportObject property: the walk would
+	// run inside ULinkerLoad::Preload, while the package's other objects exist in the table unserialized,
+	// and follow ->Class / SuperField through garbage (a fault on Windows, where the memory is not zero).
+	// Nothing is lost: an exporter is a T3D/editor concern, and this build compiles no UExporter subclass.
 	if( UObject::IsLoadInProgress() )
 		return NULL;
 

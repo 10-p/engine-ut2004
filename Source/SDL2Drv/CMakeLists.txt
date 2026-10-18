@@ -1,8 +1,7 @@
 #=============================================================================
 # SDL2Drv - SDL2 viewport/input driver
 #
-# SDL2 based windowing, input, and viewport management.
-# Replaces the legacy SDL 1.2 SDLDrv module.
+# SDL2 windowing, input and viewport management on every target.
 #=============================================================================
 
 project(SDL2Drv CXX)

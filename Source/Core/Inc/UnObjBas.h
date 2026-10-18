@@ -10,10 +10,8 @@
 #include "UnForcePacking_begin.h"
 
 // This is a hack, but MUST be defined for 64-bit platforms right now! --ryan.
-// ufront (engine-uc2's M13, the owner's 2026-10-11 parity list): an object reference in bytecode keeps its 4-byte
-// slot and holds the object's index in the object table, INDEX_NONE for None (UObject::SerialPointerIndex /
-// SerialIndexPointer, O(1)). Ryan's side table GSerializedPointers (128K entries) was searched linearly for every
-// reference at every load and every garbage collection.
+// An object reference in bytecode keeps its 4-byte slot and holds the object's index in the object table,
+// INDEX_NONE for None (UObject::SerialPointerIndex / SerialIndexPointer, O(1)).
 #ifdef PLATFORM_64BITS
 #define SERIAL_POINTER_INDEX 1
 #endif
@@ -612,7 +610,7 @@ private:
 	static UBOOL			GObjInitialized;	// Whether initialized.
 	static UBOOL            GObjNoRegister;		// Registration disable.
 	static INT				GObjBeginLoadCount;	// Count for BeginLoad multiple loads.
-	static UBOOL			GObjPreloading;		// Inside EndLoad's Preload pass (ufront 2.37b).
+	static UBOOL			GObjPreloading;		// Inside EndLoad's Preload pass.
 	static INT				GObjRegisterCount;  // ProcessRegistrants entry counter.
 	static INT				GImportCount;		// Imports for EndLoad optimization.
 	static UObject*			GObjHash[4096];		// Object hash.
@@ -716,12 +714,10 @@ public:
 	static UBOOL AttemptDelete( UObject*& Res, DWORD KeepFlags, UBOOL IgnoreReference );
 	static void BeginLoad();
 	static void EndLoad();
-	// ufront 2.37b: is the object table mid-load, i.e. does it hold entries that exist but are not yet
-	// serialized? Anything that WALKS the whole table has to stay out (see UExporter::FindExporter,
-	// where doing it anyway was a crash on Windows).
-	// ⚠ GObjBeginLoadCount alone is NOT enough, and assuming it was cost a build: EndLoad decrements it
-	// to zero BEFORE running the Preload pass, and the Preload pass is exactly when the table is at its
-	// most inconsistent. GObjPreloading covers that window.
+	// Is the object table mid-load, holding entries that exist but are not yet serialized? Anything that
+	// walks the whole table stays out (UExporter::FindExporter). GObjBeginLoadCount alone is not enough:
+	// EndLoad decrements it to zero before its Preload pass, when the table is least consistent;
+	// GObjPreloading covers that window.
 	static UBOOL IsLoadInProgress() { return GObjBeginLoadCount != 0 || GObjPreloading; }
 	static void InitProperties( BYTE* Data, INT DataCount, UClass* DefaultsClass, BYTE* Defaults, INT DefaultsCount, UObject* DestObject=NULL, UObject* SuperObject=NULL, UBOOL InstanceSubobjects=1 );
 	static void ExitProperties( BYTE* Data, UClass* Class );

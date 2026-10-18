@@ -1,9 +1,6 @@
 /*=============================================================================
-	WebRTCDrv.h: WebRTC network driver for Emscripten/browser multiplayer.
+	WebRTCDrv.h: the WebRTC network driver (web multiplayer).
 	Copyright 2026 UT2004 Web Port Project. All Rights Reserved.
-
-Revision history:
-	* Created for browser multiplayer networking (Phase 10).
 =============================================================================*/
 
 #ifndef _WEBRTCDRV_H_
@@ -14,9 +11,9 @@ Revision history:
 #include "UnNet.h"
 
 /*-----------------------------------------------------------------------------
-	Extern "C" bridge functions (WASM <-> JS boundary).
-	On Emscripten, these are implemented in webrtc-net.js.
-	On native, inline stubs return 0 / do nothing.
+	Extern "C" imports (the wasm <-> JS boundary), provided by the host's net
+	glue through the baked forwarder in vendor/glue. On native, inline stubs
+	return 0 / do nothing.
 -----------------------------------------------------------------------------*/
 
 #ifdef __EMSCRIPTEN__
@@ -94,9 +91,9 @@ class UWebRTCNetDriver : public UNetDriver
 	FString RoomName;
 	FString ServerName;       // Listen server: display name for browser discovery (?ServerName=).
 	UBOOL   bIsListenServer;  // 1 on a listen server — pushes status each tick for discovery.
-	// Set when a NEWER client driver has taken the one client transport slot from us.
+	// Set when a newer client driver has taken the one client transport slot from us.
 	UBOOL   bDetached;
-	// Pipes the level told us to IGNORE (not refuse) — re-offered on a later tick. See TickDispatch().
+	// Pipes the level told us to ignore (not refuse), re-offered on a later tick. See TickDispatch().
 	TArray<INT> ParkedAccepts;
 
 	// Constructor.
@@ -113,8 +110,8 @@ class UWebRTCNetDriver : public UNetDriver
 
 	// UWebRTCNetDriver interface.
 	UWebRTCConnection* GetServerConnection();
-	// ufront 2.36b — substitute usable values for the CPF_Config properties no ini supplies for this
-	// class (there is no [WebRTCDrv.WebRTCNetDriver] section anywhere), and log what was substituted.
+	// Substitute usable values for the CPF_Config properties an ini without a [WebRTCDrv.WebRTCNetDriver]
+	// section (a retail one) leaves at zero, and log what was substituted.
 	void NormalizeConfigDefaults( const TCHAR* Context );
 };
 

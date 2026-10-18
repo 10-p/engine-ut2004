@@ -1486,12 +1486,8 @@ void FPixoRenderInterface::CommitStreams( INT FirstIndex )
 			HasDiffuse      = 0;
 
 	UINT    IndexStreamDefinition = 0;
-	// ★ ufront 2.58: the definition handed to PixoSetStreamDefinition below gets one entry per component
-	// plus one per stream, on a STACK array that the original sized at 32 with no bound check, while 16
-	// streams x (MAX_VERTEX_COMPONENTS + 1) is 144. Sized to the maximum and check()ed. MEASURED as a
-	// suspect for the -SOFTWARERENDERER crash ~1-3 minutes into ONS-Torlan: the peak never exceeded 32 in a
-	// run that still crashed, so it is a bound, not the cause. The cause was two null-reference bindings on
-	// empty TArrays in Source/Engine/Src/UnSkeletalMesh.cpp, exploited by the -O2 engine (BUILD.md "2.58").
+	// The definition handed to PixoSetStreamDefinition below gets one entry per component plus one per
+	// stream: 16 streams x (MAX_VERTEX_COMPONENTS + 1) at most. Sized to that maximum and check()ed.
 	UINT    PixoStreamDefinition[16 * (MAX_VERTEX_COMPONENTS + 1) + 1];
 	static UINT PixoStreamDefinitionPeak = 0;
 

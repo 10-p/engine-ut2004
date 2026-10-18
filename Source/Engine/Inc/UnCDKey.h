@@ -76,9 +76,9 @@ inline FString CDKeyMapToHex( const TCHAR* ch )
 }
 
 //
-// The 6-symbol check that belongs to a key's 14 random symbols. This IS the validator's maths, lifted
-// out unchanged so the per-install key generator (UnCDKey.cpp, ufront 2.79h) computes a check with the
-// same code that will later verify it, instead of a second copy that could drift.
+// The 6-symbol check that belongs to a key's 14 random symbols: the validator's maths, lifted out
+// unchanged so the per-install key generator (UnCDKey.cpp) computes a check with the same code that will
+// later verify it.
 //
 inline FString CDKeyCheckFor( const FString& Random, const TCHAR* AppendString=CDKEYAPPENDSTRING_UT2004 )
 {

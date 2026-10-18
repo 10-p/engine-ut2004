@@ -115,11 +115,9 @@ class ENGINE_API UNetConnection : public UPlayer
 	// Stat accumulators.
 	FLOAT			LagAcc, BestLagAcc;		// Previous msec lag.
 
-	// ufront 2.36b — WINDOWED traffic log (see UnConn.cpp). The stat line below used to print once a
-	// second PER CONNECTION; combined with the other per-tick net logs it buried the diagnostics in the
-	// browser console's bounded ring. These summarise one 10s window: averages, peaks and the worst
-	// loss/lag seen, so a spike still shows up instead of being averaged away. Zero-initialised by
-	// UObject allocation; the window opens lazily on first use.
+	// Windowed traffic log (UnConn.cpp): one 10 s window of averages, peaks and the worst loss/lag seen,
+	// instead of a stat line per second per connection. Zero-initialised by UObject allocation; the
+	// window opens on first use.
 	DOUBLE			UfrontLogWinStart;
 	INT				UfrontLogSamples, UfrontLogNonzeroIn;
 	FLOAT			UfrontLogInRate, UfrontLogOutRate, UfrontLogInPkts, UfrontLogOutPkts;

@@ -384,15 +384,13 @@ void UStruct::Link( FArchive& Ar, UBOOL Props )
 			{
 				Property->Link( Ar, Prev );
 #if PLATFORM_64BITS
-				// 2.10c (64-bit LP64): the retail 3369 .u declares USound.Data as a native
-				// `byte[44]` placeholder standing in for the C++ FSoundData, whose real size grows
-				// to 48 on LP64 (an 8-byte-aligned FLazyLoader vtable + FArchive* + Owner). We load
-				// the unmodifiable 32-bit .u, so account this ONE placeholder at its true 64-bit
-				// size here; otherwise every property linked after it — including Sound.BaseSound and
-				// SoundGroup's object-refs — is placed 4 bytes low, and the GC reference pass then
-				// reads a garbage UObject* -> SIGSEGV. Uniquely matched (the only native byte[44]
-				// "Data" placeholder in the tree) and idempotent (re-links see ArrayDim==48, skip).
-				// wasm32/32-bit builds are naturally 44 and never enter this branch (byte-identical).
+				// 64-bit (LP64): the retail 3369 .u declares USound.Data as a native `byte[44]`
+				// placeholder for the C++ FSoundData, whose real size is 48 on LP64 (an 8-byte-aligned
+				// FLazyLoader vtable + FArchive* + Owner). The 32-bit .u cannot change, so this one
+				// placeholder is linked at its 64-bit size; otherwise every property after it (Sound.
+				// BaseSound, SoundGroup's object refs) is placed 4 bytes low and the GC reference pass
+				// reads a garbage UObject*. Uniquely matched (the only native byte[44] "Data"
+				// placeholder) and idempotent (a re-link sees ArrayDim==48).
 				if( Property->ArrayDim==44
 					&& (Property->PropertyFlags & CPF_Native)
 					&& Cast<UByteProperty>(Property)

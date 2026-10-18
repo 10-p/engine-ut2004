@@ -629,28 +629,27 @@ extern ENGINE_API DWORD CalcBlendFlags( BYTE Style, AActor* pActor ); // In AxEm
 #define UFRONT_AUTOFOV_H
 
 /*-----------------------------------------------------------------------------
-	ufront AutoFOV (step 2.16) — aspect-correct field of view.
+	ufront AutoFOV: aspect-correct field of view.
 -----------------------------------------------------------------------------*/
 
 //
-// UE2 defines FovAngle as the HORIZONTAL field of view: FCameraSceneNode::UpdateMatrices feeds it to
-// FPerspectiveMatrix(FOV,FOV,1,Aspect,..), whose Y term divides by the aspect — so widening the window
-// buys width out of height. 90 deg at 4:3 shows 73.7 deg vertically; at 24:9 only 41.1, i.e. the world
-// is zoomed ~1.8x, the viewmodel looks huge and the HUD oversized. AutoFOV re-derives the horizontal
-// FOV from the live aspect so the VERTICAL one stays put.
+// UE2 defines FovAngle as the horizontal field of view: FCameraSceneNode::UpdateMatrices feeds it to
+// FPerspectiveMatrix(FOV,FOV,1,Aspect,..), whose Y term divides by the aspect, so widening the window
+// buys width out of height. 90 deg at 4:3 shows 73.7 deg vertically; at 24:9 only 41.1 (the world
+// zoomed ~1.8x, the viewmodel huge, the HUD oversized). AutoFOV re-derives the horizontal FOV from the
+// live aspect so the vertical one stays put.
 //
 //   Off      (0) — stock: FovAngle used verbatim.
 //   HorPlus  (1) — 2*atan( tan(Fov/2) * Aspect/Ref ). Vertical FOV pinned to its value at Ref.
-//   Adaptive (2) — max(Fov, HorPlus). DEFAULT. Identical to HorPlus at/above Ref, and stock below it:
-//                  at 8:9 pure Hor+ would cut vertical 96.7->73.7 AND horizontal 90->67.4, i.e. worse
-//                  than doing nothing, so a half-screen window must never use it.
+//   Adaptive (2) — max(Fov, HorPlus), the default. Identical to HorPlus at/above Ref, and stock below
+//                  it: at 8:9 pure Hor+ would cut vertical 96.7->73.7 and horizontal 90->67.4, worse
+//                  than doing nothing.
 //
-// Applied as a SCOPED override around the frame draw (UGameEngine::Draw), never written back, so the
+// Applied as a scoped override around the frame draw (UGameEngine::Draw), never written back, so the
 // scene node, the culling bias and every render device agree on one value while script keeps seeing the
-// player's real FOV — which matters because PlayerInput.uc computes FOVScale = DesiredFOV * 0.01111 and
-// scales aTurn/aLookUp by it, so any fix that writes the actor's FOV silently rescales the player's aim
-// (x1.18 at 16:9). Config: [ufront.AutoFOV]; per-launch -AUTOFOV=<n> / -AUTOFOVREF=<f> /
-// -AUTOFOVWEAPON=<f> / -NOAUTOFOV.
+// player's real FOV: PlayerInput.uc computes FOVScale = DesiredFOV * 0.01111 and scales aTurn/aLookUp by
+// it, so writing the actor's FOV would rescale the player's aim. Config: [ufront.AutoFOV] only (per
+// launch through the generic -ini: override).
 //
 enum EAutoFovMode
 {
@@ -661,41 +660,35 @@ enum EAutoFovMode
 
 // Effective horizontal FOV for a viewport of SizeX x SizeY. Returns BaseFov unchanged when disabled or
 // when the size is degenerate. Cheap: config is parsed once, then it is pure arithmetic.
-// bLog: emit the one-line report. Only the PRIMARY view passes 1 (the scoped override in
-// UGameEngine::Draw). A frame draws several scene nodes with DIFFERENT FOVs — world, viewmodel,
-// portals — so logging from every call produced a repeating burst every frame (~180 lines/s at
-// 60fps), which is real CPU churn for a diagnostic.
+// bLog: emit the one-line report. Only the primary view passes 1 (the scoped override in
+// UGameEngine::Draw): a frame draws several scene nodes with different FOVs (world, viewmodel,
+// portals), and logging from every call would repeat a burst every frame.
 ENGINE_API FLOAT ufrontEffectiveFov( FLOAT BaseFov, INT SizeX, INT SizeY, UBOOL bLog = 0 );
 
 // FOV for a canvas-drawn actor overlay. AutoFOVWeapon blends in TAN space between the stock FOV (0.0)
-// and the corrected one (1.0, the default). UNLIKE UE1 — where the viewmodel shares the world scene node
-// and inherits the correction for free — UE2 draws it through Canvas.DrawActor with its OWN DisplayFOV
-// (Weapon.uc:111, default 90), so without this the weapon would stay at a stock 90 while the world
-// widened, and look bigger and vertically cropped. Here the correction is required, not optional.
+// and the corrected one (1.0, the default). UE2 draws the viewmodel through Canvas.DrawActor with its
+// own DisplayFOV (Weapon.uc, default 90), not through the world scene node, so without this the weapon
+// would stay at a stock 90 while the world widened, and look bigger and vertically cropped.
 ENGINE_API FLOAT ufrontWeaponFov( FLOAT BaseFov, FLOAT EffectiveFov );
 
-// The UNCORRECTED FovAngle for the frame being drawn, published by the scoped override in
+// The uncorrected FovAngle for the frame being drawn, published by the scoped override in
 // UGameEngine::Draw. Not DesiredFOV: during a zoom transition FovAngle is still interpolating toward it.
 ENGINE_API extern FLOAT GAutoFovFrameBase;
 
-// AutoFOVUI (step 2.16b) — HUD auto-scale.
+// AutoFOVUI: HUD auto-scale.
 //
-// The HUD sizes its widgets off the canvas WIDTH (HudBase.uc:756,
-// `Scaling = 24*C.ClipX*HudScale/1600`), so a wide window inflates every element while the space between
-// them grows too — hence the overlap on 21:9+. Rather than touching individual widgets (what foxWSFix
-// does, which only works for HUDs it ships a replacement for), co-opt the game's OWN global scale: scale
-// `HudScale` by Ref/Aspect and the ClipX cancels out of that formula, leaving size proportional to
-// HEIGHT. Positions are untouched, so corner-anchored widgets stay in the corners: the HUD spreads out
-// instead of zooming, for ANY HUD — including a total conversion's — because HudScale is declared on the
-// base HUD class (UT2004 Engine.HUD, UT99 Botpack.ChallengeHUD) and every subclass inherits it.
+// The HUD sizes its widgets off the canvas width (HudBase.uc, `Scaling = 24*C.ClipX*HudScale/1600`), so a
+// wide window inflates every element while the space between them grows too (overlap on 21:9+). This
+// scales the game's own global `HudScale` by Ref/Aspect, so ClipX cancels out of that formula and size
+// follows height. Positions are untouched, so corner-anchored widgets stay in the corners, for any HUD
+// (HudScale is declared on the base Engine.HUD class and every subclass inherits it).
 //
-// CLAMPED AT 1: at or below the reference aspect the factor is exactly 1.0, so narrow/tall windows render
-// bit-for-bit as stock. That is deliberate — the stock behaviour ALREADY shrinks the HUD as the aspect
-// gets taller (size follows ClipX), and it means we need not characterise it to stay safe.
+// Clamped at 1: at or below the reference aspect the factor is exactly 1.0, so narrow or tall windows
+// render as stock (the stock sizing already shrinks the HUD as the aspect gets taller).
 //
-// Applied as a SCOPED multiply around the HUD's PostRender and restored immediately: the HUD script
-// itself mutates HudScale mid-render (HudBDeathMatch.uc:745 saves/forces 1/restores, :937 does *= 0.67),
-// and nothing may persist our factor into the player's config.
+// Applied as a scoped multiply around the HUD's PostRender and restored immediately: the HUD script
+// itself mutates HudScale mid-render (HudBDeathMatch.uc saves/forces 1/restores, and multiplies by 0.67),
+// and nothing may persist the factor into the player's config.
 ENGINE_API FLOAT ufrontHudScaleFactor( INT SizeX, INT SizeY );
 
 #endif // UFRONT_AUTOFOV_H

@@ -48,5 +48,5 @@ target_include_directories(${PROJECT_NAME}
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Src/libspeex
 )
 
-# EPIC_48K enables the 48kbps narrowband mode used by ALAudio's VoIP encoder
+# EPIC_48K enables the 48kbps narrowband mode of Epic's ALAudio voice encoder (compiled out: WITH_SPEEX=0)
 target_compile_definitions(${PROJECT_NAME} PRIVATE EPIC_48K=1)

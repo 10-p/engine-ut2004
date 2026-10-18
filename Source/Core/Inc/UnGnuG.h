@@ -85,12 +85,10 @@
 	#undef ASMPSX2
 	#define COMPILER "Compiled for GCN ("__VERSION__")"
 #elif defined(__MINGW32__)
-	// ufront 2.33 — Windows built with GCC. Code generation is the same x86/GCC story as the
-	// __LINUX_X86__ arm at the top: ASMLINUX selects GCC's AT&T inline asm, which MinGW also uses (the
-	// name is historical — it means "GCC asm", not "Linux"), and it is what keeps UnMath.h off the
-	// MSVC `__asm { mov … }` path that GCC cannot parse.
-	// What must NOT come with it is the Unix identity: __UNIX__/__LINUX__ select the POSIX file,
-	// socket, threading and dynamic-loader paths throughout the engine.
+	// Windows built with GCC. ASMLINUX selects GCC's AT&T inline asm, which MinGW also uses (the name
+	// means "GCC asm", not "Linux"), and keeps UnMath.h off the MSVC `__asm { mov … }` path GCC cannot
+	// parse. The Unix identity does not come with it: __UNIX__/__LINUX__ select the POSIX file, socket,
+	// threading and dynamic-loader paths throughout the engine.
 	#define __INTEL__ 1
 	#define __INTEL_BYTE_ORDER__ 1
 	#undef ASM
@@ -103,10 +101,8 @@
 #endif
 
 // Non-x86 targets (Emscripten/wasm, arm64 __aarch64__, arm32 __arm__/armeabi-v7a, ...) have no x86
-// inline asm (rdtsc/rorl/roll/cpuid/int3) and no SSE. They share the portable-C fallbacks below
-// (originally added for Emscripten). Owner's model: "treat arm as just another CPU like Emscripten."
-// Only x86/x86_64 (__i386__/__x86_64__) keep the x86 inline asm. Emscripten/wasm define neither, so
-// UT_NO_X86_INTRIN is set there exactly as before -> the web build stays byte-identical.
+// inline asm (rdtsc/rorl/roll/cpuid/int3) and no SSE; they share the portable-C fallbacks below. Only
+// x86/x86_64 (__i386__/__x86_64__) keep the x86 inline asm.
 #if !defined(__i386__) && !defined(__x86_64__)
 	#define UT_NO_X86_INTRIN 1
 #endif
@@ -142,10 +138,9 @@
 #endif
 
 
-// ufront 2.33 (Windows/MinGW): the Win32 headers already declare DWORD and SIZE_T, and a second typedef
-// is a hard "conflicting declaration" error even where the widths agree. Take the platform's — they are
-// 32-bit on Win32 either way — and pull in just the two small headers that carry them rather than all of
-// <windows.h>, which would also drag in the IN/OUT and min/max macros.
+// The Win32 headers already declare DWORD and SIZE_T, and a second typedef is a "conflicting declaration"
+// even where the widths agree. Take the platform's (32-bit on Win32 either way), from the two small headers
+// that carry them rather than <windows.h>, which would also bring the IN/OUT and min/max macros.
 #ifdef _WIN32
 #include <minwindef.h>
 #include <basetsd.h>
@@ -161,19 +156,17 @@
 #undef MAXWORD
 #undef MAXDWORD
 #undef MAXINT
-// ufront 2.33: keep VOID on Windows. This block exists to stop Win32 macros shadowing the ENGINE's types
-// when windows.h came first — but VOID is not an engine type, and the Win32 headers included LATER (via
-// IpDrv, SDL, GL) declare hundreds of prototypes with it. Removing it turned every one of those into a
-// syntax error far from here.
+// VOID stays on Windows: this block stops Win32 macros shadowing the engine's types when windows.h came
+// first, but VOID is not an engine type, and the Win32 headers included later (via IpDrv, SDL, GL) declare
+// hundreds of prototypes with it.
 #ifndef _WIN32
 #undef VOID
 #endif
 #undef CDECL
 
 // Make sure HANDLE is defined.
-// ufront 2.33: NOT on Windows. Win32 defines both properly (HANDLE is void*), and this macro rewrites
-// winnt.h's own `typedef void *HANDLE;` into `typedef void* DWORD` — which then cascades into a hundred
-// syntax errors far away from the cause.
+// Not on Windows: Win32 defines both (HANDLE is void*), and this macro would rewrite winnt.h's own
+// `typedef void *HANDLE;` into `typedef void* DWORD`.
 #ifndef _WIN32
 #define HANDLE DWORD
 #define HINSTANCE void*
@@ -209,9 +202,8 @@ enum {CACHE_LINE_SIZE   = 32}; // Cache line size.
 #define DLL_EXPORT_CLASS
 #define VARARGS
 #define CDECL
-// ufront 2.33: on Windows STDCALL is a real calling convention, not decoration — the Win32 callback
-// typedefs (LPTHREAD_START_ROUTINE, used by IpDrv's resolver) carry __stdcall, and a plain cdecl function
-// will not convert to them. Everywhere else it stays empty, exactly as before.
+// On Windows STDCALL is a real calling convention: the Win32 callback typedefs (LPTHREAD_START_ROUTINE,
+// used by IpDrv's resolver) carry __stdcall, and a plain cdecl function will not convert to them.
 #ifdef _WIN32
 #define STDCALL __stdcall
 #else
@@ -297,9 +289,8 @@ typedef unsigned int        SIZE_T;     // Corresponds to C SIZE_T.
 #if FORCE_EXTREME_PACKING
 typedef BYTE                BITFIELD;	// For bitfields.
 #elif defined(_WIN32)
-// ufront 2.33: must be the SAME TYPE as DWORD, not merely the same width — UE serialises BITFIELD members
-// through `Ar << Member`, which resolves to operator<<'s DWORD overload. Splitting them makes every such
-// call ambiguous.
+// The same type as DWORD, not merely the same width: UE serialises BITFIELD members through
+// `Ar << Member`, which resolves to operator<<'s DWORD overload.
 typedef DWORD				BITFIELD;	// For bitfields.
 #else
 typedef unsigned int		BITFIELD;	// For bitfields.
@@ -310,27 +301,12 @@ typedef unsigned int		BITFIELD;	// For bitfields.
 // !!! FIXME:  is the same size as a pointer, so casting can be (ahem) safely
 // !!! FIXME:  done between them.  --ryan.
 //
-// ★ ufront 2026-09-01: the FIXME came true, on WINDOWS x64. MinGW targets LLP64,
-// where `long` is FOUR bytes and a pointer is EIGHT — the one data model this
-// tree had never built for. Two things broke at once and only one of them looked
-// like a size problem:
-//
-//   * PTRINT was four bytes with eight-byte pointers, so every `(PTRINT)ptr`
-//     silently dropped the top half;
-//   * `<windows.h>`'s DWORD is `unsigned long` too, so PTRINT and DWORD became
-//     the SAME TYPE and `UnArc.cpp` failed to compile with
-//     "redefinition of operator<<(FArchive&, PTRINT&)" — a message that says
-//     nothing about pointer width.
-//
-// ⚠ ONLY WIN64 MOVES. Everywhere else `__SIZEOF_POINTER__ <= __SIZEOF_LONG__`
-// and the typedef is the `unsigned long` it always was: LP64 Linux 8 == 8,
-// i386 4 == 4, wasm32 4 == 4, armv7 4 == 4, arm64 8 == 8. Widening it to
-// `uintptr_t` everywhere would have been the obvious change and would have
-// BROKEN the 32-bit targets — there `uintptr_t` is `unsigned int`, which IS
-// DWORD, so the same redefinition would have appeared on web and on i386 Linux.
-// On Win64 `unsigned long long` is also QWORD, which is why the operator<<
-// guards in UnArc.cpp already say `#ifndef _WIN64` and `#if (... || _WIN64)`:
-// the original author designed for the two being one type there.
+// PTRINT is unsigned long except where pointers outgrow long: Win64 (MinGW targets LLP64, where long is
+// four bytes and a pointer eight). There it is unsigned long long, which is also QWORD (UnArc.cpp's
+// operator<< guards already say `#ifndef _WIN64`). Everywhere else `__SIZEOF_POINTER__ <=
+// __SIZEOF_LONG__` (LP64 Linux 8 == 8, i386 4 == 4, wasm32 4 == 4, armv7 4 == 4, arm64 8 == 8), and
+// uintptr_t would not do: on 32-bit targets it is unsigned int, which is DWORD, so
+// operator<<(FArchive&, PTRINT&) would be a redefinition.
 #if defined(_WIN64) || \
     (defined(__SIZEOF_POINTER__) && defined(__SIZEOF_LONG__) && \
      __SIZEOF_POINTER__ > __SIZEOF_LONG__)
@@ -704,23 +680,12 @@ inline DWORD appCycles()
 {
 	DWORD r;
 #ifdef UT_NO_X86_INTRIN
-	// ★★ ufront 2.53 — THIS USED TO `return 0`, AND THAT MADE EVERY CYCLE-BASED MEASUREMENT DEAD.
-	// The old comment ("timing via emscripten_get_now elsewhere") was true of the game loop but not of
-	// anything that measures a DURATION: every clock()/unclock() pair, every `stat` timing, and the
-	// `-benchmark` frame times all reduce to `appCycles() - appCycles()` == 0. The visible symptom was
-	// `stat fps`: FrameTime 0 -> `1.f/0` == inf -> `(INT)inf` is UB, printed `%u` as ~2^32 "cur FPS",
-	// while FPSAvg never leaves 0 because it seeds itself from that same 0. Reported from a real
-	// session; the whole stat page was showing 0.0 ms for the same reason.
-	//
-	// ⚠ NOT emscripten-only. UT_NO_X86_INTRIN also covers Android arm64/armv7 (see the guard where it
-	// is defined), so this has to be portable C — `emscripten_get_now()` would not compile there.
-	// appSecondsSlow() is declared above, is gettimeofday-based, self-initialising and accumulates its
-	// own counter, so it is monotonic from ~0 on every platform that lands here.
-	//
-	// ⚠ MICROSECONDS, AND GSecondsPerCycle MUST AGREE — appInitTiming pins it to 0.000001 on this same
-	// path. A DWORD of microseconds wraps every ~71 minutes, which is fine and is not new: rdtsc's low
-	// word wraps far faster, and every caller here takes an unsigned DIFFERENCE, which stays correct
-	// across a wrap. Nothing stores an absolute value.
+	// appCycles() is a microsecond counter here, so every clock()/unclock() pair, every `stat` timing and
+	// the `-benchmark` frame times measure real durations. This path covers Android arm64/armv7 too, so it
+	// is portable C: appSecondsSlow() (declared above, gettimeofday-based, self-initialising) is monotonic
+	// from ~0 on every platform that lands here. appInitTiming pins GSecondsPerCycle to 0.000001 on this
+	// same path. A DWORD of microseconds wraps every ~71 minutes; every caller takes an unsigned difference,
+	// which stays correct across a wrap.
 	r = (DWORD)(appSecondsSlow() * 1000000.0);
 #else
     // !!! FIXME: WHY DOESN'T THIS WORK?!

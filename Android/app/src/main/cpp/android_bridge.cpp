@@ -3,8 +3,8 @@
 //
 // GameActivity loads this in a static block and calls nativePrepareProcess() BEFORE
 // super.onCreate() (which starts SDL_main), so the basedir env + cwd are in place before
-// the engine's appBaseDir()/appInit() read them. UT2004 reads its ~11 GB game tree IN
-// PLACE from external storage — no copy — so this only sets env + chdir + ensures the
+// the engine's appBaseDir()/appInit() read them. UT2004 reads its ~11 GB game tree in
+// place from external storage (no copy), so this only sets env + chdir + ensures the
 // writable subdirs exist.
 #include <jni.h>
 #include <android/log.h>
@@ -83,7 +83,7 @@ static jboolean prepare_process_common(
     bool ok = true;
 
     // UT2004 runs from <dataRoot>/System; Cache/Save/Logs are writable siblings. The read-only
-    // game tree (Maps/Textures/... ~11 GB) already lives under dataRoot and is NOT touched here.
+    // game tree (Maps/Textures/... ~11 GB) already lives under dataRoot and is not touched here.
     char systemDir[1024];
     char cacheDir[1024];
     char saveDir[1024];

@@ -34,37 +34,28 @@ void URenderDevice::StaticConstructor()
 	new(GetClass(),TEXT("TerrainLOD"),				RF_Public)UIntProperty (CPP_PROPERTY(TerrainLOD				), TEXT("Client"), CPF_Config );
 	DecompFormat = TEXF_P8;
 
-	// ufront 2.50 — same defect as UClient::StaticConstructor (UnCamMgr.cpp), one class up.
-	// Registering a CPF_Config property leaves it zero-initialised, so a render device with no ini
-	// section of its own comes up with every quality switch OFF and writes those zeros back.
-	//
-	// A native player's retail UT2004.ini has [OpenGLDrv.OpenGLRenderDevice] and [D3DDrv...] but of
-	// course no [GL4ESDrv.GL4ESRenderDevice], so GL4ES got the all-zero set. MEASURED consequence on
-	// ONS-Torlan: THE SKY DID NOT DRAW AT ALL -- flat fill where the cloud layers belong. Bisected to
-	// these two flags: SuperHighDetailActors alone restores the whole sky, HighDetailActors alone
-	// restores part of it, because the sheets carry different detail levels. A missing sky is a far
-	// worse failure than any blending artefact, and it was pure configuration.
-	//
-	// Values mirror Engine/Config/Default.ini and Engine/Config/web/Default.ini. The ini still wins
-	// wherever it speaks; this only decides what "unset" means. Set on the BASE class so every render
-	// device inherits it rather than each one re-deciding.
+	// Compiled defaults, as UClient::StaticConstructor (UnCamMgr.cpp) does one class up: a render device
+	// with no ini section of its own (a retail UT2004.ini has no [GL4ESDrv.GL4ESRenderDevice]) would come
+	// up with every quality switch off and write those zeros back. Without SuperHighDetailActors and
+	// HighDetailActors the sky's cloud sheets (which carry those detail levels) do not draw at all.
+	// Values mirror Engine/Config/Default.ini and Engine/Config/web/Default.ini; the ini wins wherever it
+	// sets one. Set on the base class so every render device inherits them.
 	HighDetailActors		= 1;
 	SuperHighDetailActors	= 1;
 	DetailTextures			= 1;
 	UseCompressedLightmaps	= 1;
-	// Deliberately left at zero, each for a reason rather than by omission:
-	//   UseStencil        - the stencil buffer is only ever used for mirrors, NO shipping map uses
+	// Left at zero:
+	//   UseStencil        - the stencil buffer is only used for mirrors, no shipping map uses
 	//                       one, and requesting it costs a heavier framebuffer for nothing.
 	//   Use16bit          - 32-bit colour is the higher-quality choice.
 	//   Use16bitTextures  - ditto for texture upload.
 	//   LowQualityTerrain - selects the collapsed single-material terrain path, which also drops
 	//                       decoration layers and dynamic projectors entirely (UnTerrain.cpp).
 	//   SkyboxHack        - a Pixomatic-era workaround, not wanted on a real renderer.
-	//   TerrainLOD        - 0 IS the maximum-detail setting; larger values shed terrain detail.
-	// UseCompressedLightmaps is the one place this does NOT pick maximum quality: uncompressed
+	//   TerrainLOD        - 0 is the maximum-detail setting; larger values shed terrain detail.
+	// UseCompressedLightmaps is the one place this does not pick maximum quality: uncompressed
 	// lightmaps would look marginally better but cost several times the memory, and the web target
-	// runs to a fixed heap/cache budget. It matches every shipped config. Flagging it as a judgement
-	// call rather than burying it.
+	// runs to a fixed heap/cache budget. It matches every shipped config.
 	UseStencil				= 0;
 	Use16bit				= 0;
 	Use16bitTextures		= 0;

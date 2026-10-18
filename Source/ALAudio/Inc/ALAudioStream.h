@@ -133,7 +133,7 @@ public:
 	// Interface.
 	void Init();
 	void Destroy();
-	void Tick();			// Main-thread streaming pump for single-threaded (web) builds.
+	void Tick();			// Streaming pump driven from the audio update on the web.
 	FALAudioStream* CreateStream( const TCHAR* Filename, INT InitialChunks, void* SharedData, EAudioStreamType Type, FLOAT InitialSeekTime );
 	void DestroyStream( FALAudioStream* AudioStream, UBOOL ReadQueuedChunks );
 

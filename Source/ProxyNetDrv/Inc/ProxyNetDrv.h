@@ -1,20 +1,20 @@
 /*=============================================================================
 	ProxyNetDrv.h: "Proxy networking" — a client-only net driver that reaches an ordinary
-	NATIVE game server through a WSS<->UDP game proxy.
+	native game server through a WSS<->UDP game proxy.
 
-	Modelled on IpDrv's UTcpNetDriver / UTcpipConnection, deliberately: it takes exactly what
-	the TcpIp driver takes — `open host:port`, the same URL forms, an `ip:port` remote address,
-	and an ini section ([ProxyNetDrv.ProxyNetDriver]) carrying the same keys as
-	[IpDrv.TcpNetDriver]. The only thing swapped is the socket: sendto/recvfrom become the
-	`ue_proxynet_*` imports of the OPTIONAL proxynet ABI module (vendor/glue/ue_proxynet_abi.h).
+	Modelled on IpDrv's UTcpNetDriver / UTcpipConnection: it takes what the TcpIp driver takes
+	(`open host:port`, the same URL forms, an `ip:port` remote address, and an ini section
+	[ProxyNetDrv.ProxyNetDriver] carrying the same keys as [IpDrv.TcpNetDriver]). Only the socket
+	is swapped: sendto/recvfrom become the `ue_proxynet_*` imports of the optional proxynet ABI
+	module (vendor/glue/ue_proxynet_abi.h).
 
-	DETACHED BY DECISION (ufrontend docs/12 ADR-16). This package shares nothing with WebRTCDrv
-	and edits none of its files. It is selected like any other driver —
+	The package shares nothing with WebRTCDrv and edits none of its files. It is selected like
+	any other driver,
 	    [Engine.Engine] NetworkDevice=ProxyNetDrv.ProxyNetDriver
-	— and the launcher only rewrites NetworkDevice when it is the stock IpDrv.TcpNetDriver, so
-	naming this one simply works. -DUT_WITH_PROXYNET=OFF removes it entirely.
+	and the launcher rewrites NetworkDevice only when it is the stock IpDrv.TcpNetDriver.
+	-DUT_WITH_PROXYNET=OFF removes it entirely.
 
-	CLIENT ONLY. A browser cannot accept UDP; hosting is what P2P networking is for.
+	Client only: a browser cannot accept UDP; hosting is what P2P networking is for.
 =============================================================================*/
 
 #ifndef _INC_PROXYNETDRV
@@ -63,7 +63,7 @@ class UProxyNetConnection : public UNetConnection
 
 	// Variables.
 	INT		ConnId;			// from ue_proxynet_connect(); -1 once closed
-	FString	RemoteHost;		// as the player typed it — the PROXY resolves names, not the engine
+	FString	RemoteHost;		// as the player typed it; the proxy resolves names, not the engine
 	INT		RemotePort;
 	DOUBLE	OpenedTime;
 
@@ -104,7 +104,7 @@ class UProxyNetDriver : public UNetDriver
 	// Redirect downloads: hand IpDrv's UHTTPDownload the means to fetch through the game proxy.
 	static void RegisterWebHttp();
 	// A player whose saved ini predates this driver has no [ProxyNetDrv.ProxyNetDriver] section, so every
-	// CPF_Config property arrives as zero — and a zero ConnectionTimeout closes the connection on its first
+	// CPF_Config property arrives as zero, and a zero ConnectionTimeout closes the connection on its first
 	// tick. Substitute the stock TcpNetDriver values for whatever is missing, and say so in the log.
 	void NormalizeConfigDefaults();
 };

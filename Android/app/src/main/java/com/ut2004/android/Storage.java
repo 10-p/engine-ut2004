@@ -11,7 +11,7 @@ import java.io.OutputStream;
 import java.util.Locale;
 
 /**
- * Filesystem helpers for the Stage 2.11 launcher: free-space / dir-size readouts, an incremental
+ * Filesystem helpers for the launcher: free-space / dir-size readouts, an incremental
  * external->internal tree sync, and recursive delete. The heavy calls (dirSize / syncTree /
  * deleteTree) are meant to run on a background thread; MainActivity marshals the {@link Listener}
  * callbacks back to the UI thread itself.
@@ -52,7 +52,7 @@ final class Storage {
      * copy never leaves a wrong-sized file that the size check would later skip.
      *
      * Returns null on success, or a human-readable message if it stopped early (ENOSPC / IOException)
-     * -- a partial copy is expected on space-constrained devices (the Retroid can't hold the full 11 GB).
+     * -- a partial copy is expected on space-constrained devices (the full tree is about 11 GB).
      */
     static String syncTree(File src, File dst, Listener cb) {
         if (src == null || !src.isDirectory()) return "Nothing to copy at " + src;

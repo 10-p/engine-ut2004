@@ -324,9 +324,9 @@ void UNetPendingLevel::NotifyReceivedText( UNetConnection* Connection, const TCH
 			}
 		}
 
-		// What this server is about to send us, in ONE line. The per-package USES trail above is
+		// What this server is about to send us, in one line. The per-package USES trail above is
 		// commented out and DevNet is suppressed, so without this nothing in the log says what a server
-		// pushes - and a host page can only warn a player about content it can see named (a server's
+		// pushes, and a host page can warn a player only about content it can see named (a server's
 		// own native libraries, an anti-cheat package). Through GLog->Log: no format buffer to overflow.
 		if( FilesNeeded > 0 )
 			GLog->Log( NAME_Log, *( FString::Printf( TEXT("PendingLevel: server sends %i file(s):"), FilesNeeded ) + SentFiles ) );

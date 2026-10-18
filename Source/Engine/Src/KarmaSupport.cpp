@@ -1603,69 +1603,45 @@ void MEAPI KTermLevelKarma(ULevel* level)
 
 
 /*============================================================================
-	KARMA STATE TRACE — one CSV row per simulated body per frame.
-	ufront 2026-08-28, karma/decompile behavioural work.
+	Karma state trace: one CSV row per simulated body per frame, identical engine
+	code on every target, so two builds' trajectories diff line by line (the
+	recovered Karma's call-level gates cannot see a defect in the trajectory the
+	calls add up to).
 
-	WHY IT EXISTS. karma-decomp's gate set compares CALLS: shadow-harness
-	divergences, per-pair difftests, substituted-scene trajectories. Every one
-	runs on i386 and every one is blind to the class of defect the owner is
-	reporting — a physics behaviour that is wrong in the TRAJECTORY the calls
-	add up to, and wrong on wasm32 while native looks fine. Nothing in this
-	project could answer "does it reproduce off wasm", so this exists to be the
-	one instrument that can: identical engine code on both targets, emitting
-	the same rows, diffable line by line.
+	It refuses to run without -FIXEDFPS: KTickLevelKarma derives FullTimestep,
+	SubTimestep and NumSubSteps from DeltaSeconds, so two runs at different frame
+	rates integrate different equations. The refusal is a fatal error.
 
-	★ IT REFUSES TO RUN WITHOUT -FIXEDFPS, AND THAT IS THE WHOLE POINT.
-	KTickLevelKarma derives FullTimestep, SubTimestep AND NumSubSteps from
-	DeltaSeconds. A browser at 60 fps and a headless native run at whatever
-	xvfb manages are therefore integrating DIFFERENT EQUATIONS, and two traces
-	taken that way would diverge for a reason that has nothing to do with the
-	recovery. Emitting them anyway would have produced a confident wrong answer
-	on the first run, so the refusal is a hard error rather than a warning.
+	The key is the engine's actor array, not MdtWorld's bodyDict: the dict is keyed
+	on pointers and its order is an allocation artefact, while level->Actors is the
+	map's own order on every build, so (actor index, name, bone) means the same
+	thing on both sides of a diff.
 
-	THE KEY IS THE ENGINE'S ACTOR ARRAY, not MdtWorld's bodyDict. The dict is
-	keyed on pointers; its iteration order is an allocation artefact and need
-	not agree between two builds, let alone two targets. level->Actors is the
-	map's own order and is identical everywhere, so (actor index, name, bone)
-	is a key that means the same thing on both sides of a diff.
-
-	  -FIXEDFPS=<n>        REQUIRED. 30 is what the trace runs use.
+	  -FIXEDFPS=<n>        required (the trace runs use 30)
 	  -KTRACE=<path>       enable; CSV written here (relative = engine cwd)
 	  -KTRACEEVERY=<n>     log every n-th frame (default 1)
 	  -KTRACEFRAMES=<n>    stop after n logged frames (default 0 = unlimited)
 	  -KTRACEBONES         also log ragdoll bone bodies (off by default: they
 	                       respawn, so their actor indices churn and swamp the
 	                       diff with rows that have no counterpart)
-	  -KTRACECONTACTS      also log the CONTACTS holding each body up — see below
+	  -KTRACECONTACTS      also log the contacts holding each body up (below)
+	  -KTRACECONSOLE       write the rows to stdout instead of the file
 
-	★ WHY -KTRACECONTACTS EXISTS. The B rows record STATE, and state is a
-	continuous quantity: two builds whose arithmetic differs in the last bit
-	produce B rows that differ in the last digit, and the difference grows. That
-	instrument cannot tell those apart from a DISCRETE difference — a contact
-	that one build generates and the other does not — and the two need opposite
-	responses. Measured 2026-09-01: with the FP model held fixed on both sides
-	(`-mfpmath=sse` at 32-bit), 14 of 15 bodies on ONS-Torlan are BIT-identical
-	over all 89 frames and `ONSHoverBike3` is bit-identical for eight frames and
-	then steps by 1.06 at frame 9. Exact agreement followed by a step change of
-	order one is not arithmetic amplifying; it is a decision flipping. A hover
-	bike is held up by repulsor line checks, so the decision that can flip is a
-	contact — and until these rows existed the trace could not see one.
-
-	The C row is the count and the K rows are the contacts themselves. Contact
-	ORDER is not meaningful: a body's constraints hang off `MeDict`, whose order
-	is an allocation artefact and need not agree between two builds. The rows are
-	emitted in dict order and `ktrace_contacts.py` sorts them before comparing —
-	the same reason the B rows are keyed on the engine's actor array rather than
-	on `MdtWorld`'s `bodyDict`.
+	-KTRACECONTACTS: the B rows record state, a continuous quantity, so a last-bit
+	arithmetic difference and a discrete one (a contact one build generates and the
+	other does not) look alike there. Exact agreement followed by a step change of
+	order one is a decision flipping, and for a hover vehicle (held up by repulsor
+	line checks) that decision is a contact. The C row is the count and the K rows
+	are the contacts. Contact order is not meaningful (a body's constraints hang off
+	`MeDict`, an allocation-ordered dict): the rows are emitted in dict order and
+	`ktrace_contacts.py` sorts them before comparing.
 ============================================================================*/
 
 static FILE*	GKTraceFile		= NULL;
-/* ⚠ MEMFS IS NOT A RELIABLE CHANNEL OFF A THREADED WASM BUILD, and two runs were lost to
-   finding that out: the engine runs on a pthread and the MAIN thread's `FS` is not the same
-   filesystem the worker wrote to, so a trace that works natively reads as an empty or
-   truncated file in the browser with no error anywhere. -KTRACECONSOLE routes every row
-   through stdout instead, which Emscripten proxies to the main thread and Playwright
-   captures verbatim. Same format, same parser, one channel that exists on every target. */
+/* On a threaded wasm build the main thread's `FS` is not the filesystem the engine's worker
+   writes to, so a trace file cannot be read back from the page. -KTRACECONSOLE routes every row
+   through stdout instead, which Emscripten proxies to the main thread and the test harness
+   captures. Same format, same parser, one channel that exists on every target. */
 static UBOOL	GKTraceToConsole = 0;
 #define KTOUT(...)	do { if(GKTraceToConsole) printf(__VA_ARGS__); \
 						 else if(GKTraceFile) fprintf(GKTraceFile, __VA_ARGS__); } while(0)
@@ -1677,11 +1653,10 @@ static UBOOL	GKTraceBones	= 0;
 static UBOOL	GKTraceContacts	= 0;
 static UBOOL	GKTraceTried	= 0;
 
-/* NAMING THE OTHER SIDE OF A CONTACT. A `MdtBodyID` carries no user data in this engine —
-   `KarmaModelUserData` hangs off the McdModel, not the body — so there is no way back from a
-   contact's second body to an actor without a map. It is rebuilt each traced frame from
-   `level->Actors`, which is the same order on every build and every target and is already what
-   the B rows are keyed on. Fifteen bodies on the vehicle map, so a linear scan is the whole cost. */
+/* Naming the other side of a contact: a `MdtBodyID` carries no user data in this engine
+   (`KarmaModelUserData` hangs off the McdModel, not the body), so the way back from a contact's
+   second body to an actor is a map, rebuilt each traced frame from `level->Actors` (the order the
+   B rows are keyed on). A vehicle map has a few dozen bodies, so a linear scan is the whole cost. */
 struct KTraceLabel
 {
 	MdtBodyID		body;
@@ -1733,9 +1708,9 @@ static void KTraceRow(INT ActorIndex, const TCHAR* Name, INT BoneIndex, McdModel
 	MdtBodyGetLinearVelocity(body, v);
 	MdtBodyGetAngularVelocity(body, w);
 
-	/* `enabled` is not decoration. Karma auto-disables a body that has come to
-	   rest, so "sits still" and "sinks slowly" differ in this column before
-	   they differ visibly in position. */
+	/* `enabled` matters: Karma auto-disables a body that has come to rest, so
+	   "sits still" and "sinks slowly" differ in this column before they differ
+	   visibly in position. */
 	KTOUT(
 		"B,%d,%d,%s,%d,%d,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g\n",
 		GKTraceFrame, ActorIndex, appToAnsi(Name), BoneIndex,
@@ -1747,12 +1722,9 @@ static void KTraceRow(INT ActorIndex, const TCHAR* Name, INT BoneIndex, McdModel
 }
 
 /* One body's contacts. Walks the body's constraint list, keeps the ones that are contact
-   GROUPS, and emits the group count, the total contact count, and one row per contact.
-
-   ⚠ THE PENETRATION AND THE NORMAL ARE THE POINT, not just the count. Two builds can agree on
-   "one contact with the world" and disagree on how deep it is, and a repulsor's force is a
-   function of the depth — so a count-only row would report a match on exactly the case this
-   was written to catch. */
+   groups, and emits the group count, the total contact count, and one row per contact.
+   The penetration and the normal are part of the row: two builds can agree on "one contact
+   with the world" and disagree on its depth, and a repulsor's force is a function of the depth. */
 static void KTraceContactRows(INT ActorIndex, const TCHAR* Name, INT BoneIndex, McdModelID model)
 {
 	if(!model)
@@ -1762,19 +1734,17 @@ static void KTraceContactRows(INT ActorIndex, const TCHAR* Name, INT BoneIndex, 
 	if(!body)
 		return;
 
-	/* ⚠ USE appToAnsi's RETURN VALUE, never the buffer. On an ANSI build (TCHAR == char) it
-	   returns the input untouched and never writes the buffer at all, so reading the buffer
-	   yields a stack full of nothing on exactly the targets where the conversion is a no-op. */
+	/* Use appToAnsi's return value, never the buffer: on an ANSI build (TCHAR == char) it
+	   returns the input untouched and never writes the buffer. */
 	ANSICHAR SelfBuf[256];
 	const ANSICHAR* SelfA = appToAnsi(Name, SelfBuf, ARRAY_COUNT(SelfBuf));
 
 	INT NumGroups = 0, NumContacts = 0;
 
-	/* ⚠ WALK `constraintDict` DIRECTLY, NOT `MdtBodyGetFirstConstraint`. That accessor is
-	   declared in `MdtBody.h` and is NOT one of the 145 objects the recovery covers, so a build
-	   with `USE_KARMA_DECOMP=ON` fails to LINK against it. The dict walk is what `KPhysic.cpp`
-	   and `KSkeletal.cpp` already use for the same job, and it is inside the SDK's own header
-	   either way. */
+	/* Walk `constraintDict` directly, not `MdtBodyGetFirstConstraint`: that accessor is
+	   declared in `MdtBody.h` but is not one of the objects the recovery covers, so a
+	   `USE_KARMA_DECOMP=ON` build would not link. KPhysic.cpp and KSkeletal.cpp walk the dict
+	   for the same job. */
 	MeDict* dict = &body->constraintDict;
 	for(MeDictNode* node = MeDictFirst(dict); node != NULL; node = MeDictNext(dict, node))
 	{
@@ -1785,23 +1755,16 @@ static void KTraceContactRows(INT ActorIndex, const TCHAR* Name, INT BoneIndex, 
 
 		NumGroups++;
 
-		/* WHERE THE GROUP CAME FROM, which is the first thing you want to know and was a
-		   throwaway probe before it was a column. THREE code paths create contact groups on a
-		   body and they behave differently:
+		/* Where the group came from. Three code paths create contact groups on a body:
 
-		     nearfield   `CreateContactGroup` in KFarfield.cpp, from a collision pair — and it
-		                 is the ONLY one that calls `MdtContactGroupSetGenerator`, so a
-		                 non-NULL generator identifies it exactly. The generator IS the
-		                 `McdModelPair`, so it also names the other MODEL, which is more than
-		                 the second body can do: a contact against level geometry and one
-		                 against a static mesh actor both have a NULL second body and would
-		                 otherwise both read `world`.
-		     repulsor    KScript.cpp, `AKRepulsor` — a line check, one contact, no second body
-		     wheel       UnSVehicle.cpp, `SVehicleWheel` — same shape
-
-		   ⚠ Measured 2026-09-01: an extra group appeared on `ONSHoverBike3` at LP64 and the
-		   nearfield and engine paths BOTH logged identical sequences, so it read as coming from
-		   nowhere. It was a nearfield pair whose other model has no actor — level geometry. */
+		     nearfield   `CreateContactGroup` in KFarfield.cpp, from a collision pair; the
+		                 only one that calls `MdtContactGroupSetGenerator`, so a non-NULL
+		                 generator identifies it exactly. The generator is the `McdModelPair`,
+		                 so it also names the other model, which the second body cannot: a
+		                 contact against level geometry and one against a static mesh actor
+		                 both have a NULL second body.
+		     repulsor    KScript.cpp, `AKRepulsor`: a line check, one contact, no second body
+		     wheel       UnSVehicle.cpp, `SVehicleWheel`: the same shape */
 		MdtBodyID b0 = MdtContactGroupGetBody(cg, 0);
 		MdtBodyID b1 = MdtContactGroupGetBody(cg, 1);
 		MdtBodyID other = (b0 == body) ? b1 : b0;
@@ -1852,10 +1815,9 @@ static void KTraceContactRows(INT ActorIndex, const TCHAR* Name, INT BoneIndex, 
 		GKTraceFrame, ActorIndex, SelfA, BoneIndex, NumGroups, NumContacts);
 }
 
-/* THE ONE DEFINITION OF "WHICH BODIES ARE IN THE TRACE", walked once per emitter. The bone
-   branch and the -KTRACEBONES rule live here and nowhere else, so the label table, the B rows
-   and the contact rows cannot drift into disagreeing about the body set — which would show up
-   as contacts naming `unmapped` and read like a Karma fault. */
+/* The one definition of "which bodies are in the trace", walked once per emitter. The bone
+   branch and the -KTRACEBONES rule live here only, so the label table, the B rows and the
+   contact rows agree on the body set (a mismatch would show up as contacts naming `unmapped`). */
 typedef void (*KTraceBodyFn)(INT ActorIndex, const TCHAR* Name, INT BoneIndex, McdModelID model);
 
 static void KTraceForEachBody(ULevel* level, KTraceBodyFn fn)
@@ -1895,9 +1857,8 @@ static void KTraceLevel(ULevel* level, FLOAT FullTimestep, FLOAT SubTimestep, IN
 
 		if(!GUseFixedTimeStep)
 		{
-			/* Loud, and on the fatal path, because a trace taken at a variable
-			   timestep is not merely noisy — it is a different simulation, and
-			   it would be diffed against another one in good faith. */
+			/* Fatal: a trace taken at a variable timestep is a different simulation,
+			   not a noisy one, and would be diffed against another in good faith. */
 			appErrorf(TEXT("(Karma): -KTRACE requires -FIXEDFPS=<n>. KTickLevelKarma derives its ")
 			          TEXT("timestep AND its substep count from DeltaSeconds, so two traces taken ")
 			          TEXT("at different frame rates integrate different equations and cannot be ")
@@ -1939,9 +1900,8 @@ static void KTraceLevel(ULevel* level, FLOAT FullTimestep, FLOAT SubTimestep, IN
 		return;
 	if(GKTraceLimit > 0 && GKTraceWritten >= GKTraceLimit)
 	{
-		/* Ask to quit as soon as the trace is complete. A bisect runs this dozens of times and
-		   the alternative is every run costing its full `timeout` regardless of how few frames
-		   it needed — which is most of the wall clock of the whole search. */
+		/* Ask to quit as soon as the trace is complete, so a bisect run does not cost its full
+		   `timeout`. */
 		if(GKTraceFile || GKTraceToConsole)
 		{
 			if(GKTraceFile) fclose(GKTraceFile);
@@ -1954,17 +1914,15 @@ static void KTraceLevel(ULevel* level, FLOAT FullTimestep, FLOAT SubTimestep, IN
 	}
 	GKTraceWritten++;
 
-	/* The step the frame actually used, so a trace carries the evidence that
-	   the two runs stepped identically instead of asking the reader to trust it. */
+	/* The step the frame used, so a trace carries the evidence that the two runs stepped
+	   identically. */
 	KTOUT("F,%d,%.9g,%.9g,%d\n",
 		GKTraceFrame, (double)FullTimestep, (double)SubTimestep, NumSubSteps);
 
-	/* ONE-SHOT INVENTORY, first traced frame only. "The body is not in the trace" has two very
-	   different causes — Karma never gave the actor a model, or the actor is not in the level at
-	   all — and a trace that simply omits the row cannot tell them apart. The first run of this
-	   hook showed 8 bodies where the map defines 18 physics actors, and without these rows the
-	   obvious reading (the recovery is dropping bodies) would have been wrong: they are map and
-	   gametype facts. Emitted for every actor carrying KParams, model or not. */
+	/* One-shot inventory, first traced frame only: "the body is not in the trace" has two
+	   causes (Karma never gave the actor a model, or the actor is not in the level), and a
+	   trace that omits the row cannot tell them apart. Emitted for every actor carrying
+	   KParams, model or not. */
 	if(GKTraceWritten == 1)
 	{
 		for(INT i=0; i<level->Actors.Num(); i++)
@@ -1981,10 +1939,8 @@ static void KTraceLevel(ULevel* level, FLOAT FullTimestep, FLOAT SubTimestep, IN
 		}
 	}
 
-	/* ★ THE LABEL TABLE IS BUILT BEFORE ANY CONTACT ROW IS WRITTEN, and that is why it is its
-	   own pass rather than filled in as the B rows go out: a contact names the body on its
-	   OTHER side, and that body's row may not have been reached yet. Half a table would name
-	   half the contacts `unmapped` and read like Karma losing bodies. */
+	/* The label table is built before any contact row is written: a contact names the body on
+	   its other side, whose row may not have been reached yet. */
 	if(GKTraceContacts)
 	{
 		GKTraceLabels.Empty();

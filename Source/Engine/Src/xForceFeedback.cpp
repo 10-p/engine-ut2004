@@ -1,8 +1,8 @@
 
 #include "xForceFeedback.h"
 
-// ufront 2.33: IFC is Immersion's force-feedback SDK — a Windows-only Epic-era library that is NOT in
-// this tree, so only the original MSVC project could ever compile this. "WIN32" meant "that build".
+// IFC is Immersion's force-feedback SDK, a Windows-only library that is not in this tree, so only an
+// MSVC build with Epic's project compiles this.
 #if defined(WIN32) && defined(_MSC_VER)
 #define __IFC__
 #endif

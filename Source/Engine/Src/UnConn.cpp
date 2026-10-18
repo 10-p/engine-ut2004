@@ -869,18 +869,15 @@ void UNetConnection::Tick()
 		}
 
 		// Init counters.
-		// ufront 2.36b — WINDOWED, not once a second. Same 10s window as the WebRTC driver's receive
-		// accumulator.
+		// One line per 10 s window, the same window as the WebRTC driver's receive accumulator.
 		//
-		// ★ THE LEGACY PREFIX AND FIELD ORDER ARE LOAD-BEARING. The E2E measures network health by
-		// SCRAPING this line (`Client: In=(\d+)B/s`, and a REPLICATING milestone on the sibling line in
-		// UnLevTic.cpp), so reformatting it silently broke five net tests — the traffic never changed.
-		// Keep `In=`/`Out=` first and in the old shape; the window detail is appended.
+		// The prefix and field order are load-bearing: the E2E measures network health by scraping this
+		// line (`Client: In=(\d+)B/s`, and a REPLICATING milestone on the sibling line in UnLevTic.cpp).
+		// Keep `In=`/`Out=` first and in this shape; the window detail is appended.
 		//
-		// The leading In=/Out= carry the window's PEAK, because the assertion reading them asks whether a
-		// bulk transfer ever happened — an average over 10s would bury a burst. `samples`/`nonzero` are
-		// the engine's own per-STAT-INTERVAL counts, so a consumer keeps the per-second resolution it had
-		// when this printed once a second, out of one line.
+		// The leading In=/Out= carry the window's peak, because the assertion reading them asks whether a
+		// bulk transfer happened (an average over 10 s would bury a burst). `samples`/`nonzero` are the
+		// engine's own per-STAT-INTERVAL counts, so a consumer keeps per-second resolution from one line.
 		if( InRate > 0 || OutRate > 0 )
 		{
 			DOUBLE LogNow = appSeconds();
@@ -1010,8 +1007,8 @@ void UNetConnection::HandleClientPlayer( APlayerController *PC )
 	PC->RendMap	  = REN_DynLight;
 	PC->SetPlayer( Viewport );
 	debugf(TEXT("%s setplayer %s"),PC->GetName(), Viewport->GetName());
-	// ufront 2.36b DIAGNOSTIC — the pointer the viewport now holds, so a later "unusable Viewport->Actor"
-	// can be matched against the object that was installed here.
+	// Devnet diagnostic: the pointer the viewport now holds, so a later "unusable Viewport->Actor" can be
+	// matched against the object installed here.
 	debugf( NAME_DevNet, TEXT("[UFRONT-DIAG] HandleClientPlayer: viewport %s -> actor %s (0x%08x, class %s)"),
 		Viewport->GetName(), PC->GetName(), (DWORD)(PTRINT)PC, PC->GetClass()->GetName() );
 	PC->GetLevel()->Engine->Client->Viewports(0)->Input->ResetInput();

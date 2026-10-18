@@ -380,18 +380,13 @@ UBOOL ULevel::DestroyActor( AActor* ThisActor, UBOOL bNetForce )
 	ThisActor->bDeleteMe = 1;
 	unguardSlow;
 
-	// ---- ufront 2.36b — a destroyed PlayerController must not stay installed in a viewport ----
-	// UPlayer::Actor is a RAW pointer the garbage collector cannot see (UPlayer::Serialize does not
-	// serialize it and no property registers it), and destroyed actors are physically `delete`d in
-	// FinishDestroyedActors below — not left for a GC pass. So the instant a PlayerController that owns
-	// a viewport is destroyed, Viewport->Actor dangles, and the next UGameEngine::Draw calls
-	// eventPlayerCalcView through freed memory.
-	//
-	// ★ On the web that is far nastier than on desktop: a null/garbage read at a low address does not
-	// fault under wasm, so the corpse is only discovered at the first VIRTUAL call ("indirect call to
-	// null"), and if the freed block is recycled first the call lands on a live object of the WRONG
-	// class — measured on a guest, where a replicated GameReplicationInfo took the block and the engine
-	// died with "Failed to find function PlayerCalcView in GameReplicationInfo".
+	// ---- A destroyed PlayerController must not stay installed in a viewport ----
+	// UPlayer::Actor is a raw pointer the garbage collector cannot see (UPlayer::Serialize does not
+	// serialize it and no property registers it), and destroyed actors are `delete`d in
+	// FinishDestroyedActors below, not left for a GC pass. So when a PlayerController that owns a
+	// viewport is destroyed, Viewport->Actor would dangle and the next UGameEngine::Draw would call
+	// eventPlayerCalcView through freed memory (under wasm, a low-address read does not fault, so the
+	// first symptom is a virtual call into a recycled block, possibly a live object of another class).
 	{
 		APlayerController* DyingPC = ThisActor->GetAPlayerController();
 		if( DyingPC && DyingPC->Player && DyingPC->Player->Actor==DyingPC )

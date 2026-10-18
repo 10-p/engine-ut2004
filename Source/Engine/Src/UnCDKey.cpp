@@ -1,11 +1,8 @@
 /*=============================================================================
 	UnCDKey.cpp: CD Key validation
 
-	ufront 2.33: the Win32 branches below were keyed on `_MSC_VER`, which meant "Windows" only while MSVC
-	was the only Windows compiler. The CD key lives in the Windows REGISTRY — that is a property of the
-	platform, not of the compiler — so a MinGW build should read it from there too, rather than falling
-	through to `#error Please fill in CD Key stuff for your platform!`. TCHAR_CALL_OS and appAlloca are
-	both defined for GCC (UnGnuG.h), so the existing code compiles as-is.
+	The Win32 branches key on `_WIN32` rather than `_MSC_VER`: the CD key lives in the Windows registry
+	whichever compiler built the binary (TCHAR_CALL_OS and appAlloca are defined for GCC in UnGnuG.h).
 	Copyright 1997-2002 Epic Games, Inc. All Rights Reserved.
 
 	Revision history:
@@ -52,21 +49,19 @@ static inline LONG RegQueryValueExX( HKEY hKey, LPCTSTR lpValueName, LPDWORD lpR
 #endif
 
 /*-----------------------------------------------------------------------------
-	A key for an install that has none (ufront 2.79h).
+	A key for an install that has none.
 
-	WHY: a server identifies a player by a hash of the CD key - it is the identity a ban lands on.
-	An install with no `cdkey` file hashes the same empty placeholder, so every such player is ONE identity
-	(measured against a stock 3374 server: three players, three fresh browser profiles, one id),
-	and banning one bans them all. A web install never has a key file to begin with.
+	A server identifies a player by a hash of the CD key: it is the identity a ban lands on. An
+	install with no `cdkey` file would hash the same empty placeholder as every other such install
+	(one identity for all of them, and every web install starts without a key file).
 
-	WHAT: 14 random symbols plus the 6-symbol check the validator in UnCDKey.h computes - with
-	the validator's own code (CDKeyCheckFor), not a copy - written to `cdkey` so the install
-	keeps its identity. A server only ever sees a hash, so nothing about how the key was made
-	is observable on the wire, and a ban can only spill onto an install whose key is EQUAL:
-	63 random bits.
+	The key is 14 random symbols plus the 6-symbol check the validator in UnCDKey.h computes, with
+	the validator's own code (CDKeyCheckFor), written to `cdkey` so the install keeps its identity.
+	A server only ever sees a hash, so nothing about how the key was made is observable on the wire,
+	and a ban can only spill onto an install whose key is equal: 63 random bits.
 
-	ENGINE-SIDE ON PURPOSE: the alphabet and the append string are proprietary. They stay in
-	this private repo and must never be reimplemented in the public host page.
+	Engine-side on purpose: the alphabet and the append string are proprietary. They stay in this
+	private repo and must never be reimplemented in the public host page.
 -----------------------------------------------------------------------------*/
 
 #if __UNIX__
@@ -95,9 +90,9 @@ static FString GenerateCDKey()
 	if( !CDKeyEntropy( Value ) )
 		return TEXT("");
 
-	// 63 bits: the validator reads the 14 symbols back as ONE 64-bit number and formats it SIGNED.
+	// 63 bits: the validator reads the 14 symbols back as one 64-bit number and formats it signed.
 	// 14 symbols of this alphabet can hold more than 64 bits, so a free draw could overflow that
-	// parse - and how an overflow is handled is a property of the C library, not of the key.
+	// parse, and how an overflow is handled is a property of the C library, not of the key.
 	Value &= (QWORD)0x7FFFFFFFFFFFFFFFLL;
 
 	const INT Base = CDKEYBASE;
@@ -181,7 +176,7 @@ static FString GetRealCDKey()
     FArchive *in = GFileManager->CreateFileReader(TEXT("cdkey"));
     if (in == NULL)
     {
-        // No key file: give this install an identity of its own and keep it (ufront 2.79h, above).
+        // No key file: give this install an identity of its own and keep it (GenerateCDKey, above).
         // The key itself is never logged.
         cdkey = GenerateCDKey();
         FArchive *out = cdkey.Len() ? GFileManager->CreateFileWriter(TEXT("cdkey")) : NULL;

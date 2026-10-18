@@ -1350,8 +1350,8 @@ public:
 	}
 	FString Mid( INT Start, INT Count=MAXINT ) const
 	{
-		// Unsigned: with the default Count (MAXINT) a signed Start+Count OVERFLOWS -- undefined behaviour, and clang
-		// -O2 once turned it into a 2 GB allocation. The same bits as the retail wrap-around, without the UB.
+		// Unsigned: with the default Count (MAXINT) a signed Start+Count overflows, which is undefined
+		// behaviour. The same bits as the retail wrap-around, without the UB.
 		DWORD End = (DWORD)Start + (DWORD)Count;
 		Start    = Clamp( (DWORD)Start, (DWORD)0,     (DWORD)Len() );
 		End      = Clamp( (DWORD)End,   (DWORD)Start, (DWORD)Len() );

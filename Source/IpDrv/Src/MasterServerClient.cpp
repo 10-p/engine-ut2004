@@ -10,10 +10,9 @@
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 
-// WebRTC server discovery lives in WebRTCDrv (WebRTCDiscovery.cpp) — the JS-bridge glue +
-// the FServerResponseLine building is "our stuff", kept out of the stock IpDrv query path.
-// Resolved at link time like the webrtc-net.js bridges; FServerResponseLine is an Engine
-// type, so this is a one-way IpDrv -> WebRTCDrv dependency (no module cycle).
+// WebRTC server discovery lives in WebRTCDrv (WebRTCDiscovery.cpp): the host-glue calls and the
+// FServerResponseLine building are kept out of the stock IpDrv query path. Resolved at link time;
+// FServerResponseLine is an Engine type, so this is a one-way IpDrv -> WebRTCDrv dependency.
 extern void  WebRTCDiscovery_Begin( const char* room );
 extern UBOOL WebRTCDiscovery_Ready();
 extern INT   WebRTCDiscovery_Drain( TArray<FServerResponseLine>& Out );
@@ -22,9 +21,9 @@ extern INT   WebRTCDiscovery_Drain( TArray<FServerResponseLine>& Out );
 static AMasterServerClient* GActiveWebRTCBrowser = NULL;
 static UBOOL GWebRTCDiscoveryPending = 0;
 
-// 2.79o -- Proxy networking: the in-game Internet browser's list comes from the game proxy
-// (WebServerList.h), and the browser's own pings are answered from the same rows. Every query type
-// shares ONE fetch; StartQuery only records the request and Poll() asks, never a script call.
+// Proxy networking: the in-game Internet browser's list comes from the game proxy (WebServerList.h), and
+// the browser's own pings are answered from the same rows. Every query type shares one fetch; StartQuery
+// only records the request and Poll() asks, never a script call.
 #include "WebServerList.h"
 FWebServerListHooks* GWebServerList = NULL;
 
@@ -74,7 +73,7 @@ class FServerQueryLink : public FUdpLink
 	UBOOL bWebRTCBroadcastPending;
 	INT   WebRTCServerID;
 	BYTE  WebRTCPingCause;
-	// 2.79o -- pings answered from the game proxy's list, delivered after the proxy's round trip.
+	// Pings answered from the game proxy's list, delivered after the proxy's round trip.
 	struct FProxyPingReply
 	{
 		INT  ServerID;
@@ -140,7 +139,7 @@ public:
 #ifdef __EMSCRIPTEN__
 		// WebRTC LAN discovery: once the peer-list + status pings settle, emit each
 		// server via OnReceivedPingInfo on the ServerID<0 (broadcast-response) path so
-		// the stock LAN browser lists them (it dedupes by IP+Port; IP = room/join key).
+		// the stock LAN browser lists them (it dedupes by IP+Port; IP = the room's synthetic address).
 		// The row building lives in WebRTCDrv (WebRTCDiscovery_Drain).
 		if( bWebRTCBroadcastPending && WebRTCDiscovery_Ready() )
 		{
@@ -151,7 +150,7 @@ public:
 				Actor->delegateOnReceivedPingInfo( WebRTCServerID, WebRTCPingCause, Servers(i) );
 		}
 
-		// 2.79o -- the proxy-answered pings that are due (PingServer queued them).
+		// The proxy-answered pings that are due (PingServer queued them).
 		for( INT r = 0; r < ProxyReplies.Num(); r++ )
 		{
 			if( ProxyReplies(r).Due > CurrentTime )
@@ -169,9 +168,8 @@ public:
 		guard(FServerQueryLink::PingServer);
 
 #ifdef __EMSCRIPTEN__
-		// LAN broadcast has no UDP in the browser. Kick WebRTC discovery (PeerJS
-		// peer list + per-server status ping); Poll() emits the results via
-		// OnReceivedPingInfo. Skip the (dead) UDP send below.
+		// LAN broadcast has no UDP in the browser: kick WebRTC discovery (the peer list + per-server
+		// status ping); Poll() emits the results via OnReceivedPingInfo. The UDP send below is skipped.
 		if( Addr.Addr == INADDR_BROADCAST )
 		{
 			WebRTCDiscovery_Begin( "" );  // all rooms; Poll() drains the results
@@ -181,12 +179,12 @@ public:
 			return;
 		}
 
-		// 2.79o -- Proxy networking: no UDP here either. A server from the game proxy's list is
-		// answered from that list (a FULL row, as a real reply is -- the browser replaces the whole row
-		// with it), after the proxy's own round trip, so the ping shown is the player -> proxy leg: a floor.
-		// NOTE: the stock browser only pings when GUIController MaxSimultaneousPings > 0: at the web's netspeed
-		// (1000000, above every threshold) CalculateMaxConnections() returns Min(MaxSimultaneousPings, 35), so
-		// DefUser.ini sets it to 35 (native and web alike); a User.ini made before that default still reads 0.
+		// Proxy networking: no UDP here either. A server from the game proxy's list is answered from that
+		// list (a full row, as a real reply is: the browser replaces the whole row with it), after the
+		// proxy's own round trip, so the ping shown is the player -> proxy leg. The stock browser pings only
+		// when GUIController MaxSimultaneousPings > 0: at the web's netspeed (1000000, above every threshold)
+		// CalculateMaxConnections() returns Min(MaxSimultaneousPings, 35), so DefUser.ini sets it to 35; a
+		// User.ini without that key reads 0.
 		if( ProxyListActive() && GProxyPingMs >= 0 )
 		{
 			for( INT r = 0; r < GProxyRows.Num(); r++ )
@@ -998,11 +996,11 @@ void AMasterServerClient::Init()
 
 #ifdef __EMSCRIPTEN__
 /*-----------------------------------------------------------------------------
-	2.79o -- the in-game Internet browser from the game proxy's list (WebServerList.h).
+	The in-game Internet browser from the game proxy's list (WebServerList.h).
 -----------------------------------------------------------------------------*/
 
 // The list is UTF-8 (it is the page's own text), and TCHAR is 8 bits on the web (16 in a UNICODE build): each
-// character is DECODED, never copied byte by byte -- ANSI_TO_TCHAR would turn a name's "»" into two characters.
+// character is decoded, never copied byte by byte (ANSI_TO_TCHAR would turn a name's "»" into two characters).
 // A code point this TCHAR cannot hold becomes '?', as the engine's own narrowing does; so does a broken sequence.
 static FString ProxyFromUtf8( const ANSICHAR* In )
 {
@@ -1093,7 +1091,7 @@ static UBOOL ProxyRowWanted( AMasterServerClient* Browser, const FServerResponse
 	for( INT i = 0; i < Browser->Query.Num(); i++ )
 	{
 		const FQueryData& Q = Browser->Query(i);
-		// A buddy query asks for the servers a PERSON is on: the list cannot know that.
+		// A buddy query asks for the servers a person is on: the list cannot know that.
 		if( Q.Key == TEXT("buddy") )
 			return 0;
 		if( Q.Key != TEXT("gametype") )
@@ -1138,8 +1136,7 @@ static void ProxyFinishQuery( AMasterServerClient* Browser, BYTE QueryType, UBOO
 }
 
 // Called from the browsers' Poll(): open the list, wait for it, then answer every waiting request.
-// At most four sync calls a second: a per-frame proxied import once overflowed Emscripten's proxy
-// queue (WebRTCLan.cpp).
+// At most four sync calls a second: a per-frame proxied import can overflow Emscripten's proxy queue.
 static void ProxyPollList()
 {
 	if( !GProxyRequests.Num() || appSeconds() < GProxyNextPoll )
@@ -1201,7 +1198,7 @@ UBOOL AMasterServerClient::Poll( INT WaitTime )
 	Super::Poll( WaitTime );
 
 #ifdef __EMSCRIPTEN__
-	// 2.79o -- the game proxy's list, for every request StartQuery recorded.
+	// The game proxy's list, for every request StartQuery recorded.
 	if( ProxyListActive() )
 		ProxyPollList();
 
@@ -1252,8 +1249,8 @@ void AMasterServerClient::execStartQuery( FFrame& Stack, RESULT_DECL )
 	P_FINISH;
 
 #ifdef __EMSCRIPTEN__
-	// 2.79o -- Proxy networking: every query is answered from the game proxy's list. Only RECORD
-	// the request here; Poll() asks (never a sync import from inside a script call).
+	// Proxy networking: every query is answered from the game proxy's list. Only record the request
+	// here; Poll() asks (never a sync import from inside a script call).
 	if( ProxyListActive() )
 	{
 		ProxyForgetBrowser( this );
@@ -1264,10 +1261,9 @@ void AMasterServerClient::execStartQuery( FFrame& Stack, RESULT_DECL )
 		return;
 	}
 
-	// On Emscripten, use WebRTC discovery via PeerJS peer list instead of
-	// connecting to the Epic master server. The room name is read from
-	// localStorage (set by config-form.js) or defaults to "default".
-	// Room name is sanitized to alphanumeric + dash only (T-10-13).
+	// Use WebRTC discovery (the room's peer list) instead of connecting to the master server. The room
+	// name is read from localStorage['ut2004_net_room'], "default" when it is absent, and sanitized to
+	// alphanumerics and dashes.
 	char roomBuf[128];
 	EM_ASM({
 		var room = '';

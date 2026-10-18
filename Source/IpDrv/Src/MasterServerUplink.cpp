@@ -936,9 +936,9 @@ void AMasterServerUplink::execReconnect( FFrame& Stack, RESULT_DECL )
 {
 	P_FINISH;
 #ifdef __EMSCRIPTEN__
-	// MasterServerUplink is irrelevant on Emscripten — game discovery uses
-	// PeerJS (D-04), not Epic/GameSpy master servers. The FMasterServerUplinkLink
-	// constructor casts NetDriver to UTcpNetDriver which fails with WebRTCNetDriver.
+	// No master-server uplink on the web: servers are found through WebRTC discovery or the game
+	// proxy's list. The FMasterServerUplinkLink constructor casts NetDriver to UTcpNetDriver, which
+	// the web's net drivers are not.
 	debugf( NAME_DevNet, TEXT("[WebRTC] MasterServerUplink::Reconnect: skipped on Emscripten (using PeerJS discovery)") );
 	return;
 #endif

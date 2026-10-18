@@ -1435,13 +1435,12 @@ void FLevelSceneNode::Render(FRenderInterface* RI)
 }
 
 /*-----------------------------------------------------------------------------
-	ufront AutoFOV (step 2.16).
+	ufront AutoFOV.
 -----------------------------------------------------------------------------*/
 
 ENGINE_API FLOAT GAutoFovFrameBase = 90.0f;
 
-// Parsed once on first use: config is authoritative, the command line overrides it. Re-reading per
-// frame would be wasted work — the values only change across a launch.
+// Parsed once on first use: the values only change across a launch.
 static UBOOL  GAutoFovParsed  = 0;
 static INT    GAutoFovMode    = AUTOFOV_Adaptive;
 static FLOAT  GAutoFovRef     = 4.0f / 3.0f;
@@ -1458,11 +1457,9 @@ static void ufrontParseAutoFov()
 	guard(ufrontParseAutoFov);
 	GAutoFovParsed = 1;
 
-	// [ufront.AutoFOV] is a plain config section, not a class — deliberately. The override has to be read
-	// from UGameEngine::Draw (Engine), while the natural "display settings" home is the client class,
-	// which lives in a driver package Engine cannot reach; and adding properties to a retail-Engine.u
-	// class is not an option. A free section is readable anywhere, is spelled identically in all four
-	// engines (so it stays DATA rather than per-engine code), and is one obvious block for a human to edit.
+	// [ufront.AutoFOV] is a plain config section, not a class: the override is read from UGameEngine::Draw
+	// (Engine), while the client class lives in a driver package Engine cannot reach, and a retail Engine.u
+	// class cannot gain properties. The same section is spelled identically in every engine.
 	INT   Mode = GAutoFovMode;
 	FLOAT Ref  = GAutoFovRef;
 	FLOAT Weap = GAutoFovWeapon;
@@ -1474,17 +1471,10 @@ static void ufrontParseAutoFov()
 	GConfig->GetInt  ( TEXT("ufront.AutoFOV"), TEXT("AutoFOVUI"),       Ui   );
 	GConfig->GetFloat( TEXT("ufront.AutoFOV"), TEXT("UIScale"),         UiSc );
 
-	// !! NO COMMAND-LINE OVERRIDES (removed 2026-09-10, owner's rule). A setting has ONE home, and this
-	// one's home is the [ufront.AutoFOV] section above. The switches that used to be here were
-	// development scaffolding for step 2.16 that outlived the development: they duplicated every key on a
-	// command line that is already long, repeated on every launch, and undiscoverable.
-	//
-	// Anything that still needs to change a value per launch -- including the E2E, which drives AutoFOV
-	// both ways off ONE build -- uses the engine's GENERIC config switch instead of a bespoke one:
+	// No command-line switches: per launch (the E2E drives AutoFOV both ways off one build), use the
+	// generic config switch
 	//     -ini:System:[ufront.AutoFOV]:AutoFOV=0
-	// (appApplyIniOverrides, UnMisc.cpp). !! That WRITES the value into the ini rather than overriding it
-	// for one run, which is the deliberate trade: one mechanism, and the setting stays where a human can
-	// see it.
+	// (appApplyIniOverrides, UnMisc.cpp), which writes the value into the ini.
 	GAutoFovMode   = Clamp( Mode, (INT)AUTOFOV_Off, (INT)AUTOFOV_Adaptive );
 	GAutoFovRef    = (Ref  > 0.01f) ? Ref : (4.0f / 3.0f);
 	GAutoFovWeapon = Clamp( Weap, 0.0f, 4.0f );
@@ -1512,13 +1502,9 @@ ENGINE_API FLOAT ufrontEffectiveFov( FLOAT BaseFov, INT SizeX, INT SizeY, UBOOL 
 	FLOAT Eff = ( GAutoFovMode == AUTOFOV_Adaptive ) ? Max( Base, HorPlus ) : HorPlus;
 	Eff = Clamp( Eff, 1.0f, 170.0f );
 
-	// Log whenever the INPUTS change — the viewport size or the base FOV. Both matter and neither can
-	// be inferred from the other: the size is the resize event the E2E asserts on, and the base moves
-	// when the game changes the player's FOV (an intro camera, a zoom). Two earlier cuts were wrong:
-	// gating on "base == 90" emitted NOTHING on an engine whose stored FOV was not 90, and gating on
-	// size alone latched whatever transient FOV the very first drawn frame happened to carry (an intro
-	// camera at the 170 clamp), so the first line did not describe gameplay. Zoom still cannot spam it:
-	// UE interpolates FovAngle over ~a dozen frames, so a zoom costs a dozen lines, once.
+	// Log whenever the inputs change: the viewport size (the resize event the E2E asserts on) or the base
+	// FOV (an intro camera, a zoom). UE interpolates FovAngle over about a dozen frames, so a zoom costs a
+	// dozen lines, once.
 	if( bLog && ( SizeX != GAutoFovLastX || SizeY != GAutoFovLastY || Abs(Base - GAutoFovLastBase) > 0.5f ) )
 	{
 		GAutoFovLastX    = SizeX;
@@ -1564,9 +1550,8 @@ ENGINE_API FLOAT ufrontHudScaleFactor( INT SizeX, INT SizeY )
 
 	FLOAT Aspect = (FLOAT)SizeX / (FLOAT)SizeY;
 
-	// CLAMPED AT 1: only ever shrink. At or below the reference aspect this returns exactly 1.0, so a
-	// narrow/tall window renders bit-for-bit as stock -- the stock sizing already shrinks with a taller
-	// aspect (it follows ClipX), and preserving that is the point.
+	// Clamped at 1: only ever shrink. At or below the reference aspect this returns exactly 1.0, so a
+	// narrow or tall window renders as stock (the stock sizing already shrinks with a taller aspect).
 	FLOAT Factor = ( Aspect > GAutoFovRef ) ? ( GAutoFovRef / Aspect ) : 1.0f;
 	Factor *= GAutoFovUiScale;
 	Factor = Clamp( Factor, 0.05f, 4.0f );
@@ -1979,14 +1964,13 @@ void FPlayerSceneNode::Render(FRenderInterface* RI)
 		GUglyHackFlags |= 1;
 		clock(GStats.DWORDStats(GEngineStats.STATS_Game_HUDPostRender));
 
-		// AutoFOVUI (step 2.16b): scale the game's OWN global HudScale for the duration of the HUD's
-		// PostRender, so widget SIZES follow height instead of width while positions stay put. Found by
-		// NAME through reflection rather than a compile-time member, because the property lives on the
-		// retail script class (Engine.HUD) -- which also means any total conversion's HUD inherits it and
-		// is scaled without us knowing anything about it.
+		// AutoFOVUI: scale the game's own global HudScale for the duration of the HUD's PostRender, so
+		// widget sizes follow height instead of width while positions stay put. Found by name through
+		// reflection, because the property lives on the retail script class (Engine.HUD), so any total
+		// conversion's HUD inherits it.
 		//
-		// Restored immediately: the HUD script mutates HudScale mid-render itself (HudBDeathMatch.uc:745
-		// saves/forces 1/restores, :937 multiplies), and a SaveConfig must never capture our factor.
+		// Restored immediately: the HUD script mutates HudScale mid-render itself (HudBDeathMatch.uc
+		// saves/forces 1/restores, and multiplies), and a SaveConfig must never capture the factor.
 		if ( Viewport->Actor->myHUD )
 		{
 			AActor* Hud = Viewport->Actor->myHUD;

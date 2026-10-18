@@ -14,9 +14,8 @@ Revision history:
 #endif
 
 // Socket API.
-// ufront 2.33: keyed on the PLATFORM, not the compiler. Under `_MSC_VER` a MinGW build took the BSD arm
-// and failed on <sys/socket.h>, which MinGW does not ship — Windows is WinSock whichever compiler built
-// the binary. (Same change as engine-ut99's IpDrvPrivate.h.)
+// Keyed on the platform, not the compiler: Windows is WinSock whichever compiler built the binary (MinGW
+// ships no <sys/socket.h>).
 #ifdef _WIN32
 	#define __WINSOCK__ 1
 	#define SOCKET_API TEXT("WinSock")
@@ -37,7 +36,7 @@ Revision history:
 	#include <windows.h>
 	#include <winsock.h>
 	#include <conio.h>
-	#include <ws2tcpip.h>	// ufront 2.33: socklen_t, rather than an #if at every call site
+	#include <ws2tcpip.h>	// socklen_t, rather than an #if at every call site
 #endif
 #pragma pack(pop)
 #endif
@@ -128,23 +127,17 @@ public:
 		*Error = 0;
 		ThreadId = 1;
 
-// ufront 2.33: was `#if _MSC_VER`, while the declaration above and the pthread_t member both switch on
-// __UNIX__. On MinGW those disagreed — the declaration took the Win32 arm (so no `ResolveThread` member
-// exists) but the constructor fell through to the pthread arm and referenced it. Windows gets the
-// CreateThread resolver, which is what the declarations already promised.
+// The Win32 arm on every Windows compiler, matching the declaration above and the pthread_t member (which
+// switch on __UNIX__): Windows gets the CreateThread resolver.
 #ifdef _WIN32
 		HANDLE hThread = CreateThread( NULL, 0, ResolveThreadEntry, this, 0, &ThreadId );
 		check(hThread);
 		CloseHandle( hThread );
 #elif defined(__EMSCRIPTEN__)
-		// ufront 2.13.2: the web build is now linked -pthread, which makes this pthread_create REAL.
-		// Without -pthread Emscripten's pthread_create is a stub that fails, so ThreadId stayed 1 and
-		// the resolve never completed — that IS the shipping web behavior, and it is harmless because
-		// the web target has no name to resolve: its transport is WebRTCDrv (peer ids over a signaling
-		// room), never TcpNetDriver/HTTPDownload. Letting the thread actually run would be a behavior
-		// CHANGE, not a fix: Emscripten's gethostbyname synthesizes a fake address, so a resolve would
-		// "succeed" and the caller would go on to open a socket that cannot exist. Keep the shipping
-		// semantics explicitly rather than by accident of the link flags.
+		// The resolver thread is not started on the web: Emscripten's gethostbyname synthesizes a fake
+		// address, so a resolve would "succeed" and the caller would open a socket that cannot exist.
+		// Every socket syscall fails there; UHTTPDownload goes through GWebHttp and the net drivers
+		// through the host's glue.
 		(void)ResolveThread;
 #else
 		pthread_attr_t ThreadAttributes;
@@ -161,12 +154,9 @@ public:
 		{
 #if defined(__ANDROID__)
 			// The resolve thread is created PTHREAD_CREATE_DETACHED (see the ctor below), so it
-			// self-reaps. Calling pthread_join on a detached thread is invalid, and Android's bionic
-			// ABORTS the process ("invalid pthread_t passed to pthread_join") -- this is the SIGABRT
-			// hit when the server browser resolves the master server. glibc merely returns EINVAL, so
-			// this join was always a functional no-op off-Android. ThreadId==0 (set by the thread just
-			// before pthread_exit) is the real completion signal. Web/desktop keep the original
-			// pthread_join in the #else -> byte-identical.
+			// self-reaps; pthread_join on a detached thread is invalid, and bionic aborts the process
+			// ("invalid pthread_t passed to pthread_join"). ThreadId==0 (set by the thread just
+			// before pthread_exit) is the completion signal.
 #else
 			pthread_join(ResolveThread, NULL);
 #endif

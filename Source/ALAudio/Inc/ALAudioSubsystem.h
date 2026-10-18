@@ -19,8 +19,8 @@ Revision history:
 #endif
 
 #ifdef __EMSCRIPTEN__
-// Emscripten links openal-soft statically (ufront 2.61; was the -lopenal port); include its headers
-// for the function declarations FindProcs binds to directly.
+// The web links openal-soft statically; include its headers for the function declarations FindProcs binds
+// to directly.
 #include <AL/al.h>
 #include <AL/alc.h>
 #else
@@ -30,10 +30,9 @@ typedef struct ALCdevice_struct ALCdevice;
 typedef struct ALCcontext_struct ALCcontext;
 #endif
 
-// ufront 2.61 -- EAX on EVERY platform. It was Windows-only because EAX used to mean Creative's driver;
-// the OpenAL we ship everywhere (openal-soft) implements EAX 2.0-5.0 itself. Whether it is actually there
-// is decided at run time, by the library: the EAX2.0/EAX3.0 extension strings and EAXSet/EAXGet in
-// alGetProcAddress (see UALAudioSubsystem::Init). A build of it without EAX simply reports neither.
+// EAX on every platform: the OpenAL shipped everywhere (openal-soft) implements EAX 2.0-5.0 itself. Whether
+// it is there is decided at run time by the library: the EAX2.0/EAX3.0 extension strings and EAXSet/EAXGet
+// in alGetProcAddress (UALAudioSubsystem::Init). A build of it without EAX reports neither.
 #define SUPPORTS_EAX 1
 
 #define DYNAMIC_BIND 1
@@ -281,7 +280,7 @@ protected:
 								UseVAD,
 								EnhancedDenoiser,
 								UseSpatializedVoice,
-								UseHRTF;			// ufront 2.61: headphone virtualisation; the player's choice, off by default
+								UseHRTF;			// headphone virtualisation; the player's choice, off by default
 
 	friend class FALSoundSource;
 	friend class FALSoundBuffer;

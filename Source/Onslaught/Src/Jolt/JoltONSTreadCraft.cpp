@@ -5,7 +5,7 @@
     UpdateVehicle is defined in ONSTreadCraft.cpp (shared between Karma
     and Jolt builds).
 
-    Per D-07: in Onslaught/Src/Jolt/.
+    In Onslaught/Src/Jolt/.
 =============================================================================*/
 
 #include <Jolt/Jolt.h>

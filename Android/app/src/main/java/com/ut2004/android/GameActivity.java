@@ -23,9 +23,9 @@ import org.libsdl.app.SDLActivity;
 /**
  * UT2004 game process (SDL). MainActivity gates All-Files-Access, then launches this in the
  * ":game" process. Before SDL starts SDL_main we set the engine's basedir env + cwd so it reads
- * the ~11 GB game tree IN PLACE from /sdcard/UT2004 (no copy).
+ * the ~11 GB game tree in place from /sdcard/UT2004 (no copy).
  *
- * Touch input (2.10d): after SDL builds its surface we lay a full-screen {@link Ut2004TouchOverlayView}
+ * Touch input: after SDL builds its surface a full-screen {@link Ut2004TouchOverlayView} is laid
  * on top. It draws the on-screen controls and, during gameplay, feeds the engine through the JNI
  * funcs below (implemented in SDL2Drv/Src/SDL2Viewport.cpp). While a menu is up it disables itself
  * and lets touches fall through to SDL's touch->mouse tap-to-click. The switch is the engine's own
@@ -35,8 +35,8 @@ public class GameActivity extends SDLActivity {
     private static final String TAG = "UT2004";
     private static boolean bridgeLoaded = false;
 
-    // Storage-mode selection (Stage 2.11). MainActivity's launcher puts one of these on the launch
-    // Intent; we read it in resolveDataRoot() (before super.onCreate) to pick which tree to boot.
+    // Storage-mode selection. MainActivity's launcher puts one of these on the launch Intent;
+    // resolveDataRoot() reads it (before super.onCreate) to pick which tree to boot.
     //   internal = app-private /data (getFilesDir()/UT2004) -- fast, non-FUSE, but wiped on uninstall.
     //   external = the slow FUSE tree (/sdcard/UT2004 or a physical SD card) -- the complete game.
     static final String EXTRA_STORAGE_MODE = "com.ut2004.android.STORAGE_MODE";
@@ -44,19 +44,16 @@ public class GameActivity extends SDLActivity {
     static final String MODE_EXTERNAL = "external";
 
     /**
-     * Extra engine command line, whitespace-separated, appended after CPUSPEED (ufront 2.45).
-     * This is the Android equivalent of the desktop command line — on every other platform the
-     * engine is started as {@code ut2004 ONS-Torlan?Game=Onslaught.ONSOnslaughtGame?...}, and
-     * without this there is no way to say that here at all: the activity always launched the menu
-     * and a map could only be reached by hand. That made "does arm64 PLAY?" untestable in a
-     * scripted run, which is exactly the question Karma-on-Android is about.
+     * Extra engine command line, whitespace-separated, placed before CPUSPEED: the Android
+     * equivalent of the desktop command line (a travel URL such as
+     * {@code ONS-Torlan?Game=Onslaught.ONSOnslaughtGame?...}), so a scripted run can start a map:
      *
      *   adb shell am start -n com.ut2004.android/.MainActivity \
      *       --es com.ut2004.android.ARGS 'ONS-Dria?Game=Onslaught.ONSOnslaughtGame?bAutoNumBots=True'
      *
      * MainActivity forwards it to this process; its 10-second auto-start countdown then needs no
-     * touch, so the whole run is one adb command. ⚠ GameActivity itself is NOT exported (manifest),
-     * so the Intent has to go to MainActivity — an `am start` aimed straight here is refused.
+     * touch, so the whole run is one adb command. GameActivity itself is not exported (manifest),
+     * so the Intent goes to MainActivity; an `am start` aimed straight here is refused.
      */
     static final String EXTRA_ARGS = "com.ut2004.android.ARGS";
 
@@ -97,8 +94,8 @@ public class GameActivity extends SDLActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // MUST run BEFORE super.onCreate() — super.onCreate() spins up the SDL thread that calls
-        // SDL_main, and the engine's appBaseDir()/appInit() read the env + cwd we set here.
+        // Must run before super.onCreate(): super.onCreate() spins up the SDL thread that calls
+        // SDL_main, and the engine's appBaseDir()/appInit() read the env + cwd set here.
         File dataRoot = resolveDataRoot();
         File homeDir = new File(getFilesDir(), "home");
         if (bridgeLoaded) {
@@ -109,11 +106,10 @@ public class GameActivity extends SDLActivity {
         }
         super.onCreate(savedInstanceState);
 
-        // Keep the screen awake during play (2.10f lifecycle): a match can run for long stretches
-        // with no touch input (spectating, watching bots), and the default screen timeout would
-        // dim/sleep the display. FLAG_KEEP_SCREEN_ON while this activity is foreground; cleared
-        // automatically when it isn't. Matches the UTA reference. (Background suspend is free --
-        // stock SDL parks the engine thread on pause; the resume delta is clamped by ULevel::Tick.)
+        // Keep the screen awake during play: a match can run for long stretches with no touch input
+        // (spectating, watching bots). FLAG_KEEP_SCREEN_ON while this activity is foreground; cleared
+        // automatically when it isn't. (Background suspend: stock SDL parks the engine thread on pause;
+        // the resume delta is clamped by ULevel::Tick.)
         getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         // Lay the touch controls on top of SDL's surface (mLayout is the content view).
@@ -128,7 +124,7 @@ public class GameActivity extends SDLActivity {
     }
 
     /**
-     * Locate the UT2004 game tree, honoring the Stage 2.11 storage choice on the launch Intent
+     * Locate the UT2004 game tree, honoring the storage choice on the launch Intent
      * ({@link #EXTRA_STORAGE_MODE}, read before super.onCreate):
      *   - {@code internal} -> app-private {@link #internalRoot} if it holds a game tree, else fall
      *     through to the external auto-detect (graceful: an empty internal copy still boots off the card).
@@ -208,25 +204,17 @@ public class GameActivity extends SDLActivity {
     @Override
     protected String[] getArguments() {
         // Engine writes (UT2004.log, UT2004.ini, User.ini, config flush) land in the cwd
-        // (<dataRoot>/System) instead of ~/.ut2004 — everything stays on external storage. That used
-        // to need an explicit "-nohomedir"; since ufront 2.37 it is the engine's default and the flag
-        // is an accepted no-op, so it is gone from here. "-usehomedir" would opt back in; nothing on
-        // Android wants that ($HOME is the app shell's, set in the JNI bridge).
+        // (<dataRoot>/System), the engine's default; "-usehomedir" would redirect them to $HOME (the
+        // app's, set in the JNI bridge), which nothing on Android wants.
         //
-        // CPUSPEED=3000 (2.10 arm boot): ARM has no rdtsc and /proc/cpuinfo has no "cpu MHz", so
-        // Core's CheckCpuSpeed (UnUnix.cpp, the UT_NO_X86_INTRIN path) fatally appErrors
-        // ("Please specify CPUSPEED=x on cmdline.") without it — this is what kills the arm64/armv7
-        // boot right after "Object subsystem initialized". The web port hits the same wasm path and
-        // passes the identical CPUSPEED=3000 (packages/frontend shell/boot.ts). GSecondsPerCycle only
-        // scales appCycles()->seconds for profiling; the game loop uses appSeconds wall-clock, so the
-        // exact value is non-critical — 3000 matches web.
+        // CPUSPEED=3000: ARM has no rdtsc and /proc/cpuinfo has no "cpu MHz", so Core's CheckCpuSpeed
+        // (UnUnix.cpp, the UT_NO_X86_INTRIN path) appErrors ("Please specify CPUSPEED=x on cmdline.")
+        // without it. The web passes the same value. GSecondsPerCycle is pinned on that path anyway,
+        // so the exact value is non-critical.
         //
-        // ★ ANYTHING ON EXTRA_ARGS GOES FIRST, AND THAT ORDER IS THE WHOLE FEATURE. UGameEngine::Init
-        // takes the FIRST command-line token as the travel URL (UnGame.cpp) — and since ufront 2.38 it
-        // rejects a global option in that slot and falls straight back to DefaultLocalMap without
-        // looking at the next token. So `CPUSPEED=3000 ONS-Dria?...` reaches the MAIN MENU, measured
-        // on the device; the map has to be argv[1]. packages/frontend's web boot builds the same
-        // order (`['Room?connect', 'CPUSPEED=3000', ...]`).
+        // Anything on EXTRA_ARGS goes first: UGameEngine::Init takes the first command-line token as
+        // the travel URL (UnGame.cpp) and rejects a global option in that slot, falling back to
+        // DefaultLocalMap, so the map has to be argv[1]. The web boot builds the same order.
         //
         // Split on whitespace: a UT2004 URL has none in it (options are '?'-separated), so this needs
         // no quoting rules of its own.

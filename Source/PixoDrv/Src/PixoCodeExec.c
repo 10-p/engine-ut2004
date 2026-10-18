@@ -1,19 +1,16 @@
 /*=============================================================================
-	PixoCodeExec.c: executable JIT code-buffer allocator override (ufront 2.12).
+	PixoCodeExec.c: executable JIT code-buffer allocator override.
 
-	Pixomatic (2002) is a JIT rasterizer: it generates x86 machine code for the
+	Pixomatic is a JIT rasterizer: it generates x86 machine code for the
 	current render state into buffers from PixoAllocCodeBuffer(), then executes
 	it (DrawPrimitive jumps into the generated code). The closed pixomatic_linux.a
-	allocates those buffers with malloc -- fine in 2002 when the heap was
-	executable, but modern Linux enforces NX (no-execute) on the heap, so running
-	the JIT'd rasterizer SIGSEGVs (observed: fault PC inside DrawPrimitive's
-	generated code at a heap address).
+	allocates those buffers with malloc, and Linux maps the heap NX, so the
+	generated code would fault on instruction fetch.
 
-	Fix: provide our OWN PixoAllocCodeBuffer/PixoFreeCodeBuffer that mmap()s
-	READ|WRITE|EXEC pages, so the generated code is executable. This object is
-	linked ahead of pixomatic_linux.a (PixoDrv is whole-archived; the archive is a
-	later PRIVATE dep) and the link uses -Wl,--allow-multiple-definition, so these
-	definitions win over the archive's.
+	These PixoAllocCodeBuffer/PixoFreeCodeBuffer mmap() READ|WRITE|EXEC pages
+	instead. This object is linked ahead of pixomatic_linux.a (PixoDrv is
+	whole-archived; the archive is a later PRIVATE dep) and the link uses
+	-Wl,--allow-multiple-definition, so these definitions win over the archive's.
 =============================================================================*/
 
 #if defined(__LINUX_X86__)
@@ -37,10 +34,9 @@ PIXO_DYNLINK(PIXO_CODEBUFFER *) PixoAllocCodeBuffer(PIXO_U32 bytes)
 
 PIXO_DYNLINK(void) PixoFreeCodeBuffer(PIXO_CODEBUFFER *buf)
 {
-	/* Intentionally a NO-OP (leak). The stock malloc-based allocator left freed buffers MAPPED, so
-	   Pixomatic's JIT code (which bakes absolute addresses to state/stream buffers) tolerated stale
-	   references. munmap()ing here turns those stale references into hard faults (observed: JIT code
-	   loading from a freed buffer's address SIGSEGVs). Code buffers are few + small, so leaking is fine. */
+	/* Intentionally a no-op (a leak): Pixomatic's JIT code bakes absolute addresses to state and
+	   stream buffers and tolerates stale references into freed ones, which munmap() would turn into
+	   faults. Code buffers are few and small. */
 	(void)buf;
 }
 

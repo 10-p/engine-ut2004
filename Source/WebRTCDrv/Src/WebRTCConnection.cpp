@@ -1,10 +1,7 @@
 /*=============================================================================
-	WebRTCConnection.cpp: WebRTC connection implementation.
+	WebRTCConnection.cpp: UWebRTCConnection, one WebRTC data channel as a
+	UNetConnection. Modelled on UTcpipConnection.
 	Copyright 2026 UT2004 Web Port Project. All Rights Reserved.
-
-Revision history:
-	* Created for browser multiplayer networking (Phase 10).
-	  Follows UTcpipConnection pattern, adapted for WebRTC data channels.
 =============================================================================*/
 
 #include "Engine.h"
@@ -47,20 +44,11 @@ void UWebRTCConnection::LowLevelSend( void* Data, INT Count )
 {
 	guard(UWebRTCConnection::LowLevelSend);
 
-	// Match native TcpNetDriver semantics: UTcpipConnection::LowLevelSend sends
-	// REGARDLESS of the UE2 connection State (it just calls sendto()). The client's
-	// server connection legitimately stays USOCK_Pending through the ENTIRE download
-	// + join handshake — UE2 only promotes it to USOCK_Open from inside
-	// HandleClientPlayer (UnConn.cpp), which fires when the owning PlayerController
-	// arrives and whose gate (UnChan.cpp:1072) REQUIRES State==USOCK_Pending.
-	//
-	// The previous gate `State!=USOCK_Open` forced TickDispatch to prematurely flip
-	// the connection to USOCK_Open the moment the WebRTC pipe opened (so sends would
-	// work during the Pending download phase). That premature promotion is exactly
-	// what made the HandleClientPlayer gate fail post-JOIN, so the guest downloaded
-	// the map but never spawned. Gate only on the transport pipe being usable;
-	// webrtc_send() itself drops cleanly (returns 0) until the pipe is open, after
-	// which UE2's reliability layer retransmits any reliable bunches — just like UDP.
+	// As UTcpipConnection::LowLevelSend, send regardless of the UE2 connection State: the client's
+	// server connection stays USOCK_Pending through the entire download + join handshake, and only
+	// HandleClientPlayer (UnConn.cpp) promotes it to USOCK_Open, behind a gate (UnChan.cpp) that
+	// requires USOCK_Pending. Gate only on the transport: webrtc_send() drops cleanly (returns 0)
+	// until the pipe is open, and UE2's reliability layer retransmits reliable bunches, as over UDP.
 	if( State == USOCK_Closed )
 	{
 		debugf( NAME_DevNet, TEXT("[WebRTC] LowLevelSend on connId=%d but state=Closed, dropping %d bytes"),
@@ -74,9 +62,9 @@ void UWebRTCConnection::LowLevelSend( void* Data, INT Count )
 	}
 
 	clock(Driver->SendCycles);
-	// WebRTCConnId < 0 means this connection has been DETACHED from the transport (a newer client driver
-	// took the one client slot — see UWebRTCNetDriver::InitConnect). Drop its traffic rather than posting
-	// it into somebody else's session.
+	// WebRTCConnId < 0: this connection has been detached from the transport (a newer client driver took
+	// the one client slot; UWebRTCNetDriver::InitConnect). Its traffic is dropped rather than posted into
+	// another session.
 	if( WebRTCConnId >= 0 )
 		webrtc_send( WebRTCConnId, Data, Count );
 	unclock(Driver->SendCycles);

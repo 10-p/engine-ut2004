@@ -1,8 +1,6 @@
 /*=============================================================================
-	UnCheats.cpp: the position cheats WHEREAMI and TELEPORT. ufront port; not
-	Epic's. Ported from engine-uc2 (Source/Engine/Src/UC2Cheats.cpp, the same engine
-	family); the names, the format and the guard are the cross-engine spec of
-	engine-uc2's docs/CHEAT-COMMANDS.md, shared by every engine of the frontend.
+	UnCheats.cpp: the position cheats WHEREAMI and TELEPORT (not Epic's). The names,
+	the format and the guard are the same in every engine of the frontend.
 
 	Console commands (the console, a key binding, the web's ue_exec_command):
 	  WHEREAMI                         the local player's position and view:
@@ -85,7 +83,7 @@ static UBOOL CheatsAllowed( UEngine* Engine, APlayerController* PC, const TCHAR*
 {
 	guard(CheatsAllowed);
 	// The local player of a standalone game (UT2004's own rule: the CheatManager, PlayerController.AddCheats) and the
-	// local player of a LISTEN server (the host is the server's authority). Every network client and a dedicated
+	// local player of a listen server (the host is the server's authority). Every network client and a dedicated
 	// server: refused, unless the test key [Engine.GameEngine] AllowNetCheats opens them for a test harness.
 	UBOOL ByKey = 0;
 	UBOOL Allowed = CheatsWouldAllow( Engine, PC, NULL, &ByKey );

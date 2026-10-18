@@ -11,43 +11,25 @@ android {
         targetSdk 34
         versionCode 1
         versionName '0.1'
-        // ★ THE SHIPPED ABI SET, PLUS AN OPT-IN 32-BIT x86 FOR ONE EXPERIMENT.
-        //
-        // `-Px86abi` adds x86 (32-bit). It is NOT for shipping — no phone has been x86 for years
-        // — it exists to answer the question the Karma block below could not: is the Android
-        // Karma SIGSEGV an LP64 defect or an Android-integration one?
-        //
-        // Karma has never been enabled on Android at ANY pointer width, so there was nothing to
-        // compare against. Of the three shipped ABIs, two are 64-bit and the third (armeabi-v7a)
-        // cannot execute on an x86_64 emulator. That left "attach the OnePlus 6", and the note
-        // below recorded the question as blocked.
-        //
-        // It is not blocked. `system-images;android-24;google_apis_playstore;x86` is a 32-bit
-        // image at exactly this minSdk, so x86 vs x86_64 is the SAME emulator family, the same
-        // APK build, the same map — differing in pointer width and nothing else. That is the
-        // control the attribution needs. API 34 itself has no 32-bit ABI at all
-        // (`ro.product.cpu.abilist32` is empty), which is what "ABI x86 not supported on this
-        // device" was really saying.
+        // The shipped ABI set, plus an opt-in 32-bit x86 (`-Px86abi`), which is not for shipping:
+        // it runs the same APK at 32-bit on an x86 emulator image
+        // (`system-images;android-24;google_apis_playstore;x86`, this minSdk), a pointer-width control
+        // for the x86_64 one. API 34 images have no 32-bit ABI at all.
         def utAbis = ['x86_64', 'arm64-v8a', 'armeabi-v7a']
         if (project.hasProperty('x86abi')) { utAbis += 'x86' }
         ndk { abiFilters(*utAbis) }
         externalNativeBuild {
             cmake {
                 abiFilters(*utAbis)
-                // ufront 2.34 — the SDL2 source directory is OPT-IN, not baked in. This used to be a hard
-                // '-DFETCHCONTENT_SOURCE_DIR_SDL2=/home/ion/engines/.cache-sdl2-2.32', an absolute path on
-                // one machine; anywhere else FetchContent stops with "Manually specified source directory
-                // is missing" — which is exactly what CI hit on its first run. Point it at a local clone
-                // with `-Psdl2Dir=/abs/path` or SDL2_SOURCE_DIR in the environment to skip the download and
-                // guarantee C/Java SDL parity; with neither, FetchContent clones the pinned SDL2 itself.
+                // The SDL2 source directory is opt-in: `-Psdl2Dir=/abs/path` or SDL2_SOURCE_DIR in the
+                // environment points at a local clone (skips the download and guarantees C/Java SDL
+                // parity); with neither, FetchContent clones the pinned SDL2 itself.
                 def sdl2Dir = project.findProperty('sdl2Dir') ?: System.getenv('SDL2_SOURCE_DIR')
                 def cmakeArgs = ['-DANDROID_STL=c++_shared', '-DUT_GFX_BACKEND=gl4es']
-                // The recovered Karma is FetchContent'd from its own repository at `main`, and
-                // the root CMakeLists says how to override that: point
-                // FETCHCONTENT_SOURCE_DIR_METOOLKITKARMADECOMP at a local checkout. This is the
-                // way to pass it from here — `-PkarmaDir=/abs/path` — which is how a change to
-                // the recovered sources gets tested on a device BEFORE it is pushed. Same shape
-                // as `sdl2Dir` above, and the same reason: no absolute path is baked in.
+                // The recovered Karma is FetchContent'd from its own repository at `main`;
+                // `-PkarmaDir=/abs/path` (or KARMA_DECOMP_DIR) passes
+                // FETCHCONTENT_SOURCE_DIR_METOOLKITKARMADECOMP, so a change to the recovered sources can
+                // be tested on a device before it is pushed. No absolute path is baked in.
                 def karmaDir = project.findProperty('karmaDir') ?: System.getenv('KARMA_DECOMP_DIR')
                 if (karmaDir) {
                     if (file(karmaDir).isDirectory()) {
@@ -56,83 +38,11 @@ android {
                         logger.warn("karmaDir=${karmaDir} does not exist — letting FetchContent clone it")
                     }
                 }
-                // ★ KARMA IS STILL OFF ON ANDROID, AND THE REASON CHANGED AGAIN ON 2026-08-30.
-                //
-                // IT WAS the LP64 layout defect, and the note here used to say that was fixed.
-                // ⚠ IT WAS NOT — `metoolkit-karma-decomp` proved on 2026-08-30 that its own gate
-                // was reporting PASS over a build whose ragdoll scene gave a different answer on
-                // every run (proven.txt LP64-ADDRESS-DEPENDENT). That IS now fixed and MEASURED:
-                // with the arithmetic held fixed (-ffloat-store) two of the three offline scenes
-                // are BYTE-IDENTICAL at i386 and LP64 over all 901 rows, and 100 runs of the
-                // plain -m64 ragdoll give one answer. proven.txt LP64-CLOSED.
-                //
-                // ⚠ AND TURNING IT ON HERE STILL CRASHES. Re-measured 2026-08-30 on the API-34
-                // x86_64 emulator with the repaired sources, same APK, same 11 GB tree:
-                //
-                //   Karma ON  : SIGSEGV on the engine thread immediately after
-                //               "[GL4ES-DBG] Init: complete, returning 1", 501 lines of log
-                //   Karma OFF : same APK, same ini, same tree — reaches UT2k4MainMenu.Opened(),
-                //               2153 lines
-                //
-                // The repairs moved it: 243 lines before, 501 now. They did not remove it. So
-                // the Android SIGSEGV is NOT the layout defect that was located and closed, and
-                // treating it as such would be the second time this note was wrong.
-                //
-                // ★★ AND THE 32-BIT CONTROL NOW SAYS IT IS POINTER WIDTH. That is what
-                // `-Px86abi` is for, and it is no longer a plan.
-                // `system-images;android-24;google_apis_playstore;x86` is a 32-bit image, so the
-                // same APK runs the same engine at the shipped pointer width. Measured
-                // 2026-08-30, same device, same reduced tree (System + Animations + KarmaData +
-                // the package closure the log asked for, ~1 GB — that emulator holds 5.8 GB
-                // against an 11 GB tree):
-                //
-                //   x86    Karma ON  : 486 lines, "Entry map loaded OK", exits, NO SIGSEGV
-                //   x86    Karma OFF : 486 lines, "Entry map loaded OK", exits, NO SIGSEGV
-                //
-                // IDENTICAL. At 32-bit, Karma changes NOTHING — both arms stop at the same line,
-                // and they stop because the tree is incomplete, not because of physics. Against
-                // the 64-bit pair above, that is the attribution:
-                //
-                //   Karma is NEUTRAL at 32-bit and FATAL at 64-bit -> the Android SIGSEGV is
-                //   POINTER-WIDTH DEPENDENT, not an Android-integration defect.
-                //
-                // ⚠ READ THE LIMIT WITH IT. The 32-bit arm stops at 486 lines and the 64-bit
-                // Karma-OFF arm reaches 2153, so this does NOT show that a COMPLETE 32-bit run
-                // passes the instruction the 64-bit one dies on. What it shows is that the
-                // ON/OFF difference exists at one width and not the other, which is the
-                // comparison that was missing.
-                //
-                // NEXT: a backtrace, and there is now a better vehicle than the emulator for
-                // getting one. `-DUT_ALLOW_64BIT=ON` (root CMakeLists) builds this engine for
-                // x86-64 LINUX — the same data model as this ABI, with gdb, ASan and valgrind,
-                // and without the engine's own SIGSEGV handler (UnUnix.cpp, SA_RESETHAND)
-                // swallowing the tombstone. Measured 2026-08-30: every engine translation unit,
-                // all sixteen recovered Karma libraries and every third-party dependency build at
-                // -m64; the only thing missing on this box is the amd64 X11 dev packages, which
-                // SDL2's feature probes need (the i386 ones are installed for the shipping
-                // build). On the device itself, attach the NDK's lldb-server instead.
-                //
-                // ★★★ ALL OF THE ABOVE IS HISTORY NOW, AND THE DEFAULT HAS CAUGHT UP WITH IT
-                // (2026-09-01). The LP64 port plays. Measured on a OnePlus 6, `ONS-Dria` with
-                // `Game=Onslaught.ONSOnslaughtGame`, bots, vehicles and ragdolls, as a spectator
-                // so nothing can pause the level:
-                //
-                //   arm64-v8a    1397 s (23 min), 0 signals, frame advance verified every 60 s
-                //   armeabi-v7a  the SAME match on the 32-bit slice: 508 s, 0 signals
-                //
-                // ★ The armv7 arm is the attribution control the note above kept asking for, and
-                // it now says the opposite of what it used to: BOTH WIDTHS PLAY. So `Karma is
-                // NEUTRAL at 32-bit and FATAL at 64-bit` is no longer true of this engine.
-                // (metoolkit-karma-decomp `9a92414`, six more LP64 repairs; the last one was a
-                // callback's `void *` context read at i386 offsets, which no static gate in that
-                // project can see — see its decomp/docs/STATE.md.)
-                //
-                // ⚠ SO THE DEFAULT IS NOW KARMA ON: an APK with vehicles and ragdolls is the
-                // point of the whole exercise, and it starts. `-PnoKarma` builds the old
-                // physics-free APK if you need the control arm again; `-PkarmaDir=/path` still
+                // Karma is on by default on Android (LP64 Karma plays on arm64-v8a and armeabi-v7a);
+                // `-PnoKarma` builds the physics-free APK (the control arm), and `-PkarmaDir=/path`
                 // points at a local metoolkit-karma-decomp checkout.
                 //
-                // ⚠ VERIFY IN THE ARTEFACT, NOT THE GRADLE LOG. It reports "BUILD SUCCESSFUL,
+                // Verify in the artefact, not the Gradle log, which reports "BUILD SUCCESSFUL,
                 // up-to-date" whether or not it recompiled:
                 //   nm -D --defined-only <arm64 .so> | grep -c McdAggregateCreate
                 //   llvm-objdump -d --disassemble-symbols=MePoolxDictNodeAllocate <.so>
@@ -147,16 +57,16 @@ android {
                     logger.warn("sdl2Dir=${sdl2Dir} does not exist — letting FetchContent clone SDL2")
                 }
                 arguments(*cmakeArgs)
-                // OpenAL (openal-soft) is built + packaged but NOT linked into libUT2004 (see
-                // SDLLaunch/CMakeLists.txt): ALAudio dlopens libopenal.so at audio-init, after the
-                // engine allocator is up. Listed here so AGP builds/packages the standalone target.
+                // OpenAL (openal-soft) is built and packaged but not linked into libUT2004 (see
+                // SDLLaunch/CMakeLists.txt): ALAudio dlopens libopenal.so at audio init, after the
+                // engine allocator is up. Listed here so AGP builds and packages the standalone target.
                 targets 'SDLLaunch', 'ut2004_android_bridge', 'OpenAL'
             }
         }
     }
 
-    // Checkpoint B+: point at the engine's own root CMakeLists (Option B). Its if(ANDROID)
-    // branches build the SDLLaunch target as libUT2004.so (whole-archive) alongside libSDL2.so.
+    // The engine's own root CMakeLists: its if(ANDROID) branches build the SDLLaunch target as
+    // libUT2004.so (whole-archive) alongside libSDL2.so.
     externalNativeBuild {
         cmake {
             path file('../../CMakeLists.txt')

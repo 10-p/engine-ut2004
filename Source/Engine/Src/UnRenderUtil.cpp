@@ -8,9 +8,8 @@
 
 #include "EnginePrivate.h"
 
-// ufront 2.33: NVTriStrip.h is NOT in this tree — it came with Epic's MSVC project. The guard is an
-// exclusion list ("every platform except the consoles and the Unixes"), so a MinGW Windows build matched
-// it and failed on a missing header. `&& _MSC_VER` states what the list was actually reaching for.
+// NVTriStrip.h is not in this tree (it came with Epic's MSVC project). The guard is an exclusion list
+// ("every platform except the consoles and the Unixes"); `&& _MSC_VER` states what it is reaching for.
 #if !__PSX2_EE__ && !__GCN__ && !__LINUX__ && !__FreeBSD__ && !MACOSX && !_XBOX && !_WIN64 && _MSC_VER
 #  include "NVTriStrip.h"
 #  ifndef HAS_NVTRISTRIP

@@ -13,9 +13,7 @@ Revision history:
 #include <emscripten/html5.h>
 #include <AL/al.h>
 
-// Visibility change callback: mute audio when tab is hidden (D-16, BRWSR-03).
-// The engine keeps ticking -- only audio is silenced to prevent jarring sound
-// when the user switches browser tabs.
+// Mutes the listener while the tab is hidden; the engine keeps ticking.
 static EM_BOOL on_visibility_change(int eventType,
     const EmscriptenVisibilityChangeEvent* e, void* userData)
 {
@@ -28,39 +26,10 @@ static EM_BOOL on_visibility_change(int eventType,
 }
 
 #ifdef __EMSCRIPTEN_PTHREADS__
-// ufront 2.13.7 (option E) — YIELD ONCE PER FRAME, BUT WITHOUT setTimeout's CLAMP.
-//
-// The engine thread MUST return to its event loop every frame: with explicitSwapControl and no
-// -sOFFSCREEN_FRAMEBUFFER, emscripten_webgl_commit_frame is a no-op ("swap is implicit") and a
-// worker-owned OffscreenCanvas is composited when the worker's task ENDS. Yielding less often was
-// tried and MEASURED: at a 100 ms yield the screen updated 9.8 times a second — exactly the yield
-// rate — while the engine cheerfully reported 152 fps, i.e. it was counting frames nobody ever saw,
-// and the heavy demos regressed for real. So frequency is fixed; only COST is available.
-//
-// appSleep(0) -> emscripten_sleep(0) pays TWO costs. The Asyncify unwind/rewind of the engine stack is
-// unavoidable here. The second is pure waste: emscripten_sleep resumes from setTimeout, and NO browser
-// honours a 0 ms timer — the HTML spec's timer clamp floors it at >= 1 ms (worse once nested). We do not
-// want a timer at all; we want the shortest possible task boundary.
-//
-// A MessagePort message is exactly that: a macrotask, dispatched on the next turn, with NO clamp. Same
-// task boundary the compositor needs, minus the timer floor. (This is what emscripten_set_immediate uses
-// internally — libeventloop.js:57-80 — but that is a callback API, and the engine loop needs to BLOCK
-// here, so EM_ASYNC_JS + Asyncify is the shape that fits.)
-//
-// EM_ASYNC_JS names its import __asyncjs__ufront_yield_frame_mode, and link.py's DEFAULT_ASYNCIFY_IMPORTS
-// is ['__asyncjs__*'], so this is registered with Asyncify automatically — no ASYNCIFY_IMPORTS edit.
-//
-// ★ ufront 2.43 — AND THAT LAST CLAIM WAS WRONG, WHICH IS WHY THIS RESUMES FROM A TIMER.
-// "A MessagePort message is the same task boundary the compositor needs" was reasoned, never measured.
-// Chromium will run a chain of MessagePort tasks without giving the compositor a rendering opportunity,
-// so the frame in the OffscreenCanvas is overwritten by the next one before it is picked up. A timer task
-// interleaves with rendering; a MessagePort task does not. Measured on engine-ut99 with the present path
-// fixed (engine fps -> distinct images presented): MessagePort 49.00 -> 27.41 (44% never seen, judder
-// 30-35%); setTimeout 40.81 -> 40.87 (0% lost, judder 0%); worker rAF 44.18 -> 44.20 (0% lost). rAF ties
-// the engine to the display refresh, so it is not adopted without real-display evidence.
-// ⚠ A -YIELDMODE switch briefly existed to compare the three. Deleted on purpose: the comparison is DONE
-// and a switch nobody would know to set is the dangling scaffolding that let a stubbed present call sit
-// in the build for months.
+// Yield to the worker's event loop once per frame: the worker-owned OffscreenCanvas is composited when the
+// worker's task ends, and browser events and console commands are dispatched between tasks. It resumes from a
+// 0 ms timer because a timer task interleaves with rendering (a MessagePort task does not). EM_ASYNC_JS names
+// the import __asyncjs__ufront_yield_frame, which Asyncify's default import list (__asyncjs__*) covers.
 EM_ASYNC_JS(void, ufront_yield_frame, (void), {
     await new Promise((resolve) => { setTimeout(resolve, 0); });
 });
@@ -110,7 +79,7 @@ static void AndroidRedirectStdioToLogcat()
 #include "UnRender.h"
 #include "UnNullRenderDevice.h"
 #define SDL2DRV_REGISTRATION_ONLY
-#include "SDL2Drv.h"	// ufront 2.34: the only viewport driver — SDL 1.2 / SDLDrv is retired
+#include "SDL2Drv.h"	// the only viewport driver
 #if UT_RENDER_OPENGLDRV
 #include "OpenGLDrv.h"
 #endif
@@ -136,7 +105,7 @@ static void AndroidRedirectStdioToLogcat()
 #include "UWeb.h"
 #include "UWebNative.h"
 #include "OnslaughtPrivate.h"
-// void autoInitializeRegistrantsEditor(INT &Lookup); // D-10: Editor excluded
+// void autoInitializeRegistrantsEditor(INT &Lookup); // the Editor is not built
 
 #if USE_PIXOMATIC
 extern "C" { void autoInitializeRegistrantsPixoDrv(void); }
@@ -210,13 +179,7 @@ static void SetInitialConfiguration();
 	FMallocAnsi Malloc;
 #endif
 
-// Log file. ufront (dual-sink logging): FOutputDeviceFile on BOTH platforms (was FOutputDeviceStdout,
-// console-only, on web). It writes a log FILE (MEMFS on web) AND echoes each line to stdout via the echo
-// in its Serialize -> Module.print -> console.log on web / the terminal on native. Two independent sinks
-// mean a silent divergence is caught by the e2e log-parity check, instead of leaving you blind (the
-// ut2004 native "stall" misdiagnosis). Matches ut99 (2.8) / unreal1 (2.6e). (A separate native GLog-wiring
-// quirk means the native launcher's GLog isn't reaching this device yet -- tracked; web is unaffected,
-// as ut99/unreal1 prove FOutputDeviceFile+echo reaches the browser console.)
+// Log file: FOutputDeviceFile writes the log file and echoes each line to stdout (the browser console on the web).
 #include "FOutputDeviceFile.h"
 FOutputDeviceFile Log;
 
@@ -438,16 +401,13 @@ inline void	CMainLoop::RunLoop(void)
 	unguard;
 
 	// Enforce optional maximum tick rate.
-	UBOOL LimiterSlept = 0;	// ufront 2.89: the web yields below only when this limiter did not sleep
+	UBOOL LimiterSlept = 0;	// the web yields below only when this limiter did not sleep
 	guard(EnforceTickRate);
 	if( !GUseFixedTimeStep && IncludeMessaging )
 	{
 		FLOAT MaxTickRate = Engine->GetMaxTickRate();
-		// ufront 2.89: a frame-rate cap for a game with no tick rate of its own (a standalone game or a listen
-		// server: GetMaxTickRate returns 0 there), [Engine.Engine] FrameRateCap=<fps> in the System ini, the key the
-		// frontend's other engines read (engine-uc2's launcher, engine-ut99, engine-unreal1). Absent or <= 0:
-		// uncapped, exactly as before. The E2E sets it on the null renderer (-ini:System:[Engine.Engine]:FrameRateCap=20),
-		// which otherwise runs at about a thousand frames a second and still presents each one.
+		// [Engine.Engine] FrameRateCap=<fps> caps a game with no tick rate of its own (a standalone game or a listen
+		// server, where GetMaxTickRate returns 0). Absent or <= 0: uncapped.
 		static FLOAT MaxFps = -1.f;
 		if( MaxFps < 0.f )
 		{
@@ -469,28 +429,12 @@ inline void	CMainLoop::RunLoop(void)
 	unguard;
 
 #if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
-	// ufront 2.13.2 — PUMP THIS THREAD'S EVENT LOOP once per frame.
-	//
-	// UGameEngine::GetMaxTickRate() returns 0 for a standalone client (no NetDriver) — i.e. the whole
-	// menu and every offline match — so the limiter above calls appSleep for a NETWORK client only, and
-	// this loop is otherwise a tight loop that never returns to JS. That was survivable while the engine
-	// owned the browser's main thread and the host called _ue_exec_command directly. On a worker it is
-	// not: `postMessage` (the ONLY route left for a console command, since the export must run on the
-	// thread that owns the engine) is delivered on an event-loop turn, and so are the browser events SDL
-	// forwards here. Measured: with no yield the engine ran and rendered perfectly, while `ueExec` and a
-	// live canvas resize were both silently swallowed — the messages were queued and never dispatched.
-	//
-	// appSleep(0) is the yield (emscripten_sleep -> a 0 ms setTimeout that Asyncify unwinds to), and it
-	// is skipped whenever the limiter already slept, so a net client keeps exactly one yield per frame
-	// and its frame budget is untouched. Non-threaded builds are byte-identical: this whole block is
-	// compiled out. (2.13.3 drops ASYNCIFY, at which point this yield needs a different mechanism —
-	// noted there.)
+	// Return to this worker's event loop once per frame. GetMaxTickRate() is 0 for a standalone game, so without
+	// this yield the loop never returns to JS and postMessage (console commands) and the browser events SDL
+	// forwards are never dispatched. Skipped when the limiter above already slept.
 	guard(WorkerYield);
-	if( GUseFixedTimeStep || !IncludeMessaging || !LimiterSlept )	// ufront 2.89: was GetMaxTickRate() <= 0, the same test before the cap
-		// ufront 2.13.7 (option E): same yield, EVERY frame, exactly as 2.13.2 — only the resume is
-		// scheduled differently. Frequency is deliberately unchanged: the yield is the frame's present
-		// point. ufront 2.43: WHICH primitive resumes it decides whether the frame is presented at all —
-		// see ufront_yield_frame_mode above. Default is `timer`; 2.13.7's MessagePort is -YIELDMODE=port.
+	if( GUseFixedTimeStep || !IncludeMessaging || !LimiterSlept )
+		// The yield is also the point where the frame is presented.
 		ufront_yield_frame();
 	unguard;
 #endif
@@ -675,21 +619,13 @@ inline CMainLoop::~CMainLoop(void)
 }
 
 #ifdef __EMSCRIPTEN__
-// Engine pointer for deferred WebRTC connect (webrtc_deferred_open in WebRTCNetDriver.cpp) and for
-// ue_exec_command below.
+// The engine behind ue_exec_command and the deferred WebRTC connect (webrtc_deferred_open in WebRTCNetDriver.cpp).
 UEngine* GWebRTCEngine = NULL;
 
-// ADR-10: run a console command and RETURN its captured output (not fire-and-forget). Declared in the
-// frozen ABI (vendor/glue/ue_abi.h) for EVERY engine; unreal1 (SDLLaunch.cpp) and ut99 (Launch.cpp) have
-// implemented it since 2.6c/2.7d, but this engine's "impl lands at first rebuild" never happened — so the
-// ut2004 wasm shipped without the export and the E2E had to reach for `?map=` autostart instead. This is
-// the same implementation as the two UE1 launchers, verbatim: it needs no encoding adapter because the
-// Emscripten build compiles with NO_UNICODE_OS_SUPPORT=1 (CMakeLists.txt), i.e. TCHAR is ANSICHAR here,
-// exactly as on UE1.
-//
-// FStringOutputDevice is a string-capturing FOutputDevice (UnTemplate.h); the text is held in a static
-// FString so the returned pointer stays valid until the next call (the JS side reads it synchronously
-// during the ccall). Returns an empty string before the engine exists, never NULL.
+// ue_exec_command (vendor/glue/ue_abi.h): runs a console command and returns its captured output. TCHAR is
+// ANSICHAR on the web (NO_UNICODE_OS_SUPPORT), so no encoding adapter is needed. The text is held in a static
+// FString, valid until the next call (the JS side reads it during the ccall); before the engine exists the
+// result is an empty string, never NULL.
 extern "C" char* EMSCRIPTEN_KEEPALIVE ue_exec_command( const char* Cmd )
 {
 	static FString Captured;
@@ -735,20 +671,12 @@ static UEngine* InitEngine()
 	INT FirstRun=0;
 	GConfig->GetInt( TEXT("FirstRun"), TEXT("FirstRun"), FirstRun );
 
-    // ★ ufront 2.34 — "if we have the wrong driver, select a NON-NULL driver" (owner's rule). Every one of
-    // the substitutions below used to be keyed on WHICH BACKEND WAS COMPILED (`#if USE_SDL12`), which was
-    // only ever a proxy for "is that class in this binary". Now that SDL 1.2 is retired and ONE binary
-    // carries both GL render devices, the backend can no longer answer the question — so ask it directly.
-    // IsRenderDeviceAvailable() is a StaticFindObject over the already-registered classes, which is exactly
-    // what "is it in this binary" means for a static build.
-    //
-    // The rule in every case: a device the ini names and this build HAS is left alone; anything else is
-    // replaced by the best REAL alternative, in preference order. This is what lets one binary boot from a
-    // retail Windows ini (WinDrv + D3D), from a previous gl4es run's ini, or from a legacy one.
+    // Replace any driver the ini names but this build lacks (IsRenderDeviceAvailable: the class is registered),
+    // in preference order, so one binary boots from a retail Windows ini (WinDrv + D3D) or any earlier one. A
+    // device the build has is left alone.
     if( !ParseParam(appCmdLine(),TEXT("NoForceSDLDrv")) )
     {
-        // Viewport client: WinDrv (retail Windows) and a stale SDLDrv both land on whatever SDL client
-        // this build actually has.
+        // Viewport client.
         const TCHAR* Viewport = GConfig->GetStr(TEXT("Engine.Engine"),TEXT("ViewportManager"),TEXT("System"));
         if( !IsRenderDeviceAvailable(Viewport) )
         {
@@ -767,10 +695,8 @@ static UEngine* InitEngine()
 
     if( !ParseParam(appCmdLine(),TEXT("NoForceGL4ES")) )
     {
-        // Render device: D3DDrv/D3D9Drv (Windows retail), GLES3Drv (never built) and a driver from the
-        // other backend all resolve to the best GL device present. Desktop GL leads where it exists — it
-        // is the native path; GL4ES is a translation layer, which is the right answer only when it is the
-        // only one compiled in (the web and Android builds).
+        // Render device: desktop GL leads where it is compiled in (native); GL4ES is the only one on the web and
+        // Android.
         const TCHAR* Device = GConfig->GetStr(TEXT("Engine.Engine"),TEXT("RenderDevice"),TEXT("System"));
         if( !IsRenderDeviceAvailable(Device) )
         {
@@ -788,10 +714,8 @@ static UEngine* InitEngine()
         }
     }
 
-    // ufront (engine-uc2's ReplaceMissingDrivers, the owner's 2026-10-11 parity list): the audio device too. An ini
-    // naming an audio class this build lacks hit LOAD_NoFail in UEngine::InitAudio, a fatal error. Same rule as
-    // above: a device the build has is left alone; otherwise the build's ALAudio, or no sound at all (UseSound=False)
-    // rather than a crash at start-up.
+    // Audio device: the build's ALAudio, or no sound (UseSound=False) when there is none, instead of the fatal
+    // LOAD_NoFail in UEngine::InitAudio.
     {
         const TCHAR* Audio = GConfig->GetStr(TEXT("Engine.Engine"),TEXT("AudioDevice"),TEXT("System"));
         if( *Audio && !IsRenderDeviceAvailable(Audio) )
@@ -809,9 +733,8 @@ static UEngine* InitEngine()
         }
     }
 
-    // Auto-switch from TcpNetDriver to WebRTCNetDriver on Emscripten (per D-05).
-    // TcpNetDriver uses BSD sockets which don't work in browsers.
 #ifdef __EMSCRIPTEN__
+    // A stock IpDrv.TcpNetDriver becomes the WebRTC driver: browsers have no BSD sockets.
     {
         const TCHAR* CurrentNetDrv = GConfig->GetStr(TEXT("Engine.Engine"),TEXT("NetworkDevice"),TEXT("System"));
         if( appStricmp(CurrentNetDrv,TEXT("IpDrv.TcpNetDriver"))==0 )
@@ -960,48 +883,22 @@ static UEngine* InitEngine()
 
 
 /*-----------------------------------------------------------------------------
-	Render device selection (ufront 2.9).
+	Render device selection.
 -----------------------------------------------------------------------------*/
 
 //
-// ufront 2.9 -- unified render-device selection (native + web), replacing the old ad-hoc
-// -SOFTWARE / -OPENGL / -NULLRENDER block. Each -*RENDERER switch names a render device and (for the
-// two GL drivers, which are coupled 1:1 to an SDL viewport manager) its matching ViewportManager.
-//
-// ONLY an explicit -*RENDERER switch acts here. With no switch, the render device is left to the shipped
-// ini + the existing auto-switch guards in InitEngine() (WinDrv->SDL, D3D->OpenGL, OpenGL/GLES3->GL4ES on
-// SDL2) -- those guards already normalize any persisted/default choice to the built stack, i.e. they ARE
-// this engine's "else persisted-ini / else preference-order" precedence, so we neither duplicate nor
-// fight them. This keeps the no-switch boot byte-for-byte what it is today (the E2E-proven default).
-//
-// Availability is checked with StaticFindObject on the class' short name (ANY_PACKAGE): a render device
-// statically linked into this build registered its UClass at startup (AUTO_INITIALIZE_REGISTRANTS_*, run
-// in main() before this; every preset is __STATIC_LINK). We deliberately do NOT use
-// LoadClass<URenderDevice> (the -testrendev path's approach): the web build disables exception CATCHING,
-// so LoadClass on an absent package appThrowf's -> uncatchable Aborted() (the load-bearing 2.9a lesson).
-// StaticFindObject only inspects already-registered objects -- no file load, no throw. A switch whose
-// driver isn't compiled into this preset (legacy SDL1+OpenGL vs gl4es/web SDL2+GL4ES are build-time
-// mutually exclusive; Pixomatic is never built) logs "render device X not available" and no-ops -> the
-// game still boots on the default (the canary). This ALSO fixes the old latent -SOFTWARE ->
-// PixoDrv.PixoRenderDevice fatal (setting an uninstantiable device then aborting at load).
-//
-// A switch that stays selected through Engine->Init() (its class wasn't rewritten to a fallback) is
-// persisted via PersistRenderChoiceIfSwitched() (GConfig->Flush after Init) so it sticks next boot -- the
-// persisted value flows back untouched because the auto-switch guards leave GL4ES/OpenGL/Null alone. The
-// UE2 render-device key is "RenderDevice" (vs UE1's Game/Windowed/RenderDevice trio).
-//
-// ufront 2.34: hoisted above InitEngine — the ini normalisation there asks the same question the
-// -*RENDERER switches do ("is this class in this binary?"), so both use this one probe.
+// Each -*RENDERER switch names a render device and, for the GL devices, the SDL2 viewport manager it runs on.
+// Only an explicit switch acts here; with none, the ini and the driver replacement in InitEngine() decide.
+// Availability is a StaticFindObject on the registered classes (no package load, so no throw). A switch whose
+// device is not in this build logs "not available" and is ignored. A choice that survives Engine->Init() is
+// written to the ini by PersistRenderChoiceIfSwitched(), so it sticks next boot.
 struct FRenderSwitch { const TCHAR* Param; const TCHAR* Device; const TCHAR* Viewport; };
 static const FRenderSwitch GRenderSwitches[] =
 {
 	// -RENDERER switch           render device                          coupled SDL viewport (NULL = keep current)
-	{ TEXT("GL4ESRENDERER"),    TEXT("GL4ESDrv.GL4ESRenderDevice"),   TEXT("SDL2Drv.SDL2Client") }, // SDL2 (web / gl4es default)
-	// ufront 2.34: OpenGLDrv now rides the SAME SDL2 client as GL4ES — the SDL 1.2 pairing was never a
-	// property of the driver, only of the stack it happened to ship in (OpenGLDrv/CMakeLists.txt has had
-	// the SDL2 branch all along). Both GL devices live in one binary; this switch picks between them.
-	{ TEXT("OPENGLRENDERER"),   TEXT("OpenGLDrv.OpenGLRenderDevice"), TEXT("SDL2Drv.SDL2Client") }, // desktop GL on SDL2
-	{ TEXT("SOFTWARERENDERER"), TEXT("PixoDrv.PixoRenderDevice"),     NULL                       }, // Pixomatic (never built -> log-noop)
+	{ TEXT("GL4ESRENDERER"),    TEXT("GL4ESDrv.GL4ESRenderDevice"),   TEXT("SDL2Drv.SDL2Client") }, // GLES2/WebGL through gl4es
+	{ TEXT("OPENGLRENDERER"),   TEXT("OpenGLDrv.OpenGLRenderDevice"), TEXT("SDL2Drv.SDL2Client") }, // desktop GL
+	{ TEXT("SOFTWARERENDERER"), TEXT("PixoDrv.PixoRenderDevice"),     NULL                       }, // Pixomatic (32-bit x86 native)
 	{ TEXT("NULLRENDERER"),     TEXT("Engine.NullRenderDevice"),      NULL                       }, // GPU-free (always available)
 };
 
@@ -1009,9 +906,7 @@ static const FRenderSwitch GRenderSwitches[] =
 static FString GRequestedRenderDevice;
 
 
-// Apply the software-renderer quality downgrades (kept verbatim from the old -SOFTWARE path). Only reached
-// when PixoDrv is actually selected (i.e. available) -- dead in every current preset (Pixomatic isn't
-// built), but wired so a future Pixomatic build gets the low-detail config the software rasterizer needs.
+// The low-detail settings the software renderer needs; applied when -SOFTWARERENDERER selects PixoDrv.
 static void ApplySoftwareRendererConfig()
 {
 	// Write to whichever viewport driver is active.
@@ -1026,10 +921,8 @@ static void ApplySoftwareRendererConfig()
 	GConfig->SetString( TEXT("Engine.Vehicle"		), TEXT("bVehicleShadows"	), TEXT("False"						), GUserIni );
 }
 
-// Choose the render device from a -*RENDERER switch, BEFORE Engine->Init() (replaces the old ad-hoc
-// -SOFTWARE/-OPENGL/-NULLRENDER block). Sets the "RenderDevice" key and, for the GL drivers, the coupled
-// ViewportManager (SDL1<->OpenGL, SDL2<->GL4ES) so we never hand the InitEngine() guards a mismatched
-// viewport to "fix" out from under a valid selection. First present switch wins.
+// Choose the render device from a -*RENDERER switch before Engine->Init(): sets RenderDevice and, for the GL
+// devices, the matching ViewportManager. The first switch present wins.
 static void SelectRenderDevice()
 {
 	for( INT i=0; i<ARRAY_COUNT(GRenderSwitches); i++ )
@@ -1056,11 +949,8 @@ static void SelectRenderDevice()
 	}
 }
 
-// After Engine->Init(): persist a -*RENDERER switch choice so it sticks next boot. The render device inits
-// LAZILY (main loop, at level bring-up), not within Engine->Init(), so we can't inspect the active RenDev
-// here; instead confirm the engine didn't rewrite RenderDevice to a fallback during Init -- if it still
-// equals our (compiled, selected) request, persist it. Flush(0) writes the ini, which survives reload via
-// the user-data IDB layer on the web (and the on-disk ini natively).
+// After Engine->Init(): persist a -*RENDERER choice when the engine did not replace it during Init (the device
+// itself initialises later, at level bring-up). Flush(0) writes the ini (the web host persists it).
 static void PersistRenderChoiceIfSwitched()
 {
 	if( GRequestedRenderDevice.Len()==0 )
@@ -1081,22 +971,16 @@ static void PersistRenderChoiceIfSwitched()
 // Main entry point.
 // This is an example of how to initialize and launch the engine.
 //
-// ufront 2.34 — the READ_IMPLIES_EXEC re-exec below is a LINUX KERNEL mechanism (personality(2)); MinGW
-// has no <sys/personality.h> and Windows has no equivalent knob. Narrow the guard to Linux so the
-// Windows build compiles Pixomatic; whether its JIT can execute out of a DEP-protected heap there is a
-// separate question, and one this leaves open rather than pre-judging.
 #if defined(USE_PIXOMATIC) && defined(__linux__)
-// ufront 2.12 Part B: headers for the READ_IMPLIES_EXEC re-exec below (Pixomatic executable-heap fix).
+// The READ_IMPLIES_EXEC re-exec below uses Linux's personality(2).
 #include <sys/personality.h>
 #include <unistd.h>
 #include <errno.h>
 
-// ufront 2.79 — does THIS launch run Pixomatic? Answered the way the launch itself decides, so the answer and
-// the device can never disagree: the first -*RENDERER switch present wins when this build has its device
-// (SelectRenderDevice(), same table, same order; a switch whose device is absent is ignored and the ini
-// decides); otherwise the ini's [Engine.Engine] RenderDevice, which InitEngine() only ever replaces when this
-// build LACKS it, and never with Pixomatic; -testrendev= names the one device it tests. Needs appInit (the ini)
-// and the static registrants (IsRenderDeviceAvailable), and nothing else.
+// Whether this launch runs Pixomatic, decided as the launch decides: the first -*RENDERER switch whose device
+// this build has (SelectRenderDevice's table and order), else the ini's [Engine.Engine] RenderDevice (InitEngine
+// never replaces a device with Pixomatic); -testrendev= names the one device it tests. Needs appInit and the
+// static registrants.
 static UBOOL LaunchRunsPixomatic()
 {
 	const TCHAR* Pixo = TEXT("PixoDrv.PixoRenderDevice");
@@ -1117,24 +1001,11 @@ static UBOOL LaunchRunsPixomatic()
 	return appStricmp( GConfig->GetStr( TEXT("Engine.Engine"), TEXT("RenderDevice"), TEXT("System") ), Pixo )==0;
 }
 
-// ufront 2.12 Part B — Pixomatic executable-heap fix. Pixomatic (Michael Abrash's JIT software rasterizer)
-// generates x86 code at runtime and executes it out of malloc'd heap buffers — including via an internal
-// drawverts path we cannot hook (not PixoAllocCodeBuffer, which our PixoCodeExec.c already RWX-overrides).
-// In 2004 the heap was executable, so this worked; a modern kernel marks the heap NX, so the JIT'd code
-// faults on instruction fetch (SIGSEGV, si_addr == the JIT IP in a rw-p [heap] page). The kernel makes the brk
-// heap executable when the process has the READ_IMPLIES_EXEC personality, but a modern kernel only grants
-// that for a *missing* PT_GNU_STACK marker (binutils always emits one, and an explicit executable-stack
-// marker no longer triggers it). So set the personality explicitly and re-exec ourselves once (personality
-// applies to the whole freshly-exec'd process, which is what makes the later brk heap executable; setting it
-// in place would leave the heap already allocated NX). Scoped to launches that RUN Pixomatic: no effect on a
-// GL launch, and web/plain/karma builds don't define USE_PIXOMATIC so this compiles out entirely. NB: an
-// executable heap is a security downgrade, accepted only for the software renderer.
-//
-// ★ ufront 2.79: decided from the RESOLVED device, not from the -SOFTWARERENDERER argument. 2.9 persists a
-// -*RENDERER choice in the ini so it "sticks next boot" — so the NEXT plain boot picked Pixomatic from the ini,
-// kept an NX heap, and SIGSEGV'd on its first frame (FPixoRenderInterface::DrawPrimitive jumping into the heap;
-// the same boot under `setarch i686 --read-implies-exec` reached the menu). Called after appInit, before the
-// splash or any window: the re-exec'd process repeats appInit and nothing else.
+// Pixomatic's JIT executes code from malloc'd heap buffers (including a drawverts path PixoCodeExec.c cannot
+// hook), and a modern kernel maps the heap NX. With the READ_IMPLIES_EXEC personality the brk heap is
+// executable, so set it and re-exec once (it applies to a freshly exec'd process). Decided from the resolved
+// render device, since a persisted -SOFTWARERENDERER choice selects Pixomatic from the ini. An executable heap
+// is a security downgrade, accepted only for the software renderer. Called after appInit, before any window.
 static void ReexecIfPixomaticNeedsAnExecutableHeap( char** argv )
 {
 	if( !LaunchRunsPixomatic() )
@@ -1162,12 +1033,10 @@ int main(int argc, char **argv)
 #if defined(__ANDROID__)
     AndroidRedirectStdioToLogcat();
 #endif
-    // (The Pixomatic executable-heap re-exec is decided after appInit — ReexecIfPixomaticNeedsAnExecutableHeap.)
     appArgv0(argv[0]);
 
-	// ufront (as engine-uc2's launcher, which took this code): 4096 characters, the size of Core's GCmdLine, and a
-	// token that does not fit is dropped whole, with a warning once the log is up. It was a TCHAR[1024] filled with
-	// appStrcat (strcat): the web's argv (the URL plus every -ini: seed of the launcher) could overrun it.
+	// Up to 4096 characters (the size of Core's GCmdLine); a token that does not fit is dropped whole, with a
+	// warning once the log is up.
 	TCHAR CmdLine[4096] = TEXT("");
 	UBOOL CmdLineCut = 0;
 	for (INT i = 1; i < argc; i++)
@@ -1274,7 +1143,7 @@ int main(int argc, char **argv)
         AUTO_INITIALIZE_REGISTRANTS_UWEB;
         RegisterNamesOnslaught();
         AUTO_INITIALIZE_REGISTRANTS_ONSLAUGHT;
-        // autoInitializeRegistrantsEditor(Lookup); // D-10: Editor excluded
+        // autoInitializeRegistrantsEditor(Lookup); // the Editor is not built
 
         GNativeLookupFuncs[Lookup++] = &FindUWebUWebResponseNative;
         GNativeLookupFuncs[Lookup++] = &FindUWebUWebRequestNative;
@@ -1343,15 +1212,7 @@ extern BYTE GLoadedALAudio; snprintf(&blah, 1, "%d", (int) GLoadedALAudio);
 			GFixedTimeStep		= FixedFPS > 0.f ? 1.f / FixedFPS : 1.f / 30.f;
 		}
 
-		// Render device command line options (ufront 2.9 -- unified -*RENDERER switch selection; see
-		// SelectRenderDevice() above). Replaces the old ad-hoc -SOFTWARE/-OPENGL/-NULLRENDER block:
-		//   -GL4ESRENDERER   -> GL4ESDrv.GL4ESRenderDevice  (+ SDL2Drv.SDL2Client; web/gl4es default)
-		//   -OPENGLRENDERER  -> OpenGLDrv.OpenGLRenderDevice (+ SDLDrv.SDLClient; legacy preset)
-		//   -SOFTWARERENDERER-> PixoDrv.PixoRenderDevice     (Pixomatic absent -> log-noops; fixes the
-		//                                                     old latent -SOFTWARE fatal, keeps its downgrades)
-		//   -NULLRENDERER    -> Engine.NullRenderDevice      (always available; GPU-free)
-		// A switch for a driver not compiled into this preset logs "not available" and no-ops (the game
-		// still boots on the default). No switch -> the shipped ini + InitEngine() auto-switch guards decide.
+		// -GL4ESRENDERER / -OPENGLRENDERER / -SOFTWARERENDERER / -NULLRENDERER (SelectRenderDevice).
 		SelectRenderDevice();
 
 		// Don't update ini files if benchmarking.
@@ -1467,8 +1328,7 @@ extern BYTE GLoadedALAudio; snprintf(&blah, 1, "%d", (int) GLoadedALAudio);
 		if (!GIsRequestingExit)
 			Engine = InitEngine();
 
-		// ufront 2.9: now that Engine->Init() has run, persist a -*RENDERER switch choice iff it stuck
-		// (the engine didn't rewrite RenderDevice to a fallback) so the pick sticks next boot.
+		// Persist a -*RENDERER choice that survived Engine->Init().
 		if( Engine )
 			PersistRenderChoiceIfSwitched();
 
@@ -1482,14 +1342,10 @@ extern BYTE GLoadedALAudio; snprintf(&blah, 1, "%d", (int) GLoadedALAudio);
 			ExitSplash();
 
 #ifdef __EMSCRIPTEN__
-			// Register browser integration callbacks (BRWSR-02, BRWSR-03).
-			// Visibility change: mute audio when tab is hidden (D-16).
+			// Mute audio while the tab is hidden.
 			emscripten_set_visibilitychange_callback(
 			    nullptr, EM_TRUE, on_visibility_change);
-			// Canvas resize: handled by CSS (100vw x 100vh in splash.css) and
-			// SDL2's built-in Emscripten resize handling. SDL2 automatically
-			// receives WINDOWEVENT_RESIZED events when the canvas size changes,
-			// so no explicit resize callback is needed here.
+			// Canvas resizes reach SDL2 as WINDOWEVENT_RESIZED; no callback is needed here.
 #endif
 
 			// Optionally Exec an exec file

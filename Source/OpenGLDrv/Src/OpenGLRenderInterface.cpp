@@ -868,9 +868,8 @@ void FOpenGLRenderInterface::SetMaterialBlending( FOpenGLMaterialState* NewMater
 			else
 			if( Stage.TexCoordCount == TCN_2DCoords )
 			{
-				// ufront 2.50 - only valid for 2D texcoords; see GL4ESRenderInterface.cpp for the
-				// full reasoning. For COUNT3/COUNT4 the translation is already in row 3 and this
-				// lift destroys it, which is what hid every projector gradient on OpenGL.
+				// The lift is valid only for 2D texcoords: for COUNT3/COUNT4 texgen (the projector
+				// gradient stage) the translation is already in row 3 and the lift would overwrite it.
 				Stage.TextureTransformMatrix.M[3][0] = Stage.TextureTransformMatrix.M[2][0];
 				Stage.TextureTransformMatrix.M[3][1] = Stage.TextureTransformMatrix.M[2][1];
 			}

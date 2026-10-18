@@ -10,7 +10,7 @@
 
 #include "PixoDrv.h"
 #if defined(_WIN32) && !USE_SDL
-// ufront 2.58: the HWND translation in SetRes (see there). SDL2 is linked on every platform.
+// SDL_syswm.h for the HWND translation in SetRes (SDL2 is linked on every platform).
 #include "SDL.h"
 #include "SDL_syswm.h"
 #endif
@@ -131,8 +131,8 @@ UBOOL UPixoRenderDevice::Init()
 		}
 
 	#elif USE_SDL
-		// ufront 2.12 (SDL2/gl4es): the fullscreen mode list is unused (the engine drives resolution via the
-		// viewport), and SDL_GetVideoInfo/SDL_ListModes don't exist in SDL2 -- skip enumeration.
+		// SDL2: the fullscreen mode list is unused (the engine drives resolution through the viewport),
+		// and SDL2 has no SDL_GetVideoInfo/SDL_ListModes -- skip enumeration.
 	#else
 		// Get list of device modes.
 		for( INT i=0; ; i++ )
@@ -377,7 +377,7 @@ UBOOL UPixoRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Full
 	UBOOL Result = Viewport->ResizeViewport(
 		(Fullscreen ? BLIT_Fullscreen : 0), NewX, NewY );
 #elif USE_SDL
-	// ufront 2.12 (SDL2/gl4es): PixoDrv presents through the GL window, so request a GL viewport/context.
+	// SDL2: PixoDrv presents through the GL window, so request a GL viewport and context.
 	UBOOL Result = Viewport->ResizeViewport(
 		(Fullscreen ? BLIT_Fullscreen | BLIT_OpenGL : BLIT_OpenGL), NewX, NewY );
 #else
@@ -403,12 +403,10 @@ UBOOL UPixoRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Full
 
 	UpdateGamma( Viewport );
 
-	// ★ ufront 2.58: on the Windows build the viewport is SDL2's, and USDL2Viewport::GetWindow() returns
-	// the SDL_Window*, not an HWND. The Linux branch never looks at the handle (PixoBufferOpen maps to the
-	// RAD shim's PixoSurface_BufferOpen(w,h,f)), but pixomatic.dll's PixoBufferOpen does: it takes the
-	// window's DC and sizes its DIB from GetDeviceCaps(), so a bogus handle yields zeros and the DLL
-	// faults with EXCEPTION_INT_DIVIDE_BY_ZERO inside PixoBufferOpen — measured 2026-09-11 under wine,
-	// pixomatic.dll+0x1d639, called from this line. Resolve the real HWND through SDL's WM info.
+	// On Windows USDL2Viewport::GetWindow() returns the SDL_Window*, not an HWND, and pixomatic.dll's
+	// PixoBufferOpen takes the window's DC and sizes its DIB from GetDeviceCaps() (a bogus handle divides
+	// by zero inside it). Resolve the real HWND through SDL's WM info. The Linux branch never looks at the
+	// handle (PixoBufferOpen maps to the RAD shim's PixoSurface_BufferOpen(w,h,f)).
 #if defined(_WIN32) && !USE_SDL
 	HWND PixoHwnd = NULL;
 	{
@@ -609,7 +607,7 @@ void UPixoRenderDevice::UpdateGamma(UViewport* Viewport)
 #if USE_SDL12
 	SDL_SetGammaRamp( Ramp.red, Ramp.green, Ramp.blue );
 #elif USE_SDL
-	// ufront 2.12 (SDL2): per-window gamma ramp (SDL_SetGammaRamp is SDL 1.2-only).
+	// SDL2: per-window gamma ramp.
 	if( Viewport && Viewport->GetWindow() )
 		SDL_SetWindowGammaRamp( (SDL_Window*)Viewport->GetWindow(), Ramp.red, Ramp.green, Ramp.blue );
 #elif WIN32
@@ -646,7 +644,7 @@ void UPixoRenderDevice::RestoreGamma()
 #if USE_SDL12
 	SDL_SetGammaRamp( Ramp.red, Ramp.green, Ramp.blue );
 #elif USE_SDL
-	// ufront 2.12 (SDL2): no window handle here; the per-window gamma resets when the GL window closes.
+	// SDL2: no window handle here; the per-window gamma resets when the GL window closes.
 #elif WIN32
 	SetDeviceGammaRamp( GetDC( GetDesktopWindow() ), &Ramp );
 #else
@@ -852,14 +850,14 @@ void UPixoRenderDevice::Unlock(FRenderInterface* RI)
 
 
 #if USE_SDL && !USE_SDL12
-// ===== ufront 2.12: SDL2 GL present path for the Pixomatic software renderer (gl4es backend) =====
+// ===== SDL2 GL present path for the Pixomatic software renderer (through gl4es) =====
 #include <stdlib.h>
 #include "GL/gl.h"
 #include "GL/glext.h"
 #include "gl4esinit.h"
 
-// GL4ES must be initialized before any gl* call. GL4ESRenderDevice does this in its SetRes; but when the
-// software renderer is the ACTIVE device, that path never runs -- so initialize here once, mirroring it.
+// GL4ES must be initialized before any gl* call. GL4ESRenderDevice does this in its SetRes, which does not
+// run when the software renderer is the active device, so initialize here once, the same way.
 static void PixoEnsureGL4ES()
 {
 	static UBOOL Inited = 0;
@@ -964,14 +962,13 @@ void UPixoRenderDevice::Present(UViewport* Viewport)
 	if (SDL_MUSTLOCK(screen)) SDL_UnlockSurface(screen);
 	SDL_Flip(screen);
 #elif USE_SDL
-	// ufront 2.12 (SDL2 / gl4es): SDL2 has no software video surface to blit+flip on a GL window, so present
-	// the Pixomatic software framebuffer THROUGH GL -- upload the ARGB8888 buffer to a texture and draw a
-	// fullscreen quad, then SDL_GL_SwapWindow. GL4ES translates the fixed-function calls to GLES2.
-	// With Zoom2X the 3D scene is rendered at half-res and the HUD at full-res into separate layers; lock with
-	// PIXO_BUF_LOCK_COMPOSITE so Pixomatic 2x-zooms the 3D + overlays the HUD into one full window-resolution
-	// image (mirrors ReadPixels + the SDL 1.2 present). Without it we'd upload the raw half-res layer (the
-	// scene rendered into a corner). The composited image is Viewport->SizeX x SizeY (BufferWidth/Height report
-	// the internal layer size), so present those dims with the buffer pitch.
+	// SDL2 has no software video surface to blit+flip on a GL window, so present the Pixomatic software
+	// framebuffer through GL: upload the ARGB8888 buffer to a texture, draw a fullscreen quad, then
+	// SDL_GL_SwapWindow (GL4ES translates the fixed-function calls to GLES2). With Zoom2X the 3D scene is
+	// rendered at half-res and the HUD at full-res into separate layers; PIXO_BUF_LOCK_COMPOSITE makes
+	// Pixomatic 2x-zoom the 3D and overlay the HUD into one window-resolution image. The composited image
+	// is Viewport->SizeX x SizeY (BufferWidth/Height report the internal layer size), so present those
+	// dims with the buffer pitch.
 	PixoBufferLock( PixoBuffer, Zoom2X ? PIXO_BUF_LOCK_COMPOSITE : 0 );
 	PixoPresentGL( (SDL_Window*)Viewport->GetWindow(),
 	               PixoBuffer->Buffer, Viewport->SizeX, Viewport->SizeY, PixoBuffer->BufferPitch );

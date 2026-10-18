@@ -1,8 +1,7 @@
 #=============================================================================
 # WebRTCDrv - WebRTC network driver for browser multiplayer
 #
-# Routes UE2 network packets through JavaScript WebRTC data channels.
-# Emscripten-only: excluded from native Linux builds.
+# Routes UE2 network packets through the host's WebRTC data channels. Web only.
 #=============================================================================
 
 project(WebRTCDrv CXX)

@@ -1,14 +1,11 @@
 /*=============================================================================
-    SDL2Viewport.cpp: USDL2Viewport code.
-    SDL2 viewport implementation for UT2004 web port.
-    Dual analog: SDLViewport.cpp for UE2 interface, NSDLViewport.cpp for SDL2 API.
+    SDL2Viewport.cpp: USDL2Viewport, the SDL2 viewport on every target.
+    Adapted from SDLDrv's SDLViewport.cpp (the UE2 interface) and UE1's NSDLViewport.cpp (the SDL2 calls).
 =============================================================================*/
 
 #if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
-// ufront 2.13.2 — the worker creates and presents its own WebGL context (hatch (c)); see ResizeViewport.
-// Included BEFORE the engine headers on purpose: emscripten/html5.h pulls in <time.h>, and UnFile.h
-// #defines clock(Timer), which then mangles time.h's `clock_t clock(void)` into a syntax error pointing
-// at a system header. Both macros are compiler-provided, so the guard is valid this early.
+// The worker creates and presents its own WebGL context (ResizeViewport). Included before the engine headers:
+// emscripten/html5.h pulls in <time.h>, whose clock() declaration UnFile.h's clock(Timer) macro would mangle.
 #include <stdint.h>
 #include <emscripten/html5.h>
 #include <emscripten/html5_webgl.h>
@@ -16,20 +13,16 @@
 
 #include "SDL2Drv.h"
 #if defined(__EMSCRIPTEN__)
-#include <emscripten/em_asm.h>   // ufront: WebPadPressed (the H-3 read of a pad's first press)
+#include <emscripten/em_asm.h>   // WebPadPressed (a pad's first press)
 #endif
 
 #if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
 #include <math.h>
-// ufront 2.71 (pixel-perfect canvas): the canvas backing store must be the canvas's DEVICE-pixel size.
-// SDL2's Emscripten backend measures and sets the CSS size of #canvas (its pixel_ratio is pinned to 1
-// without SDL_WINDOW_ALLOW_HIGHDPI) and reports that in WINDOWEVENT_RESIZED, so on a 125% desktop the
-// game rendered 4096x1728 on a 5120x2160 panel and the browser resampled it: every glyph blurred
-// (measured: web glyph widths exactly 1.25x native). Passing the device size on to SetRes ->
-// ResizeViewport -> SDL_SetWindowSize makes SDL set the backing store to exactly that (CSS untouched),
-// report it from SDL_GetWindowSize and rescale menu mouse coordinates into it by itself. Both calls
-// are sync-proxied to the main thread; SDL already makes the first from this thread on every mouse
-// move. Returns false when the box reads 0x0 (display:none) so the caller keeps SDL's own numbers.
+// The canvas backing store follows the canvas's device-pixel size. SDL2's Emscripten backend reports the CSS size
+// (its pixel_ratio is 1 without SDL_WINDOW_ALLOW_HIGHDPI); passing the device size on to SetRes -> ResizeViewport ->
+// SDL_SetWindowSize makes SDL size the backing store to it, report it from SDL_GetWindowSize and rescale menu mouse
+// coordinates. Both calls are proxied to the main thread. Returns false when the box reads 0x0 (display:none), so
+// the caller keeps SDL's own numbers.
 static UBOOL ufrontCanvasDevicePixelSize( INT& OutW, INT& OutH )
 {
     double CssW = 0.0, CssH = 0.0;
@@ -46,10 +39,10 @@ static UBOOL ufrontCanvasDevicePixelSize( INT& OutW, INT& OutH )
 #endif
 
 #if defined(__ANDROID__)
-// Android touch overlay glue (2.10d). The Java on-screen overlay runs on the UI
+// Android touch overlay glue. The Java on-screen overlay runs on the UI
 // thread and cannot touch the engine directly; it writes intent through the JNI
 // functions below and USDL2Viewport::UpdateInput (engine thread) drains it once
-// per tick. Web stays byte-identical -- every use is __ANDROID__-guarded.
+// per tick.
 #include <jni.h>
 #include <atomic>
 #include <mutex>
@@ -87,10 +80,10 @@ const BYTE USDL2Viewport::MouseButtonMap[6] =
 
 #if defined(__ANDROID__)
 /*-----------------------------------------------------------------------------
-    Android touch input glue (2.10d).
+    Android touch input glue.
 
     The on-screen touch overlay (a Java View above the SDL surface, see
-    android/.../GameActivity.java) drives gameplay input in landscape: a left-half
+    Android/app/src/main/java/com/ut2004/android/GameActivity.java) drives gameplay input in landscape: a left-half
     virtual move stick, a right-half drag-look, and FIRE/ALTFIRE/JUMP/CROUCH/
     NEXTWEAPON/MENU buttons. The overlay disables itself while a menu is up (keyed
     on the engine's own bShowWindowsMouse, published below) so menu touches fall
@@ -218,18 +211,18 @@ Java_com_ut2004_android_GameActivity_nativeTouchButton( JNIEnv*, jclass, jint Bu
 } // extern "C"
 
 /*-----------------------------------------------------------------------------
-    Android gamepad glue (2.10d).
+    Android gamepad glue.
 
     SDL_CONTROLLER* events are polled on the engine thread inside UpdateInput, so
     (unlike touch) they inject directly -- no cross-thread queue needed. UT2004's
-    DefUser.ini already ships a full gamepad binding set, so this is pure native
-    wiring (NO ini editing):
+    DefUser.ini already ships a full gamepad binding set, so this is native
+    wiring only (no ini editing):
       left stick  -> IK_JoyX / IK_JoyY        (aStrafe / aBaseY Invert=-1)  [move]
       right stick -> IK_JoyV / IK_JoySlider1  (aBaseX turn / aLookUp pitch) [look]
       buttons     -> IK_Joy* per GPadButtonMap (all remappable in Controls)
       triggers    -> IK_Joy1 (Fire) / IK_Joy3 (AltFire), thresholded to buttons
     Left-stick move reuses the touch move channel (GAndroidMoveX/Y) so one consumer
-    emits IK_JoyX/Y for both. NOTE: mappings/feel are the owner's to tune live.
+    emits IK_JoyX/Y for both.
 -----------------------------------------------------------------------------*/
 
 static SDL_GameController* GAndroidPads[8] = {};
@@ -249,19 +242,18 @@ static UBOOL  GAndroidPadLT = 0;   // left trigger  -> IK_Joy3 (AltFire)
 #endif // __ANDROID__
 
 /*-----------------------------------------------------------------------------
-    Game pads (2.10d on Android; ufront on the web and the desktop, from the UC2
-    port's pads, the owner's 2026-10-11 parity list). The map, the deadzone and the
-    trigger threshold are shared; Android keeps its own state below (its move
-    channel is the touch overlay's), the web and the desktop use one pad (the first
-    connected) with their own. [SDL2Drv.SDL2Client] UseJoystick (on by default) turns pads off and on again at once.
+    Game pads. The map, the deadzone and the trigger threshold are shared; Android
+    keeps its own state below (its move channel is the touch overlay's), the web and
+    the desktop use one pad (the first connected) with their own. On the web and the
+    desktop [SDL2Drv.SDL2Client] UseJoystick (on by default) turns pads off and on.
 -----------------------------------------------------------------------------*/
 
 static const FLOAT GPadDeadzone     = 0.12f;  // stick deadzone (engine ini also deadzones)
 static const FLOAT GPadTriggerPress = 0.35f;  // trigger press threshold
 
 // SDL_CONTROLLER_BUTTON_* -> EInputKey. The actions are DefUser.ini's [Engine.Input] defaults (remappable); the layout
-// is the one every UE1/UE2 target shares (ufront 2.91, Unreal 1's: the triggers and bumpers fire, the D-pad changes
-// weapon and inventory item, the left stick moves).
+// is the one every UE1/UE2 target shares: the triggers and bumpers fire, the D-pad changes weapon and inventory
+// item, the left stick moves.
 static const BYTE GPadButtonMap[SDL_CONTROLLER_BUTTON_MAX] =
 {
     /* A             */ IK_Joy2,    // Jump
@@ -281,15 +273,13 @@ static const BYTE GPadButtonMap[SDL_CONTROLLER_BUTTON_MAX] =
     /* DPAD_RIGHT    */ IK_Joy14,   // NextWeapon
 };
 
-// ★ THE STICKS ARE A RATE, NOT A PER-FRAME STEP (ufront 2.91; the owner: the look was "way way WAY too high"). Each tick
-// a held stick goes to the [Engine.Input] binding as an IST_Axis event, and UInput's "Axis ... SpeedBase=" branch adds
-// `Delta * SpeedBase * Scale` per event, where Scale is a CONSTANT here ((1-DeadZone)/(0.5-DeadZone): the binding's
-// Speed is never the stick's, only DirectAxis appends one); ReadInput then turns the per-tick sum into a rate (x 20/dt).
-// Sent raw, the turn was therefore proportional to the FRAME RATE: measured at the Null renderer's 20 fps, 1242 deg/s
-// at full tilt (about 3700 at 60 fps), against Unreal 1's 241 deg/s. Sent as `stick * Factor * DeltaSeconds`, the rate
-// is the stick's and nothing else's:
+// The sticks are a rate, not a per-frame step. Each tick a held stick goes to its [Engine.Input] binding as an IST_Axis
+// event, and UInput's "Axis ... SpeedBase=" branch adds `Delta * SpeedBase * Scale` per event, where Scale is a
+// constant here ((1-DeadZone)/(0.5-DeadZone): the binding's Speed is never the stick's, only DirectAxis appends one);
+// ReadInput then turns the per-tick sum into a rate (x 20/dt). A raw stick value would therefore turn with the frame
+// rate; sent as `stick * Factor * DeltaSeconds`, the rate is the stick's and nothing else's:
 //   look (JoyV / JoySlider1: SpeedBase 2, DeadZone 0.4, Scale 6): aBaseX = 240 * Factor * stick; the yaw rate is
-//     32 * aTurn units/s, so 5.7 -> 43,776 units/s = 240 deg/s at full tilt (Unreal 1's, measured 241); pitch alike.
+//     32 * aTurn units/s, so 5.7 -> 43,776 units/s = 240 deg/s at full tilt; pitch alike.
 //   move (JoyX / JoyY: SpeedBase 300, DeadZone 0.1, Scale 2.25): aBaseY = 13,500 * Factor * stick, so 0.444 -> 6000 at
 //     full tilt, the keyboard's MoveForward (Speed=+300 held: 300 x 20).
 static const FLOAT GPadLookFactor = 5.7f;
@@ -316,9 +306,9 @@ static FLOAT               GPadLastYaw   = 0.f;
 static FLOAT               GPadLastPitch = 0.f;
 static UBOOL               GPadRT        = 0;      // right trigger -> IK_Joy1 (Fire)
 static UBOOL               GPadLT        = 0;      // left trigger  -> IK_Joy3 (AltFire)
-// H-3: the keys a pad's held-at-connect press gave the game. SDL never reports their release (it never saw them go
-// down), so they are a tap: released at the next tick, as engine-uc2's SDL2Pads.cpp does. (The triggers become a tap
-// by themselves: the next read of their state says up.)
+// The keys a pad's held-at-connect press gave the game. SDL never reports their release (it never saw them go down),
+// so they are a tap: released at the next tick. (The triggers become a tap by themselves: the next read of their
+// state says up.)
 static BYTE                GPadHeldTap[32];
 static INT                 GPadHeldTapNum = 0;
 
@@ -331,11 +321,11 @@ static UBOOL GPadsOn = 1;   // UseJoystick as last seen (a change is logged once
 
 #if defined(__EMSCRIPTEN__)
 //
-// H-3 (the UC2 port's fix for every SDL engine on the web): the buttons pressed right now on the browser's first
-// listed pad named Id (bit i = Gamepad.buttons[i].pressed, the W3C "standard" layout), 0 if none. A browser lists a
-// pad only at its first press, and that press is already down in the snapshot SDL's Emscripten driver keeps as the
-// pad's starting state (it reports CHANGES only), so SDL never reports it: read it once at the connect. Runs on the
-// page's main thread (the engine runs on a worker). (In the EM_ASM block: no top-level commas and no // comments.)
+// The buttons pressed right now on the browser's first listed pad named Id (bit i = Gamepad.buttons[i].pressed, the
+// W3C "standard" layout), 0 if none. A browser lists a pad only at its first press, and that press is already down in
+// the snapshot SDL's Emscripten driver keeps as the pad's starting state (it reports changes only), so SDL never
+// reports it: read it once at the connect. Runs on the page's main thread (the engine runs on a worker). (In the
+// EM_ASM block: no top-level commas and no // comments.)
 //
 static DWORD WebPadPressed( const char* Id )
 {
@@ -643,8 +633,8 @@ void USDL2Viewport::OpenWindow( PTRINT InParentWindow, UBOOL IsTemporary, INT Ne
     USDL2Client* C = GetOuterUSDL2Client();
 
 #if !defined(__EMSCRIPTEN__)
-    // ufront 2.71: not on the web — Align rounds up, and a backing store 1 px wider than the canvas box
-    // is a fractional rescale in the browser (blur). PixoDrv, the only even-width consumer, is off there.
+    // Not on the web: Align rounds up, and a backing store 1 px wider than the canvas box is a fractional
+    // rescale in the browser (blur). PixoDrv, the only even-width consumer, is not in the web build.
     if( NewX!=INDEX_NONE )
         NewX = Align( NewX, 2 );
 #endif
@@ -875,9 +865,9 @@ void USDL2Viewport::ToggleFullscreen()
 }
 
 /*-----------------------------------------------------------------------------
-    Resize viewport -- KEY FUNCTION.
-    Called by OpenGLDrv::SetRes via TryRenderDevice.
-    Creates the SDL2 window and GL context.
+    Resize viewport.
+    Called by the render device's SetRes via TryRenderDevice.
+    Creates the SDL2 window and the GL context.
 -----------------------------------------------------------------------------*/
 
 UBOOL USDL2Viewport::ResizeViewport( DWORD NewBlitFlags, INT InNewX, INT InNewY, UBOOL bSaveSize )
@@ -898,7 +888,7 @@ UBOOL USDL2Viewport::ResizeViewport( DWORD NewBlitFlags, INT InNewX, INT InNewY,
     check(NewX>=0);
     check(NewY>=0);
 #if !defined(__EMSCRIPTEN__)
-    NewX = Align(NewX,2); // ufront 2.71: not on the web — see OpenWindow.
+    NewX = Align(NewX,2); // not on the web (see OpenWindow)
 #endif
 
     if( !(NewBlitFlags & BLIT_Temporary) )
@@ -912,9 +902,9 @@ UBOOL USDL2Viewport::ResizeViewport( DWORD NewBlitFlags, INT InNewX, INT InNewY,
     SizeX              = NewX;
     SizeY              = NewY;
 
-    // Enable the engine's absolute Windows-mouse path (mirrors WinViewport.cpp:2576,
+    // Enable the engine's absolute Windows-mouse path (as WinViewport does:
     // bWindowsMouseAvailable = !(NewBlitFlags & BLIT_Fullscreen)). The browser canvas is
-    // always "windowed", so this is on. The GUI then drives bShowWindowsMouse on menu
+    // always "windowed", so this is on there. The GUI then drives bShowWindowsMouse on menu
     // open/close (GUIController::SetControllerStatus), which releases pointer-lock and
     // makes the GUI hit-test WindowsMouseX/Y as an absolute position (Scale==1.0).
     bWindowsMouseAvailable = !(NewBlitFlags & BLIT_Fullscreen);
@@ -923,14 +913,10 @@ UBOOL USDL2Viewport::ResizeViewport( DWORD NewBlitFlags, INT InNewX, INT InNewY,
     if( !Window )
     {
 #if defined(__ANDROID__)
-        // Lock the game to landscape on Android. UT2004 is a landscape game (the tallest comfortable
-        // aspect is ~4:3/1:1; portrait is unplayable). AndroidManifest pins screenOrientation=landscape,
-        // but SDL's SDLActivity overrides it at runtime via setRequestedOrientation derived from
-        // SDL_HINT_ORIENTATIONS + the window shape (empty hint + a portrait-shaped window ->
-        // SCREEN_ORIENTATION_FULL_USER=13 -> portrait surface, while the engine renders landscape ->
-        // BLASTBufferQueue rejects the landscape buffer against the portrait SurfaceView). Setting the
-        // hint to landscape-only makes SDL request landscape so the surface matches the engine. Web stays
-        // byte-identical: this is __ANDROID__-guarded (and SDL_HINT_ORIENTATIONS is an iOS/Android-only no-op).
+        // Lock the game to landscape. AndroidManifest pins screenOrientation=landscape, but SDLActivity
+        // overrides it at runtime from SDL_HINT_ORIENTATIONS and the window shape (an empty hint and a
+        // portrait-shaped window give a portrait surface while the engine renders landscape, and
+        // BLASTBufferQueue rejects the buffer). A landscape-only hint makes the surface match the engine.
         SDL_SetHint( SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight" );
 #endif
         Window = SDL_CreateWindow(
@@ -940,11 +926,10 @@ UBOOL USDL2Viewport::ResizeViewport( DWORD NewBlitFlags, INT InNewX, INT InNewY,
             NewX,
             NewY,
 #if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
-            // ufront 2.13.2 hatch (c): do NOT ask SDL for a GL window. SDL_WINDOW_OPENGL makes SDL bring
-            // up its EGL path, Emscripten proxies EGL to the browser main thread, and the canvas has
-            // been transferred to this worker — so the main thread's getContext() throws
-            // InvalidStateError (Emscripten #24792). We create the WebGL context ourselves below; SDL is
-            // here for the window and input only, which need no GL flag.
+            // No SDL GL window: SDL_WINDOW_OPENGL brings up SDL's EGL path, Emscripten proxies EGL to the
+            // browser main thread, and the canvas has been transferred to this worker, so getContext() there
+            // throws InvalidStateError (Emscripten #24792). The WebGL context is created below; SDL is here
+            // for the window and input only.
             SDL_WINDOW_RESIZABLE
 #else
             SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE
@@ -964,10 +949,9 @@ UBOOL USDL2Viewport::ResizeViewport( DWORD NewBlitFlags, INT InNewX, INT InNewY,
             SizeY = NewY;
         }
 #if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
-        // ufront 2.71: adopt the canvas's device-pixel size right here, the way NSDLDrv does. SDL sends its
-        // create-time RESIZED(css) only when the CSS box differs from the requested size, so an ini size
-        // equal to the box (1024x768 on the E2E viewport) never reached the RESIZED handler and the backing
-        // store stayed in CSS pixels (measured). SDL_SetWindowSize sizes the backing store to exactly this.
+        // Adopt the canvas's device-pixel size here: SDL sends its create-time RESIZED(css) only when the CSS
+        // box differs from the requested size, so an ini size equal to the box would never reach the RESIZED
+        // handler and the backing store would stay in CSS pixels. SDL_SetWindowSize sizes it exactly.
         {
             INT DevX = 0, DevY = 0;
             if( ufrontCanvasDevicePixelSize( DevX, DevY ) && ( DevX != NewX || DevY != NewY ) )
@@ -986,14 +970,13 @@ UBOOL USDL2Viewport::ResizeViewport( DWORD NewBlitFlags, INT InNewX, INT InNewY,
         SDL_SetWindowSize( Window, NewX, NewY );
     }
 
-    // Handle fullscreen -- use desktop fullscreen to avoid mode changes (D-08).
+    // Handle fullscreen -- desktop fullscreen, no mode changes.
 #if defined(__ANDROID__)
     // Android: always immersive fullscreen. A phone has no windowed mode, and requesting
     // FULLSCREEN_DESKTOP makes SDL call SDLActivity.setWindowStyle(true), which applies
     // SYSTEM_UI_FLAG_FULLSCREEN | HIDE_NAVIGATION | IMMERSIVE_STICKY -- hiding the status bar and the
     // navigation/home slider so the game uses the whole display (the surface grows to the full display;
-    // WINDOWEVENT_RESIZED then re-runs the drawable-size SetRes below). Web/desktop keep the
-    // BLIT_Fullscreen behavior in the #else -> byte-identical.
+    // WINDOWEVENT_RESIZED then re-runs the drawable-size SetRes below).
     SDL_SetWindowFullscreen( Window, SDL_WINDOW_FULLSCREEN_DESKTOP );
 #else
     if( NewBlitFlags & BLIT_Fullscreen )
@@ -1007,45 +990,35 @@ UBOOL USDL2Viewport::ResizeViewport( DWORD NewBlitFlags, INT InNewX, INT InNewY,
 #endif
 
     // GL context creation.
-    // GL4ESDrv: GLES 2.0 context for GL4ES output (D-08).
+    // GL4ESDrv: GLES 2.0 context for GL4ES output.
     // GLES3Drv: GL 3.3 Core context for Mesa llvmpipe.
     // OpenGLDrv: Compatibility profile for fixed-function pipeline.
     if( !GLContext )
     {
 #if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
-        // ufront 2.13.2 — hatch (c): create the WebGL context DIRECTLY, not through SDL2.
+        // Create the WebGL context directly, not through SDL2: SDL2's Emscripten GL path is EGL, which
+        // Emscripten proxies to the browser main thread, and the canvas belongs to this worker
+        // (-sPROXY_TO_PTHREAD), so SDL_GL_CreateContext would fail with InvalidStateError (Emscripten
+        // #24792). The worker renders on its own context, with no per-call proxying.
         //
-        // SDL2's emscripten GL path is 100% EGL (SDL_EGL_CreateContext_impl), and Emscripten's EGL
-        // emulation always proxies to the browser main thread. Under -sPROXY_TO_PTHREAD the canvas has
-        // been transferred to this worker, so the main thread can no longer getContext() on it and
-        // SDL_GL_CreateContext fails with InvalidStateError (Emscripten #24792). The 2.13.0 spike
-        // measured all three escape hatches; this is the one that works, and it renders on the worker's
-        // OWN context — no per-GL-call proxying, so no per-call penalty.
-        //
-        // SDL2 still owns the window and ALL input; the only SDL call replaced is context creation. The
-        // SDL_GL_SetAttribute hints in the #else below (and in GL4ESRenderDevice::SetRes) are meaningless
-        // here for the same reason — SDL never creates a context — so the equivalents are set as
-        // Emscripten attributes instead. There is one context for every web device: GL4ESDrv renders
-        // into it, and Engine.NullRenderDevice simply never draws.
+        // SDL2 still owns the window and all input. The SDL_GL_SetAttribute hints in the #else below (and in
+        // GL4ESRenderDevice::SetRes) do not apply here, so their equivalents are Emscripten attributes. One
+        // context serves every web device: GL4ESDrv renders into it, Engine.NullRenderDevice never draws.
         EmscriptenWebGLContextAttributes Attrs;
         emscripten_webgl_init_context_attributes( &Attrs );
         // majorVersion 1 == WebGL 1.0 == GLES2, which is what GL4ES targets (DEFAULT_ES=2) and what the
-        // SDL path requested via CONTEXT_PROFILE_ES 2.0.
+        // SDL path requests via CONTEXT_PROFILE_ES 2.0.
         Attrs.majorVersion              = 1;
         Attrs.minorVersion              = 0;
         Attrs.alpha                     = 0;
         Attrs.depth                     = 1;
-        // GL4ESRenderDevice::SetRes never asks SDL for a stencil buffer, so the shipping web context has
-        // none; keep it that way rather than silently changing the pixel format under the renderer.
+        // GL4ESRenderDevice::SetRes never asks SDL for a stencil buffer, so the web context has none
+        // either: the same pixel format as the native path.
         Attrs.stencil                   = 0;
-        // ufront 2.50 — MSAA. This is the ONLY place it can be decided on the threaded web build:
-        // SDL never creates the context here, so GL4ESRenderDevice::SetRes's SDL_GL_MULTISAMPLE*
-        // hints are inert (see the note above). WebGL exposes a plain boolean and picks the sample
-        // count itself (in practice 4), so the configured count only decides on/off.
-        //
-        // Read from the ACTIVE render device's own ini section so there is one source of truth and
-        // the ini can still turn it off; the fallbacks below mirror
-        // UGL4ESRenderDevice::StaticConstructor for the case where no section exists.
+        // MSAA is decided here on the threaded web build (SDL never creates the context, so
+        // GL4ESRenderDevice::SetRes's SDL_GL_MULTISAMPLE* hints do not apply). WebGL exposes a boolean and picks
+        // the sample count itself, so the configured count only decides on/off. Read from the active render
+        // device's ini section; the fallbacks match UGL4ESRenderDevice::StaticConstructor.
         {
             INT MsBuffers = 1, MsSamples = 4;
             const TCHAR* RenDevStr = GConfig->GetStr( TEXT("Engine.Engine"), TEXT("RenderDevice"), TEXT("System") );
@@ -1055,14 +1028,12 @@ UBOOL USDL2Viewport::ResizeViewport( DWORD NewBlitFlags, INT InNewX, INT InNewY,
                 GConfig->GetInt( RenDevStr, TEXT("MultisampleSamples"), MsSamples, TEXT("System") );
             }
             Attrs.antialias = ( MsBuffers > 0 && MsSamples > 1 ) ? 1 : 0;
-            // NAME_Log (2.91): the inis suppress Init once the engine is up, and the viewport comes after, so on Init this
-            // line never reached the log or the console (the launcher's Antialiasing switch is checked by it).
+            // NAME_Log: the inis suppress Init once the engine is up, and the viewport comes after.
             debugf( NAME_Log, TEXT("ufront 2.50: WebGL antialias=%i (buffers=%i samples=%i from [%s])"),
                 (INT)Attrs.antialias, MsBuffers, MsSamples, RenDevStr ? RenDevStr : TEXT("<none>") );
         }
-        // explicitSwapControl + renderViaOffscreenBackBuffer are what make the frame OURS to present:
-        // without them the browser composites at its own cadence and commit_frame() is meaningless on a
-        // worker.
+        // explicitSwapControl + renderViaOffscreenBackBuffer make the frame ours to present: without them
+        // the browser composites at its own cadence and commit_frame() does nothing on a worker.
         Attrs.explicitSwapControl       = 1;
         Attrs.renderViaOffscreenBackBuffer = 1;
         EMSCRIPTEN_WEBGL_CONTEXT_HANDLE WebGLCtx = emscripten_webgl_create_context( "#canvas", &Attrs );
@@ -1084,7 +1055,7 @@ UBOOL USDL2Viewport::ResizeViewport( DWORD NewBlitFlags, INT InNewX, INT InNewY,
         const TCHAR* RenDevStr = GConfig->GetStr(TEXT("Engine.Engine"), TEXT("RenderDevice"), TEXT("System"));
         if( appStrfind(RenDevStr, TEXT("GL4ESDrv")) )
         {
-            // GL4ESDrv: create GLES2 context for GL4ES output (D-08).
+            // GL4ESDrv: create GLES2 context for GL4ES output.
             SDL_GL_SetAttribute( SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES );
             SDL_GL_SetAttribute( SDL_GL_CONTEXT_MAJOR_VERSION, 2 );
             SDL_GL_SetAttribute( SDL_GL_CONTEXT_MINOR_VERSION, 0 );
@@ -1098,13 +1069,10 @@ UBOOL USDL2Viewport::ResizeViewport( DWORD NewBlitFlags, INT InNewX, INT InNewY,
         else
         {
 #ifdef __EMSCRIPTEN__
-            // ufront: Emscripten has no desktop/COMPATIBILITY GL — only GLES2/WebGL. A device with no GL
-            // pipeline of its own (Engine.NullRenderDevice — the GPU-free "poor-man's dedicated server" device)
-            // still needs a CREATABLE context for the viewport to size/present, so request GLES2 like GL4ESDrv;
-            // the null device draws nothing into it. A desktop COMPATIBILITY request (the native default below)
-            // returns no context on the web -> SDL_GL_CreateContext fails -> ResizeViewport returns 0 -> the
-            // null device's verify(ResizeViewport(...)) aborts when a match brings up the scene viewport. This
-            // is what kept ut2004's stock null device menu-only on web (see STATE.md "## Null + bots parity").
+            // Emscripten has no desktop/compatibility GL, only GLES2/WebGL. A device with no GL pipeline of
+            // its own (Engine.NullRenderDevice) still needs a context for the viewport to size and present, so
+            // request GLES2 like GL4ESDrv; the null device draws nothing into it. A compatibility request
+            // returns no context on the web, and ResizeViewport would fail.
             SDL_GL_SetAttribute( SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES );
             SDL_GL_SetAttribute( SDL_GL_CONTEXT_MAJOR_VERSION, 2 );
             SDL_GL_SetAttribute( SDL_GL_CONTEXT_MINOR_VERSION, 0 );
@@ -1154,29 +1122,11 @@ UBOOL USDL2Viewport::ResizeViewport( DWORD NewBlitFlags, INT InNewX, INT InNewY,
 
     // Save info.
     //
-    // ⚠⚠ A DEGENERATE SIZE MUST NOT BE PERSISTED, AND THE `NewX && NewY` TEST THIS REPLACES WAS NOT
-    // ENOUGH — it only rejected ZERO. Anything else went straight into the ini and was read back on
-    // the next launch, and because that size lays out the GUI, a small enough one BRICKS THE GAME
-    // in a way the player cannot undo from inside it:
-    //
-    //   * UGUITabControl::PreDraw computes `(BorderOffsets[0] + BorderOffsets[2]) / Count`, where
-    //     Count is the number of tab buttons placed in the current row. BorderOffsets is INT, so
-    //     that is an INTEGER divide. At a row width of two pixels NO tab fits, the row is flushed
-    //     with Count == 0, and the process takes SIGFPE before it can draw a menu.
-    //   * FCanvasUtil::Vertices, the TArray<FCanvasVertex> DrawTile appends to, reached 106441334
-    //     elements (2554592016 bytes at 24 each) -> `REALLOC FAILED` -> SIGSEGV in the
-    //     FCanvasVertex constructor, writing into the allocation that had just failed.
-    //
-    // Measured 2026-09-01 in a scratch run tree that had drifted to WindowedViewportX=2,
-    // WindowedViewportY=28 — written by an earlier headless run of this very code, read back, and
-    // re-saved, feeding on itself (it passed through 2x1 on the way). Eight of eight gametypes read
-    // as an engine UI bug until the ini was pinned; then all eight ran 150 s clean.
-    //
-    // ★ THE CLAMP IS ON THE SAVE ONLY. The live viewport keeps whatever size it actually has, so
-    // nothing about rendering changes and the web path — where ResizeViewport takes its size from
-    // the canvas — is untouched. This only refuses to WRITE a value that would not be recoverable.
-    // 320x240 is UT2004's own minimum supported mode, so it is a floor the game already knows how
-    // to lay out rather than a number invented here.
+    // A degenerate size is never persisted: the size read back on the next launch lays out the GUI, and a
+    // small enough one leaves the game unable to draw a menu (UGUITabControl::PreDraw divides by the number of
+    // tab buttons in a row, zero at a two-pixel width; FCanvasUtil::Vertices grows until REALLOC FAILED).
+    // The floor applies to the save only: the live viewport keeps its real size. 320x240 is UT2004's own
+    // minimum supported mode.
     if( RenDev && !GIsEditor && bSaveSize )
     {
         const INT MinSaveX = 320, MinSaveY = 240;
@@ -1255,7 +1205,7 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
 
     SDL_Event Ev;
 #if !defined(__ANDROID__)
-    // H-3: last tick's held-at-connect presses end now (a tap; GPadHeldTap).
+    // Last tick's held-at-connect presses end now (a tap; GPadHeldTap).
     for( INT k = 0; k < GPadHeldTapNum; k++ )
         CauseInputEvent( GPadHeldTap[k], IST_Release );
     GPadHeldTapNum = 0;
@@ -1298,7 +1248,7 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
                 SizeX = Ev.window.data1;
                 SizeY = Ev.window.data2;
 #if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
-                // ufront 2.71: the canvas's device-pixel size, not the CSS size SDL reports.
+                // The canvas's device-pixel size, not the CSS size SDL reports.
                 ufrontCanvasDevicePixelSize( SizeX, SizeY );
 #endif
                 // Resize the GL framebuffer to match the new window size.
@@ -1318,26 +1268,25 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
             {
                 if( *p < 0 )
                     break;  // Non-ASCII (high bit set), stop.
-                // Pass the character as BOTH the EInputKey and the Unicode arg. The
+                // Pass the character as both the EInputKey and the Unicode arg. The
                 // UnrealScript console KeyType handler (Console.uc / ExtendedConsole.uc)
                 // gates character insertion behind `if( Key >= 0x20 )`, so passing
-                // IK_None (0) silently drops every printable character. Mirrors the SDL1
-                // path (SDLViewport.cpp), which passed keysym.unicode as the Key.
-                // Printable ASCII is always >= 0x20, so the gate passes.
+                // IK_None (0) would drop every printable character, as SDLDrv's
+                // SDLViewport.cpp passed keysym.unicode as the Key.
                 Client->Engine->Key( this, (EInputKey)(BYTE)*p, (TCHAR)*p );
             }
             break;
 
         case SDL_KEYDOWN:
         {
-            // Bounds check scancode (T-04-01 mitigation).
+            // Bounds check scancode.
             if( Ev.key.keysym.scancode >= SDL2DRV_MAX_SCANCODES )
                 break;
             BYTE Key = KeyMap[Ev.key.keysym.scancode];
             if( Key == 0 )
                 break;
 
-            // Alt+Enter toggles fullscreen (D-08 / INPUT-03).
+            // Alt+Enter toggles fullscreen.
             if( (Ev.key.keysym.mod & KMOD_ALT) && Key == IK_Enter )
             {
                 ToggleFullscreen();
@@ -1350,7 +1299,7 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
 
         case SDL_KEYUP:
         {
-            // Bounds check scancode (T-04-01 mitigation).
+            // Bounds check scancode.
             if( Ev.key.keysym.scancode >= SDL2DRV_MAX_SCANCODES )
                 break;
             BYTE Key = KeyMap[Ev.key.keysym.scancode];
@@ -1363,7 +1312,7 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
 
         case SDL_MOUSEBUTTONDOWN:
         {
-            // Bounds check button index (T-04-02 mitigation).
+            // Bounds check button index.
             if( Ev.button.button >= ARRAY_COUNT(MouseButtonMap) )
                 break;
             BYTE Key = MouseButtonMap[Ev.button.button];
@@ -1381,7 +1330,7 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
 
         case SDL_MOUSEBUTTONUP:
         {
-            // Bounds check button index (T-04-02 mitigation).
+            // Bounds check button index.
             if( Ev.button.button >= ARRAY_COUNT(MouseButtonMap) )
                 break;
             BYTE Key = MouseButtonMap[Ev.button.button];
@@ -1420,7 +1369,7 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
             //     (Scale==1.0) hit-tests under the visible browser cursor. SDL's
             //     Emscripten backend already scales motion.x/y into canvas (SizeX/SizeY).
             //   * In-game (!bShowWindowsMouse): RELATIVE -- accumulate deltas for
-            //     pointer-locked mouse-look, matching SDL1 behavior.
+            //     pointer-locked mouse-look.
             INT DX = Ev.motion.xrel;
             INT DY = Ev.motion.yrel;
 
@@ -1448,8 +1397,8 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
                 CauseInputEvent( IK_MouseY, IST_Axis, -DY );
 
             // MouseDelta drives click-to-capture only; suppress it while a menu is up so
-            // clicking a menu never re-grabs the pointer. (UnGame.cpp:4030 also guards
-            // capture on !bShowWindowsMouse.) Previously gated on the stuck InMenuLoop.
+            // clicking a menu never re-grabs the pointer (UGameEngine also guards capture
+            // on !bShowWindowsMouse).
             if( !bShowWindowsMouse && (DX || DY) )
                 Client->Engine->MouseDelta( this, ViewportButtonFlags, DX, -DY );
 
@@ -1457,7 +1406,7 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
         }
 
 #if defined(__ANDROID__)
-        // --- Gamepad (2.10d). SDL_CONTROLLER events arrive on this (engine) thread,
+        // --- Gamepad. SDL_CONTROLLER events arrive on this (engine) thread,
         // so they inject directly; DefUser.ini already binds all IK_Joy* targets. ---
         case SDL_CONTROLLERDEVICEADDED:
         {
@@ -1466,7 +1415,6 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
             {
                 for( INT i = 0; i < ARRAY_COUNT(GAndroidPads); ++i )
                     if( !GAndroidPads[i] ) { GAndroidPads[i] = Pad; break; }
-                // Logs to logcat via GLog -> owner can confirm detection when plugging in.
                 debugf( NAME_Init, TEXT("SDL2: game controller opened: %s"), appFromAnsi(SDL_GameControllerName(Pad)) );
             }
             break;
@@ -1533,7 +1481,7 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
 #endif // __ANDROID__
 
 #if !defined(__ANDROID__)
-        // --- Game pads on the web and the desktop (ufront; one pad, the first connected). The same map and feel as
+        // --- Game pads on the web and the desktop (one pad, the first connected). The same map and feel as
         // Android's (DefUser.ini binds every IK_Joy* target), with their own move channel. ---
         case SDL_CONTROLLERDEVICEADDED:
         {
@@ -1551,7 +1499,7 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
             debugf( NAME_Log, TEXT("SDL2: game pad connected: %s"), Name ? appFromAnsi(Name) : TEXT("(no name)") );
 #if defined(__EMSCRIPTEN__)
             {
-                // H-3: give the game the press that made the browser list the pad (SDL never reports it).
+                // Give the game the press that made the browser list the pad (SDL never reports it).
                 const char* Id = SDL_JoystickName( SDL_GameControllerGetJoystick( GPad ) );
                 const DWORD Held = Id ? WebPadPressed( Id ) : 0;
                 static const INT W3CToSDL[17] =
@@ -1616,11 +1564,9 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
     }
 
 #if !defined(__ANDROID__)
-    // The sticks and triggers come from the pad's STATE every tick, not from SDL_CONTROLLERAXISMOTION. SDL's
+    // The sticks and triggers come from the pad's state every tick, not from SDL_CONTROLLERAXISMOTION: SDL's
     // Emscripten joystick driver reports no axis values when a pad is opened, so SDL takes the first value an axis
-    // reports as its resting point and posts no event for it (SDL_PrivateJoystickAxis): the first push of a stick
-    // after the pad appeared was lost, and SDL then took the held stick for the centre. The state is always right
-    // (engine-uc2's SDL2Pads.cpp reads it the same way).
+    // reports as its resting point and posts no event for it (SDL_PrivateJoystickAxis). The state is always right.
     if( GPad )
     {
         const FLOAT Scale = 1.f / 32767.f;
@@ -1652,7 +1598,7 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
 #endif
 
 #if defined(__ANDROID__)
-    // --- Android touch overlay: fold UI-thread intent into engine input (2.10d). ---
+    // --- Android touch overlay: fold UI-thread intent into engine input. ---
 
     // Publish menu vs gameplay for the Java overlay (menu -> overlay hides ->
     // touches pass through to SDL's tap-to-click). End-of-tick value is what the
@@ -1713,7 +1659,7 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
 }
 
 //
-// Mouse capture for FPS mode (per D-07).
+// Mouse capture for FPS mode.
 // Uses SDL2 relative mouse mode (cursor hidden + pointer locked + raw input).
 //
 void USDL2Viewport::SetMouseCapture( UBOOL Capture, UBOOL Clip, UBOOL FocusOnly )

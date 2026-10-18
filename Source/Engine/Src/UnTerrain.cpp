@@ -3622,16 +3622,12 @@ void ATerrainInfo::Render(FLevelSceneNode* SceneNode,FRenderInterface* RI,FVisib
 					for(FDynamicTerrainProjector* DynamicProjector = SectorProjectors[VisibleSectors[s]];DynamicProjector;DynamicProjector = DynamicProjector->Next)
 					{					    
 						// Setup blending.
-						// ufront 2.50 - ask for STATIC lighting so the projector is modulated by the
-						// terrain's own baked vertex colour, which is what D3D does implicitly: its
-						// stage 0 reads D3DTA_CURRENT, and at stage 0 that IS the interpolated vertex
-						// diffuse. GL only feeds the colour array when UseStaticLighting is set, so
-						// with 0 here the pass fell back to a constant and the projector rendered at
-						// full brightness over unlit night terrain instead of being attenuated by it.
-						// MEASURED against the D3D8 reference on test-ons-torlan-terrainprojectors:
-						// constant-white gives terrain mean luma 141 vs the reference's 29; taking the
-						// vertex colour gives 26. Scoped to this pass deliberately -- flipping the
-						// colour-array rule globally changed 84% of pixels on stock ONS-Torlan.
+						// Ask for static lighting so the projector is modulated by the terrain's own
+						// baked vertex colour, which is what D3D does implicitly (its stage 0 reads
+						// D3DTA_CURRENT, the interpolated vertex diffuse). GL feeds the colour array
+						// only when UseStaticLighting is set; with 0 here the projector would render at
+						// full brightness over unlit terrain. Scoped to this pass: the colour-array rule
+						// stays as it is everywhere else.
 						RI->EnableLighting(0,1);
 						RI->SetMaterial(DynamicProjector->ProjectorInfo->GetMaterial(SceneNode,NULL));
 

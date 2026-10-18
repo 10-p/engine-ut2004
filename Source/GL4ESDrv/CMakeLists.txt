@@ -1,9 +1,8 @@
 #=============================================================================
 # GL4ESDrv - GL4ES (GL-to-GLES2 translation) render device
 #
-# Copy of OpenGLDrv compiled against GL4ES static library.
-# GL4ES translates desktop GL 1.x/2.x calls to GLES 2.0.
-# SDL2-only (no SDL 1.2 support).
+# A renamed fork of OpenGLDrv compiled against the GL4ES static library, which translates desktop
+# GL 1.x/2.x calls to GLES 2.0 / WebGL. SDL2 only.
 #=============================================================================
 
 project(GL4ESDrv CXX)
@@ -29,9 +28,9 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
   GPackage=GL4ESDrv
 )
 
-# Link against the GL4ES static library (provides all GL symbols) via its unambiguous, namespaced
-# alias gl4es::GL (defined in the top-level CMakeLists). A "::" target name can never silently
-# degrade to the system -lGL. Do NOT link system OpenGL -- GL4ES replaces it (Pitfall 2).
+# Link against the GL4ES static library (provides all GL symbols) via its namespaced alias gl4es::GL
+# (defined in the top-level CMakeLists): a "::" target name can never silently degrade to the system
+# -lGL. System OpenGL is not linked; GL4ES replaces it.
 if(NOT TARGET gl4es::GL)
   message(FATAL_ERROR "GL4ESDrv requires the GL4ES static target (gl4es::GL), which is missing. "
                       "GL4ESDrv must only be built in the gl4es backend or for Emscripten.")

@@ -3,7 +3,7 @@
 
 	Follows IpDrv/Src/TcpNetDriver.cpp function for function; where that file calls
 	sendto()/recvfrom(), this one calls the proxynet ABI. What TcpNetDriver does that a
-	CLIENT never needs is simply absent: no listen socket, no accept path, no ICMP
+	client never needs is absent: no listen socket, no accept path, no ICMP
 	port-unreachable handling, no per-IP connection limiter.
 =============================================================================*/
 
@@ -17,7 +17,7 @@
 	Declarations.
 -----------------------------------------------------------------------------*/
 
-// The same figures TcpNetDriver.cpp uses, because the far end IS a TcpNetDriver: the packet size the
+// The same figures TcpNetDriver.cpp uses, because the far end is a TcpNetDriver: the packet size the
 // server will send, and the per-packet overhead the rate limiter must charge so NETSPEED means to us
 // what it means to a native client.
 #define PROXYNET_IP_HEADER_SIZE     (20)
@@ -45,8 +45,8 @@ UProxyNetConnection::UProxyNetConnection( INT InConnId, UNetDriver* InDriver, EC
 	OpenedTime		= GCurrentTime;
 	InitOut();
 
-	// No address resolution here: the host string goes to the game proxy as typed, and the PROXY
-	// resolves it (and refuses private address space) — a browser has no resolver to ask.
+	// No address resolution here: the host string goes to the game proxy as typed, and the proxy
+	// resolves it (and refuses private address space); a browser has no resolver to ask.
 	unguard;
 }
 
@@ -64,9 +64,9 @@ void UProxyNetConnection::CloseTransport()
 void UProxyNetConnection::Destroy()
 {
 	guard(UProxyNetConnection::Destroy);
-	// ★ THE CONNECTION OWNS ITS TRANSPORT, like a socket. ue_proxynet_connect() hands out a NEW id per
+	// The connection owns its transport, like a socket: ue_proxynet_connect() hands out a new id per
 	// call, so at a server map change the departing level's connection and the arriving one are two ids,
-	// exactly as they are two UDP sockets natively — closing this one cannot touch the other.
+	// as they are two UDP sockets natively.
 	CloseTransport();
 	Super::Destroy();
 	unguard;
@@ -80,7 +80,7 @@ void UProxyNetConnection::LowLevelSend( void* Data, INT Count )
 		clock(Driver->SendCycles);
 		// Non-blocking, and allowed to drop: before the proxy says `ready` there is nowhere to send, and
 		// under back-pressure a datagram transport loses packets. The engine's own reliability layer
-		// retransmits what matters — which is also what carries the first HELLO to a server still loading.
+		// retransmits what matters, which is also what carries the first HELLO to a server still loading.
 		ue_proxynet_send( ConnId, Data, Count );
 		unclock(Driver->SendCycles);
 	}
@@ -132,7 +132,7 @@ UBOOL UProxyNetDriver::InitConnect( FNetworkNotify* InNotify, FURL& ConnectURL, 
 	}
 	RegisterWebHttp();
 
-	// Connect to remote — through the game proxy. A NEW connection id every time.
+	// Connect to remote, through the game proxy. A new connection id every time.
 	INT NewConnId = ue_proxynet_connect( TCHAR_TO_ANSI(*ConnectURL.Host), ConnectURL.Port );
 	if( NewConnId < 0 )
 	{
@@ -158,7 +158,7 @@ UBOOL UProxyNetDriver::InitConnect( FNetworkNotify* InNotify, FURL& ConnectURL, 
 UBOOL UProxyNetDriver::InitListen( FNetworkNotify* InNotify, FURL& LocalURL, FString& Error )
 {
 	guard(UProxyNetDriver::InitListen);
-	// A browser cannot accept UDP, and the game proxy carries a client to ONE server — it is not a
+	// A browser cannot accept UDP, and the game proxy carries a client to one server: it is not a
 	// rendezvous. Hosting is what P2P networking is for: refuse in words.
 	Error = TEXT("Proxy networking cannot host a game. Switch to P2P networking to host.");
 	debugf( NAME_Log, TEXT("ProxyNetDrv: %s"), *Error );
@@ -179,9 +179,9 @@ void UProxyNetDriver::TickDispatch( FLOAT DeltaTime )
 	// new connections to one game server), so it is simply waited out. CLOSED/INVALID is final: refused,
 	// unreachable, or lost beyond the proxy's resume window.
 	//
-	// ★ Never promote the UE connection to USOCK_Open here. It stays USOCK_Pending through the whole
-	// download + join handshake and only HandleClientPlayer opens it — exactly as under TcpNetDriver,
-	// which knows nothing of connection state either. This block only ever CLOSES.
+	// Never promote the UE connection to USOCK_Open here. It stays USOCK_Pending through the whole
+	// download + join handshake and only HandleClientPlayer opens it, as under TcpNetDriver. This block
+	// only ever closes.
 	INT TransportState = ue_proxynet_state( Conn->ConnId );
 	if( (TransportState==PROXYNET_STATE_CLOSED || TransportState==PROXYNET_STATE_INVALID) && Conn->State!=USOCK_Closed )
 	{
@@ -237,19 +237,19 @@ UProxyNetConnection* UProxyNetDriver::GetServerConnection()
 	Redirect downloads.
 
 	A native server names an HTTP redirect (`DLMGR CLASS=IpDrv.HTTPDownload`). In a browser
-	IpDrv's UHTTPDownload cannot open a socket, so it asks the table in IpDrv/Inc/WebHttp.h —
-	and this package, which owns the `ue_proxynet_http_*` imports, is what fills it. The game
-	proxy does the fetch for a LIVE session and pays for it from that session's download
-	allowance; any refusal is simply FAILED and the engine falls back to the in-band download.
+	IpDrv's UHTTPDownload cannot open a socket, so it asks the table in IpDrv/Inc/WebHttp.h,
+	which this package, holder of the `ue_proxynet_http_*` imports, fills. The game proxy
+	does the fetch for a live session and charges it to that session's download allowance;
+	any refusal is FAILED and the engine falls back to the in-band download.
 -----------------------------------------------------------------------------*/
 
-// The hook's status values ARE the ABI's: they cross unconverted.
+// The hook's status values are the ABI's: they cross unconverted.
 static_assert( WEBHTTP_Pending==PROXYNET_HTTP_PENDING && WEBHTTP_Receiving==PROXYNET_HTTP_RECEIVING
 	&& WEBHTTP_Done==PROXYNET_HTTP_DONE && WEBHTTP_Failed==PROXYNET_HTTP_FAILED, "WebHttp.h and ue_proxynet_abi.h disagree" );
 
 static INT ProxyNetHttpOpen( UNetConnection* Connection, const ANSICHAR* Url )
 {
-	// Only for a download that belongs to one of OUR connections: its session is what the proxy
+	// Only for a download that belongs to one of our connections: its session is what the proxy
 	// charges. Anything else (a P2P connection in the same build) gets -1 and falls back at once.
 	UProxyNetConnection* Conn = Cast<UProxyNetConnection>( Connection );
 	if( !Conn || Conn->ConnId < 0 )
@@ -271,13 +271,13 @@ static void ProxyNetHttpClose( INT Handle )
 static FWebHttpHooks GProxyNetHttpHooks = { ProxyNetHttpOpen, ProxyNetHttpPoll, ProxyNetHttpRead, ProxyNetHttpClose };
 
 /*-----------------------------------------------------------------------------
-	The in-game Internet browser's list (2.79o, IpDrv's WebServerList.h).
+	The in-game Internet browser's list (IpDrv's WebServerList.h).
 
 	The web build has no sockets, so the browser cannot ask a master server; in Proxy mode the game
 	proxy already holds that list (it polls the masters for everybody). This fills IpDrv's table with
 	the four `ue_proxynet_list_*` imports. Unlike the HTTP hook it is registered when the program
 	starts -- the browser wants its list before any connection exists -- and Active() keeps it out of
-	the way unless THIS launch is in Proxy mode.
+	the way unless this launch is in Proxy mode.
 -----------------------------------------------------------------------------*/
 
 static_assert( WEBLIST_Pending==PROXYNET_HTTP_PENDING && WEBLIST_Done==PROXYNET_HTTP_DONE
@@ -329,7 +329,7 @@ void UProxyNetDriver::NormalizeConfigDefaults()
 {
 	guard(UProxyNetDriver::NormalizeConfigDefaults);
 
-	// A missing SECTION is recognisable by its timeout being zero — no real ini sets that. The two
+	// A missing section is recognisable by its timeout being zero (no real ini sets that). The two
 	// download switches are a bool and a size, which cannot say "unset" on their own, so they follow it:
 	// without them a joined server could never send a custom map.
 	const UBOOL bSectionMissing = ConnectionTimeout <= 0.f;
@@ -349,7 +349,7 @@ void UProxyNetDriver::NormalizeConfigDefaults()
 
 	// The shipped [IpDrv.TcpNetDriver] values, except the two timeouts: no game ticks run while a web
 	// client streams a map it has never touched, so it needs more patience than a native one. These are
-	// the CLIENT's timeouts; the SERVER's own (30 s / 200 s on a stock 3374) are not ours to set.
+	// the client's timeouts; the server's own (30 s / 200 s on a stock 3374) are not ours to set.
 	PROXYNET_CFG( ConnectionTimeout,        60.f )
 	PROXYNET_CFG( InitialConnectTimeout,   200.f )
 	PROXYNET_CFG( KeepAliveTime,            0.2f )

@@ -893,17 +893,16 @@ IMPLEMENT_FUNCTION( UCanvas, 466, execDrawTile );
 
 void UCanvas::DrawActor( AActor* Actor, UBOOL WireFrame, UBOOL ClearZ, FLOAT DisplayFOV )
 {
-	// AutoFOV, viewmodel pass (step 2.16). This is the first-person weapon path — Weapon.uc:936 calls
-	// Canvas.DrawActor(self,false,false,DisplayFOV) with its OWN var(FirstPerson) DisplayFOV (default 90),
-	// which becomes a SEPARATE FActorSceneNode below. So unlike UE1 (where the viewmodel shares the world
-	// frame and inherits the correction for free) UE2 must correct it explicitly: without this the world
-	// would widen to 106 deg at 16:9 while the weapon stayed at a stock 90, making it look bigger and
-	// vertically cropped — the exact complaint AutoFOV exists to fix. AutoFOVWeapon=0 opts back out.
+	// AutoFOV, viewmodel pass. This is the first-person weapon path: Weapon.uc calls
+	// Canvas.DrawActor(self,false,false,DisplayFOV) with its own DisplayFOV (default 90), which becomes a
+	// separate FActorSceneNode below, so UE2 corrects it explicitly; without this the world would widen
+	// to 106 deg at 16:9 while the weapon stayed at 90 (bigger and vertically cropped). AutoFOVWeapon=0
+	// opts out.
 	//
-	// ★ Take the UNCORRECTED base when the caller did not pass a FOV. execDrawActor defaults DisplayFOV to
-	// Viewport->Actor->FovAngle (UnCanvas.cpp:940), and during the draw that field already holds the
-	// corrected value — so correcting it again DOUBLE-applies (90 -> 111.6 -> 130.4 at 1.96:1, observed).
-	// GAutoFovFrameBase is published by the scoped override in UGameEngine::Draw for exactly this.
+	// Take the uncorrected base when the caller did not pass a FOV: execDrawActor defaults DisplayFOV to
+	// Viewport->Actor->FovAngle, which during the draw already holds the corrected value, and correcting
+	// it again would double-apply. GAutoFovFrameBase is published by the scoped override in
+	// UGameEngine::Draw for this.
 	if( Abs( DisplayFOV - Viewport->Actor->FovAngle ) < 0.01f )
 		DisplayFOV = GAutoFovFrameBase;
 	DisplayFOV = ufrontWeaponFov( DisplayFOV, ufrontEffectiveFov( DisplayFOV, Viewport->SizeX, Viewport->SizeY ) );

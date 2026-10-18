@@ -22,10 +22,8 @@ static	FLOAT	tmp_ScaleGlow			= 1.f;
 
 #define USE_SSE_WEATHER __HAS_SSE__
 
-/* ⚠ THE 64-BIT WEATHER PATH IS AN MSVC DIALECT SPLIT, NOT A POINTER-WIDTH ONE. Spelling it
-   `_WIN64` is what stopped this file compiling for MinGW x86_64 (ufront 2026-09-01):
-   GCC took MSVC's branch and failed on `m128i_u32`, while the helper the OTHER branch
-   needs had been #ifdef'd away by the same test. See UT_MSVC_NO_MMX in Core.h. */
+/* The 64-bit weather path is an MSVC dialect split, not a pointer-width one: GCC (MinGW x86_64
+   included) takes the MMX branch, whose helper is kept for it. See UT_MSVC_NO_MMX in Core.h. */
 
 #if USE_SSE_WEATHER
 const	FLOAT	INV_005					= 1.f / 0.05f;

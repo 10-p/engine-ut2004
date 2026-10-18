@@ -3124,7 +3124,7 @@ UBOOL FOpenGLRenderInterface::SetProjectorMaterial( UProjectorMaterial* Projecto
 			}
 		}
 
-		// ufront 2.50 - re-enabled; see GL4ESMaterialState.cpp for why.
+		// The projector gradient stage (the projector's axial attenuation), as D3D8/D3D9 run it.
 		if (ProjectorMaterial->bGradient)
 		{
 			// Handle the gradient texture.

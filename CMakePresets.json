@@ -16,8 +16,8 @@
         },
         {
             "name": "native64",
-            "displayName": "Native Linux x86_64 -- SDL2 + both GL devices, NO Pixomatic",
-            "description": "64-bit native build (ufront 2.54). Same engine and the recovered Karma as `native`, at LP64 instead of -m32. NO PIXOMATIC, and that is not a policy choice: the prebuilts are i386-only on BOTH platforms (pixomatic_linux.a is a 32-bit i386 archive; the Windows side is an import lib against a PE32 i386 DLL) and there is no source to rebuild from, so -SOFTWARERENDERER does not exist here. 32-bit remains the DEFAULT (`native`): it is what the suite is calibrated on, and it is the pointer-width CONTROL arm of decomp/test/ut2004/ktrace_gate.sh, which compares a 64-bit candidate against it byte-for-byte.",
+            "displayName": "Native Linux x86_64 -- SDL2 + both GL devices, no Pixomatic",
+            "description": "64-bit native build: the same engine and recovered Karma as `native`, at LP64. No Pixomatic (its prebuilts are i386-only on both platforms and there is no source), so -SOFTWARERENDERER does not exist here. 32-bit (`native`) is the default width. Builds in build-native64/ -> ut2004.bin.",
             "inherits": "native-base",
             "binaryDir": "${sourceDir}/build-native64",
             "cacheVariables": {
@@ -28,7 +28,7 @@
         {
             "name": "native",
             "displayName": "Native Linux x86 -- SDL2, both GL devices + Pixomatic, one binary",
-            "description": "32-bit native build. SDL2Drv + OpenGLDrv (desktop GL) + GL4ESDrv (GL->GLES2 translation) + PixoDrv (Michael Abrash's software rasterizer, -SOFTWARERENDERER) all in ONE binary; pick at startup with -OPENGLRENDERER / -GL4ESRENDERER / -SOFTWARERENDERER. Karma is ON (the RECOVERED sources -- USE_KARMA_DECOMP defaults ON), so this has vehicles and ragdolls; `native-nokarma` is the physics-off control. Builds in build-native/ -> ut2004-pixo.bin. [ufront 2.34]",
+            "description": "32-bit native build (the default width): SDL2Drv + OpenGLDrv (desktop GL) + GL4ESDrv (GL->GLES2 translation) + PixoDrv (the Pixomatic software renderer) in one binary; pick at startup with -OPENGLRENDERER / -GL4ESRENDERER / -SOFTWARERENDERER. The recovered Karma (USE_KARMA_DECOMP, the default) gives vehicles and ragdolls; `native-nokarma` is the physics-off control. Builds in build-native/ -> ut2004-pixo.bin.",
             "inherits": "native-base",
             "binaryDir": "${sourceDir}/build-native",
             "cacheVariables": {
@@ -39,8 +39,8 @@
         {
             "name": "legacy-karma",
             "inherits": "native",
-            "displayName": "Native Linux x86 -- the LEGACY Karma (MathEngine's shipped archives): the A/B reference arm",
-            "description": "ufront 2026-09-12. `native` with BUILD_KARMA_REF instead of USE_KARMA_DECOMP: identical engine, identical renderers (SDL2 + OpenGLDrv + GL4ESDrv + Pixomatic), and MathEngine's own prebuilt i386 archives as the physics instead of the recovered sources. THIS IS THE A/B CONTROL and it replaces `native-nokarma` in CI -- comparing the recovery against the real thing answers 'is the recovered code right', where comparing it against no physics only ever answered 'is Karma involved'. 32-BIT x86 ONLY: the archives are binary-only i386, there is no 64-bit Linux variant, and the build refuses early rather than fail at the link. Builds in build-legacy-karma/ -> ut2004-legacykarma-pixo.bin, named so it can sit beside the recovered binary in one directory.",
+            "displayName": "Native Linux x86 -- the reference Karma (MathEngine's shipped archives): the A/B arm",
+            "description": "`native` with BUILD_KARMA_REF instead of USE_KARMA_DECOMP: the same engine and renderers, with MathEngine's prebuilt i386 archives as the physics, the reference the recovered Karma is compared against (in CI too). 32-bit x86 Linux only: the archives are binary-only i386, and configure refuses anything else. Builds in build-legacy-karma/ -> ut2004-legacykarma-pixo.bin, so it can sit beside the recovered binary.",
             "binaryDir": "${sourceDir}/build-legacy-karma",
             "cacheVariables": {
                 "USE_KARMA_DECOMP": "OFF",
@@ -49,8 +49,8 @@
         },
         {
             "name": "native-sse",
-            "displayName": "Native Linux x86 -- the ktrace CONTROL arm (32-bit, SSE float math, no Pixomatic)",
-            "description": "ufront 2.58. The 32-bit pointer-width control for decomp/test/ut2004/ktrace_gate.sh: the same recovered Karma at -m32 with -msse2 -mfpmath=sse, so the ONLY variable against the 64-bit candidate is the pointer width. `native` cannot be that control: it is -march=pentium -msse with x87 doubles at 80-bit and produces trace md5 81b06b0cf715, never the reference c31ed77b7323. No Pixomatic (it is not needed for a trace and it is the open -O2 defect), so the binary is build-native-sse/Source/SDLLaunch/ut2004.bin, NOT ut2004-pixo.bin.",
+            "displayName": "Native Linux x86 -- the ktrace control arm (32-bit, SSE float math, no Pixomatic)",
+            "description": "The 32-bit pointer-width control for metoolkit-karma-decomp's decomp/test/ut2004/ktrace_gate.sh: the recovered Karma at -m32 with -msse2 -mfpmath=sse, so the only variable against a 64-bit trace is the pointer width (`native` runs its doubles on x87 at 80-bit). No Pixomatic. Builds in build-native-sse/ -> ut2004.bin.",
             "inherits": "native-base",
             "binaryDir": "${sourceDir}/build-native-sse",
             "cacheVariables": {
@@ -72,7 +72,7 @@
         {
             "name": "wasm",
             "displayName": "Web (Emscripten/WASM) -- dev default",
-            "description": "Emscripten gl4es web build: -O2 + DWARF + assertions + exception catching. The everyday dev build \u2014 named stacks and readable errors while the engine still runs at a playable speed. NOT the small one: DWARF plus un-cleaned-up inlining makes it the largest of the three. Builds in build-wasm/. Run `source <emsdk>/emsdk_env.sh` first (sets EMSDK).",
+            "description": "Emscripten web build: -O2 + DWARF + assertions + exception catching. The everyday dev build and the shipped -debug binary: named stacks and readable errors at a playable speed. The largest of the three (DWARF plus un-cleaned-up inlining). Builds in build-wasm/. Run `source <emsdk>/emsdk_env.sh` first (sets EMSDK).",
             "generator": "Unix Makefiles",
             "binaryDir": "${sourceDir}/build-wasm",
             "toolchainFile": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
@@ -84,7 +84,7 @@
         {
             "name": "wasm-debug",
             "displayName": "Web (Emscripten/WASM) -- -O0, last resort",
-            "description": "Emscripten gl4es web build: -O0, nothing inlined, every local live. Reach for it when the OPTIMISER is the suspect \u2014 a bug that shows at one -O level and not another is almost always undefined behaviour. ~5x the wasm and a much slower boot. Builds in build-wasm-debug/.",
+            "description": "Emscripten web build: -O0, nothing inlined, every local live. For when the optimiser is the suspect (a bug that shows at one -O level and not another is almost always undefined behaviour). Several times the wasm size and a much slower boot. Builds in build-wasm-debug/.",
             "inherits": "wasm",
             "binaryDir": "${sourceDir}/build-wasm-debug",
             "cacheVariables": {
@@ -94,7 +94,7 @@
         {
             "name": "wasm-perf",
             "displayName": "Web (Emscripten/WASM) -- max performance",
-            "description": "Emscripten gl4es web build: -O3, assertions off, no debug info -> smaller/faster. Builds in build-wasm-perf/. Run `source <emsdk>/emsdk_env.sh` first.",
+            "description": "Emscripten web build: -O3, assertions off, no debug info (a side symbol map) -- the shipping build. Builds in build-wasm-perf/. Run `source <emsdk>/emsdk_env.sh` first.",
             "inherits": "wasm",
             "binaryDir": "${sourceDir}/build-wasm-perf",
             "cacheVariables": {
@@ -104,8 +104,8 @@
         },
         {
             "name": "windows64",
-            "displayName": "64-bit Windows (MinGW-w64 cross) -- WITH the recovered Karma",
-            "description": "The x86_64 Windows build, and the reason it exists is Karma: MinGW cannot link MathEngine's MSVC-mangled prebuilts, so a Windows build could never have physics until the recovery replaced them with portable C. It does now. LLP64 (`long` is 4 bytes where Linux's is 8) while pointers are 8 on both, so this is the only target that exercises that combination. Validated by the SAME ktrace as every other target -- `decomp/test/ut2004/ktrace_run.sh` runs a .exe under wine -- and its trajectory matches the 32-bit control. Builds in build-windows64/ -> ut2004.exe. ufront 2.58: USE_PIXOMATIC=OFF is stated here because the preset inherits ON from `windows` and the 64-bit Pixomatic guard is a configure-time FATAL_ERROR, so `cmake --preset windows64` could not configure at all; the 2026-09-07 build had been configured with the flag passed by hand.",
+            "displayName": "64-bit Windows (MinGW-w64 cross) -- with the recovered Karma",
+            "description": "The x86_64 Windows build. MinGW cannot use MathEngine's archives, so the Windows physics is the recovered Karma (portable C). LLP64 (`long` is 4 bytes, pointers 8), the only target with that combination; validated by the same ktrace as every other target (metoolkit-karma-decomp's decomp/test/ut2004/ktrace_run.sh runs the .exe under wine). USE_PIXOMATIC=OFF overrides the ON inherited from `windows` (Pixomatic is 32-bit only). Builds in build-windows64/ -> ut2004.exe.",
             "inherits": "windows",
             "binaryDir": "${sourceDir}/build-windows64",
             "cacheVariables": {
@@ -117,8 +117,8 @@
         },
         {
             "name": "windows",
-            "displayName": "Windows x86 (MinGW-w64) -- SDL2, both GL devices",
-            "description": "32-bit Windows build (MinGW-w64 cross from Linux). SDL2 + BOTH GL render devices (OpenGLDrv desktop GL and GL4ESDrv) plus PixoDrv, picked at startup with -OPENGLRENDERER / -GL4ESRENDERER / -SOFTWARERENDERER. ufront 2.54: PIXOMATIC IS NOW ON. Its pixomatic.lib is a pure IMPORT library (all members are `pixomatic.dll`), so the DLL is a LOAD-TIME dependency -- measured: objdump lists pixomatic.dll among the exe imports and the Delay Import Directory is empty, i.e. a missing DLL means the process does not start at all, not a renderer that is merely unavailable. The DLL is now VENDORED at Thirdparty/Pixomatic/Bin/pixomatic.dll (PE32 i386) and staged beside the exe by SDLLaunch/CMakeLists.txt, so the artifact is self-contained rather than only runnable inside a retail install. Karma is ON here too (the recovered sources; the old note that MinGW cannot link MathEngine is pre-recovery history). Builds in build-windows/ -> ut2004-pixo.exe. [ufront 2.33, SDL2 2.34, Pixomatic 2.54]",
+            "displayName": "Windows x86 (MinGW-w64) -- SDL2, both GL devices + Pixomatic",
+            "description": "32-bit Windows build (MinGW-w64 cross from Linux): SDL2 + OpenGLDrv (desktop GL) + GL4ESDrv + PixoDrv, picked at startup with -OPENGLRENDERER / -GL4ESRENDERER / -SOFTWARERENDERER, with the recovered Karma. pixomatic.lib is an import library, so pixomatic.dll is a load-time dependency: it is vendored at Thirdparty/Pixomatic/Bin/pixomatic.dll and staged beside the exe, as OpenAL32.dll is. Builds in build-windows/ -> ut2004-pixo.exe.",
             "generator": "Unix Makefiles",
             "binaryDir": "${sourceDir}/build-windows",
             "toolchainFile": "${sourceDir}/cmake/toolchain-mingw-w64.cmake",
@@ -134,7 +134,7 @@
         },
         {
             "name": "wasm-karmadecomp-debug",
-            "displayName": "DEPRECATED alias of `wasm-debug` (Karma is the default since 2026-08-27)",
+            "displayName": "Alias of `wasm-debug` (USE_KARMA_DECOMP is already the default)",
             "inherits": "wasm-debug",
             "binaryDir": "${sourceDir}/build-wasm-karmadecomp-debug",
             "cacheVariables": {
@@ -143,7 +143,7 @@
         },
         {
             "name": "wasm-karmadecomp-perf",
-            "displayName": "DEPRECATED alias of `wasm-perf` (Karma is the default since 2026-08-27)",
+            "displayName": "Alias of `wasm-perf` (USE_KARMA_DECOMP is already the default)",
             "inherits": "wasm-perf",
             "binaryDir": "${sourceDir}/build-wasm-karmadecomp-perf",
             "cacheVariables": {

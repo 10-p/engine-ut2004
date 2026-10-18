@@ -22,9 +22,9 @@
 #include <errno.h>
 
 // System includes.
-// ufront 2.33 (Windows/MinGW): this file is the platform layer for every non-MSVC target, Windows now
-// included. MinGW has unistd/dirent/utime/sys-time/sys-stat, but not the process, resource-limit or
-// name-resolution headers; Windows answers those through Win32 and WinSock.
+// This file is the platform layer for every non-MSVC target, Windows (MinGW) included. MinGW has
+// unistd/dirent/utime/sys-time/sys-stat, but not the process, resource-limit or name-resolution headers;
+// Windows answers those through Win32 and WinSock.
 #ifdef _WIN32
 #include <winsock2.h>
 #include <windows.h>
@@ -70,7 +70,7 @@
 #endif
 
 // Stack traces via C runtime...
-// ufront 2.33: MinGW has no <execinfo.h> either — backtrace()/backtrace_symbols() are a glibc extension.
+// MinGW has no <execinfo.h> either: backtrace()/backtrace_symbols() are a glibc extension.
 #if ((MACOSX) || (__FreeBSD__) || defined(__EMSCRIPTEN__) || defined(_WIN32))
 #  define HAVE_EXECINFO_H 0
 #else
@@ -83,7 +83,7 @@
 #endif
 
 #ifdef _WIN32
-// ufront 2.33: MAXPATHLEN is a BSD/glibc spelling; the Win32 equivalent is MAX_PATH.
+// MAXPATHLEN is a BSD/glibc spelling; the Win32 equivalent is MAX_PATH.
 #  ifndef MAXPATHLEN
 #    define MAXPATHLEN MAX_PATH
 #  endif
@@ -1244,8 +1244,8 @@ UBOOL USystem::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
         appToAnsi(Arg0, ansistr);
 
 #ifdef _WIN32
-		// ufront 2.33: no fork() on Windows. _spawnl already means "start it and keep going", so the
-		// child/parent split collapses to spawn-then-exit.
+		// No fork() on Windows: _spawnl starts the child and returns, so the child/parent split is
+		// spawn-then-exit.
 		if( _spawnl( _P_NOWAIT, "./ucc.exe", "ucc", "server", ansistr, (char*)NULL ) == -1 )
 			appErrorf( TEXT("Failed to launch process.") );
 		appRequestExit( 0 );
@@ -1319,14 +1319,9 @@ CORE_API void appRequestExit( UBOOL Force )
 		// Tell the platform specific code we want to exit cleanly from the main loop.
 		GIsRequestingExit = 1;
 #ifdef __EMSCRIPTEN__
-		// Notify the browser shell to return to the splash menu after cleanup.
-		// EM_ASM is a direct C++ → JS call — no console parsing needed.
-		//
-		// ufront 2.13.2: MAIN_THREAD_EM_ASM, not EM_ASM. Under -sPROXY_TO_PTHREAD this runs on the
-		// worker, where `window` does not exist and WorkerLocation is read-only — the guard below would
-		// simply skip and the page would sit on a dead canvas forever (the E2E caught exactly that on
-		// unreal1: waitForURL timed out). Only the browser main thread can navigate. It is a plain
-		// EM_ASM on a non-threaded build, so both configurations keep working.
+		// Ask the page to return to the launcher after cleanup. MAIN_THREAD_EM_ASM on the threaded build:
+		// this runs on the worker, where `window` does not exist, and only the browser main thread can
+		// navigate. A plain EM_ASM on a non-threaded build.
 #ifdef __EMSCRIPTEN_PTHREADS__
 		MAIN_THREAD_EM_ASM({
 #else
@@ -1380,21 +1375,11 @@ void* appGetDllHandle( const TCHAR* Filename )
 #endif
 
 #ifdef _WIN32
-	// The PACKAGE path -- UObject::BindPackage asking "is this native package available?". BUILD_STATIC
-	// is ON, so every package that exists IS the main binary, and the sentinel says so.
-	//
-	// ⚠ ufront 2.37 tried to make this HONEST -- probe for the registrant GLoaded<Package> and answer
-	// NULL for packages this build does not contain, which is exactly what the POSIX path below does and
-	// which looked strictly more correct. It CRASHED AT STARTUP, deterministically, 3/3, before the main
-	// menu finished building (a garbage UObject::GetFName). So something on this path depends on
-	// BindPackage binding unconditionally and calling ProcessRegistrants for names that are not really
-	// packages. It was reverted rather than shipped; if it is revisited, the A/B is three wine runs and
-	// the tell is `MatchViewportsToActors: GUI2K4.UT2K4MainMenu` being the last line before the fault.
-	//
-	// ⚠ And do NOT turn it into a LoadLibrary fallback either: a UT2004 asset tree ships all THIRTY
-	// retail 2004 DLLs (Core.dll, Engine.dll, D3DDrv.dll...), so that loads a 2004 binary into the
-	// process -- also tried, also an immediate crash. A genuine external library has its own entry
-	// point; see appGetSystemDllHandle.
+	// The package path (UObject::BindPackage asking "is this native package available?"). BUILD_STATIC is
+	// on, so every package that exists is the main binary, and the sentinel says so. Answering NULL for
+	// packages this build lacks (as the POSIX path below does) crashes at startup, and a LoadLibrary
+	// fallback would load one of the retail 2004 DLLs an asset tree ships. A genuine external library has
+	// its own entry point: appGetSystemDllHandle.
 	return (void*)-1;
 #endif
 
@@ -1404,7 +1389,7 @@ void* appGetDllHandle( const TCHAR* Filename )
 		return((void*) -1);
 	#endif
 
-#ifndef _WIN32	// ufront 2.33: unreachable on Windows (sentinel above), and dlfcn does not exist there.
+#ifndef _WIN32	// unreachable on Windows (sentinel above), and dlfcn does not exist there.
 	check(Filename);
 	const TCHAR* PackageName = Filename;
 	TCHAR* Cur;
@@ -1504,8 +1489,8 @@ void* appGetDllHandle( const TCHAR* Filename )
 }
 
 //
-// Load a genuine external library -- NOT an engine package. See the note in UnFile.h for why the two
-// cannot share an entry point on a static Windows build.
+// Load a genuine external library, not an engine package (UnFile.h: on a static Windows build the two
+// cannot share an entry point).
 //
 void* appGetSystemDllHandle( const TCHAR* Filename )
 {
@@ -1517,11 +1502,8 @@ void* appGetSystemDllHandle( const TCHAR* Filename )
 	// be non-NULL so ALAudio's Init() proceeds.
 	return (void*)-1;
 #elif defined(_WIN32)
-	// ★ This is what Windows was missing, and why it had no sound. ALAudio is DYNAMIC_BIND: it asks for
-	// "OpenAL32.dll" by name and resolves every AL entry point out of the handle. appGetDllHandle answered
-	// with the "it is in the exe" sentinel, so the very first lookup failed ("Missing function 'alEnable'
-	// for '_AL' support"), Init() bailed, and InitAudio logged "Audio initialization failed." -- with no
-	// line anywhere saying a DLL was missing, because none was ever looked for.
+	// ALAudio is DYNAMIC_BIND: it asks for "OpenAL32.dll" by name and resolves every AL entry point from
+	// the handle, so this is a real LoadLibrary (appGetDllHandle answers with the in-exe sentinel).
 	{
 		HMODULE Module = LoadLibraryA( appToAnsi(Filename) );
 		if( !Module )
@@ -1560,8 +1542,7 @@ void appFreeDllHandle( void* DllHandle )
 		return;
 
 #ifdef _WIN32
-	// ufront 2.37: appGetDllHandle can hand back a real module now (it could only ever return the
-	// sentinel before, which is filtered out above), so release it properly.
+	// appGetDllHandle can hand back a real module (the sentinel is filtered out above): release it.
 	FreeLibrary( (HMODULE)DllHandle );
 	return;
 #else
@@ -1594,13 +1575,10 @@ void* appGetDllExport( void* DllHandle, const TCHAR* ProcName )
 #endif
 
 #ifdef _WIN32
-	// ufront 2.33 — the sentinel means "it is in the exe". GetProcAddress on the module handle is the
-	// Win32 spelling of dlsym(RTLD_DEFAULT), and it resolves only EXPORTED names — so the launcher links
-	// with --export-all-symbols (see CMakeLists.txt), which is what makes the package registrants
-	// (GLoaded<Package>) visible to this lookup.
-	// ufront 2.37 — appGetDllHandle can now return a REAL module (OpenAL32.dll), so honour it. The
-	// fall back to the exe keeps every pre-2.37 lookup answering exactly as it did: a library that
-	// loads but does not export the name behaves like the old sentinel rather than silently regressing.
+	// The sentinel means "it is in the exe". GetProcAddress on the module handle is the Win32 spelling of
+	// dlsym(RTLD_DEFAULT) and resolves only exported names, so the launcher links with
+	// --export-all-symbols, which makes the package registrants (GLoaded<Package>) visible here. A real
+	// module (OpenAL32.dll) is asked first; a library that does not export the name falls back to the exe.
 	{
 		HMODULE Module = (DllHandle == (void*)-1) ? GetModuleHandleA( NULL ) : (HMODULE)DllHandle;
 		void* Result = (void*)GetProcAddress( Module, appToAnsi(ProcName) );
@@ -1610,7 +1588,7 @@ void* appGetDllExport( void* DllHandle, const TCHAR* ProcName )
 	}
 #endif
 
-#ifndef _WIN32	// ufront 2.33: unreachable on Windows (GetProcAddress above).
+#ifndef _WIN32	// unreachable on Windows (GetProcAddress above).
 	void* Result = NULL;
 
 	const char *Error;
@@ -1669,8 +1647,8 @@ void* appCreateProc( const TCHAR* URL, const TCHAR* Parms )
 	appStrcat(LocalParms, Parms);
 
 #ifdef _WIN32
-	// ufront 2.33: _spawnlp via the shell is the Windows equivalent of fork-then-system. The returned
-	// handle is a process handle rather than a pid; appGetProcReturnCode's map is keyed on it either way.
+	// _spawnlp via the shell is the Windows equivalent of fork-then-system. The returned handle is a process
+	// handle rather than a pid; appGetProcReturnCode's map is keyed on it either way.
 	intptr_t pid = _spawnlp( _P_NOWAIT, "cmd.exe", "cmd.exe", "/c", appToAnsi(LocalParms), (char*)NULL );
 	if( pid == -1 )
 		debugf( TEXT("appCreateProc: failed to launch %s"), LocalParms );
@@ -1705,9 +1683,8 @@ UBOOL appGetProcReturnCode( void* ProcHandle, INT* ReturnCode )
 static void HandleChild(int Signal)
 {
 #ifndef _WIN32
-	// ufront 2.33: SIGCHLD reaping is POSIX-only. Windows has no zombie processes to reap — a spawned
-	// child's exit code is read from its handle — and this is only ever installed by the sigaction block
-	// in appPlatformInit, which is itself POSIX-only.
+	// SIGCHLD reaping is POSIX-only. Windows has no zombie processes to reap (a spawned child's exit code is
+	// read from its handle), and this is only installed by the POSIX-only sigaction block in appPlatformInit.
 	int Status;
 	pid_t pid;
 	while( (pid=waitpid(-1, &Status, WNOHANG)) > 0 )
@@ -1725,13 +1702,13 @@ static void HandleSignal( int Signal )
 	char* sig_text;
 	switch (Signal)
 	{
-#ifndef _WIN32	// ufront 2.33: not defined by MinGW's <signal.h> — no such signal on Windows.
+#ifndef _WIN32	// not defined by MinGW's <signal.h>: no such signal on Windows.
 		case SIGHUP:
 			sig_text = "Signal: SIGHUP [hangup]";
 			SignalExit++;
 			break;
 #endif
-#ifndef _WIN32	// ufront 2.33: not defined by MinGW's <signal.h> — no such signal on Windows.
+#ifndef _WIN32	// not defined by MinGW's <signal.h>: no such signal on Windows.
 		case SIGQUIT:
 			sig_text = "Signal: SIGQUIT [quit]";
 			SignalExit++;
@@ -1741,19 +1718,19 @@ static void HandleSignal( int Signal )
 			sig_text = "Signal: SIGILL [illegal instruction]";
 			SignalCritical++;
 			break;
-#ifndef _WIN32	// ufront 2.33: not defined by MinGW's <signal.h> — no such signal on Windows.
+#ifndef _WIN32	// not defined by MinGW's <signal.h>: no such signal on Windows.
 		case SIGTRAP:
 			sig_text = "Signal: SIGTRAP [trap]";
 			SignalCritical++;
 			break;
 #endif
-#ifndef _WIN32	// ufront 2.33: not defined by MinGW's <signal.h> — no such signal on Windows.
+#ifndef _WIN32	// not defined by MinGW's <signal.h>: no such signal on Windows.
 		case SIGIOT:
 			sig_text = "Signal: SIGIOT [iot trap]";
 			SignalCritical++;
 			break;
 #endif
-#ifndef _WIN32	// ufront 2.33: not defined by MinGW's <signal.h> — no such signal on Windows.
+#ifndef _WIN32	// not defined by MinGW's <signal.h>: no such signal on Windows.
 		case SIGBUS:
 			sig_text = "Signal: SIGBUS [bus error]";
 			SignalCritical++;
@@ -1781,12 +1758,10 @@ static void HandleSignal( int Signal )
 			break;
 	}
 
-	// ufront (engine-uc2's D-1, its commit d282bc7): a second exit signal no longer aborts. The engine is already
-	// leaving its main loop for the first one, and the abort below runs appExit() inside this handler, on top of
-	// whatever the interrupted thread was doing (its own appPreExit/StaticExit): the two exits then ran over the same
-	// objects or the handler waited for a lock the interrupted code held (a hang). The second signal is common:
-	// `timeout` signals the process and then its process group. SIGKILL still ends the process at once; Ctrl-C twice
-	// still aborts (HandleInterrupt, a critical signal).
+	// A second exit signal is reported and ignored: the engine is already leaving its main loop for the first,
+	// and the abort below would run appExit() inside this handler on top of the interrupted thread's own exit
+	// (the same objects twice, or a lock the interrupted code holds). `timeout` signals the process and then its
+	// process group. SIGKILL still ends the process at once; Ctrl-C twice still aborts (HandleInterrupt).
 	if ( SignalCritical == 0 && SignalExit > 1 )
 	{
 		static const char Ignored[] = "Signal: exit already requested; this one is ignored (SIGKILL ends the process now).\n";
@@ -1804,9 +1779,9 @@ static void HandleSignal( int Signal )
 			AlreadyAborting = true;
 
 #if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
-			// ufront (D-1): the report and appExit() below are not async-signal-safe (malloc, the log, the inis); when
-			// the crash interrupted a thread holding one of their locks they block for ever. SIGALRM's default action
-			// ends the process if they have not finished in 10 seconds.
+			// The report and appExit() below are not async-signal-safe (malloc, the log, the inis) and can
+			// block for ever on a lock the crashed thread held; SIGALRM's default action ends the process if
+			// they have not finished in 10 seconds.
 			alarm( 10 );
 #endif
 
@@ -1836,9 +1811,9 @@ static void HandleSignal( int Signal )
 	}
 	if ( SignalExit == 1 )
 	{
-		// ufront (D-1): only async-signal-safe calls here (write, and the flag the main loop polls). printf and
-		// appRequestExit (a debugf: formatting and the log device) could deadlock or corrupt the log when the signal
-		// interrupted a thread inside malloc or the log; the signal may land on any thread.
+		// Only async-signal-safe calls here (write, and the flag the main loop polls): printf and
+		// appRequestExit could deadlock or corrupt the log when the signal interrupted a thread inside malloc
+		// or the log, and the signal may land on any thread.
 		static const char Requesting[] = "Requesting Exit.\n";
 		write( 1, sig_text, strlen(sig_text) );
 		write( 1, "\n", 1 );
@@ -1869,8 +1844,7 @@ static void HandleInterrupt( int Signal )
         if (GIsRunning)   // already in main loop.
         {
             // let the engine try to shut down cleanly.
-            // ufront (D-1): async-signal-safe, as in HandleSignal (debugf + appRequestExit here could deadlock on
-            // the log or malloc lock of the interrupted thread).
+            // Async-signal-safe, as in HandleSignal.
             static const char Pressed[] = "CTRL-C has been pressed.\n";
             write( 1, Pressed, sizeof(Pressed)-1 );
             GIsRequestingExit = 1;
@@ -2000,7 +1974,7 @@ CORE_API void appArgv0(const char *argv0)
     buf[sizeof (buf) - 1] = '\0';  // null terminate, just in case.
 
     char realbuf[MAXPATHLEN];
-#ifdef _WIN32	// ufront 2.33: _fullpath is the Win32 realpath (note the reversed argument order).
+#ifdef _WIN32	// _fullpath is the Win32 realpath (note the reversed argument order).
     if (_fullpath(realbuf, buf, sizeof(realbuf)) == NULL)
 #else
     if (realpath(buf, realbuf) == NULL)
@@ -2060,12 +2034,9 @@ CORE_API void appSleep( FLOAT Seconds )
 	guard(appSleep);
 
 #ifdef __EMSCRIPTEN__
-	// Yield to the browser event loop (Asyncify) instead of busy-waiting the
-	// single thread. EnforceTickRate calls this every frame as the frame-rate
-	// cap, so it doubles as the per-frame yield a networked client needs --
-	// WebRTC DataChannel messages, the reconnect watchdog and PeerJS signaling
-	// all run between engine frames. (A visible browser also yields on canvas
-	// present; headless has no display, so this is the reliable yield in both.)
+	// Yield to the worker's event loop (Asyncify) instead of busy-waiting. EnforceTickRate calls this as the
+	// frame-rate cap, so it is also the per-frame yield a networked client needs: WebRTC data-channel
+	// messages and signaling run between engine frames.
 	emscripten_sleep( (unsigned int)(Seconds * 1000.0f) );
 #else
 	INT SleepTime = (INT) (Seconds * 1000000);
@@ -2109,7 +2080,7 @@ static bool FindBinaryInPath(FString &cmd)
         binpath += bin;
 
         char realized[MAXPATHLEN];
-#ifdef _WIN32	// ufront 2.33: see above.
+#ifdef _WIN32	// _fullpath, as above.
         if (_fullpath(realized, appToAnsi(*binpath), sizeof(realized)) != NULL)
 #else
         if (realpath(appToAnsi(*binpath), realized) != NULL)
@@ -2354,10 +2325,9 @@ CORE_API const TCHAR* appBaseDir()
 	if( !BaseDir[0] )
 	{
 #if defined(__ANDROID__)
-		// Android: the app shell's JNI bridge sets UT2004_ANDROID_BASEDIR to the on-storage
-		// System dir (and chdir's there) so the engine reads the game tree IN PLACE via its
-		// unchanged POSIX fopen layer (no copy). Re-chdir here defensively in case cwd moved
-		// during SDL/thread startup, then let getcwd below seed BaseDir. Falls through if unset.
+		// The app's JNI bridge sets UT2004_ANDROID_BASEDIR to the on-storage System dir (and chdir's
+		// there) so the engine reads the game tree in place through its POSIX file layer. Re-chdir in
+		// case the cwd moved during SDL/thread startup, then getcwd below seeds BaseDir. Unset: falls through.
 		const ANSICHAR* AndroidBaseDir = getenv("UT2004_ANDROID_BASEDIR");
 		if( AndroidBaseDir && AndroidBaseDir[0] )
 			chdir( AndroidBaseDir );
@@ -2394,7 +2364,7 @@ CORE_API const TCHAR* appUserName()
 	static TCHAR Result[256]=TEXT("");
 	if( !Result[0] )
 	{
-#ifdef _WIN32	// ufront 2.33: no getlogin() on Windows.
+#ifdef _WIN32	// no getlogin() on Windows.
 		ANSICHAR NameBuf[256] = "";
 		DWORD NameLen = ARRAY_COUNT(NameBuf);
 		if( !GetUserNameA( NameBuf, &NameLen ) )
@@ -2461,7 +2431,7 @@ void appPlatformPreInit()
     check((long) GMacOSVer == osver);
 
 #elif defined(_WIN32)
-    // ufront 2.33 — the engine only wants a human-readable OS string here.
+    // The engine only wants a human-readable OS string here.
     {
         OSVERSIONINFOA osvi;
         appMemzero( &osvi, sizeof(osvi) );
@@ -2618,8 +2588,8 @@ static void DoCPUID( int i, DWORD *A, DWORD *B, DWORD *C, DWORD *D )
 
 
 #ifndef _WIN32
-// ufront 2.33: <winnt.h> already defines LARGE_INTEGER (as a union, with the members the other way
-// round). Nothing here uses it on Windows, so take the platform's rather than redefine it.
+// <winnt.h> already defines LARGE_INTEGER (as a union, with the members the other way round). Nothing here
+// uses it on Windows, so take the platform's rather than redefine it.
 typedef struct
 {
     DWORD HighPart;
@@ -2631,17 +2601,14 @@ typedef struct
 
 #ifdef _WIN32
 //
-// ufront 2.37 — last-resort crash reporter for the Windows build.
+// Last-resort crash reporter for the Windows build: the POSIX sigaction block below does not apply there,
+// and the guard/unguard chain reports only thrown errors, so a hardware fault would end the process with
+// no output.
 //
-// Windows had NO fault handler at all: the POSIX sigaction block below is skipped, and the guard/unguard
-// chain that 2.33 relied on only reports THROWN errors. A segfault therefore killed the process with no
-// output, leaving a log that stops mid-stream and looks like a clean exit. This makes a fault say so.
-//
-// ⚠ It deliberately does NOT try to be a symbolising debugger. The exe carries DWARF, which dbghelp
-// cannot read (it wants PDBs), so printing names in-process would need a DWARF reader in the crash path —
-// the least safe place to run new code. Instead it prints the module base and the raw addresses, which
-// `addr2line -e ut2004.exe` turns into exact file:line on the machine that built it. ★ The base matters:
-// the image is ASLR'd, so a bare address is useless without it.
+// It does not symbolise: the exe carries DWARF, which dbghelp cannot read, and a DWARF reader is the least
+// safe code to run in a crash path. It prints the image base and raw addresses, which
+// `addr2line -e ut2004.exe` turns into file:line on the machine that built it (the image is ASLR'd, so
+// the base is needed).
 //
 static LONG WINAPI appWinUnhandledException( EXCEPTION_POINTERS* Info )
 {
@@ -2670,10 +2637,7 @@ static LONG WINAPI appWinUnhandledException( EXCEPTION_POINTERS* Info )
 
 	debugf( NAME_Critical, TEXT("=== CRASH (unhandled exception) ===") );
 	debugf( NAME_Critical, TEXT("%s  code=0x%08x"), Name, (DWORD)Code );
-	// ⚠ %08x TRUNCATES A 64-BIT BASE, and this is not cosmetic: on Win64 the PE's preferred base
-	// is 0x140000000, so the printed base was `0x40000000` and every rva computed from it sent
-	// addr2line to an address that resolves to nothing. Measured 2026-09-02 on the first x86-64
-	// Windows crash this engine has ever produced -- seven candidate frames, seven `?? ??:0`.
+	// %016llx: on Win64 the PE's preferred base is 0x140000000, which %08x would truncate.
 	debugf( NAME_Critical, TEXT("Image base: 0x%016llx   (subtract this from the addresses below)"),
 	        (QWORD)(size_t)Base );
 
@@ -2693,9 +2657,8 @@ static LONG WINAPI appWinUnhandledException( EXCEPTION_POINTERS* Info )
 		}
 	}
 
-	// ⚠ Flush the header BEFORE attempting any call-path reconstruction. The first version of this
-	// reporter did the trace first and printed nothing but the header when the trace itself faulted --
-	// losing the one datum that always survives. Order the output by how reliably it can be produced.
+	// Flush the header before any call-path reconstruction: if the trace itself faults, the header has
+	// still been written. The output is ordered by how reliably it can be produced.
 	if( GLog )
 		GLog->Flush();
 
@@ -2744,13 +2707,10 @@ static LONG WINAPI appWinUnhandledException( EXCEPTION_POINTERS* Info )
 	if( GLog )
 		GLog->Flush();
 
-	// ★ The frame-pointer walk comes FIRST and RtlCaptureStackBackTrace LAST, which is the opposite of
-	// the obvious order, for two measured reasons:
-	//   * on real Windows RtlCaptureStackBackTrace unwinds from HERE, inside the handler, and returns
-	//     `appWinUnhandledException <- ntdll <- ntdll` -- four exact frames, none of them the crash;
-	//   * under wine it FAULTS, and a fault in the reporter costs everything printed after it (observed:
-	//     the report stopped dead at the last stack-scan line).
-	// The walk needs no API and, with -fno-omit-frame-pointer, is the accurate one anyway.
+	// The frame-pointer walk comes first and RtlCaptureStackBackTrace last: on Windows
+	// RtlCaptureStackBackTrace unwinds from inside the handler and returns only the handler's own frames,
+	// and under wine it faults, which costs everything printed after it. The walk needs no API and, with
+	// -fno-omit-frame-pointer, is the accurate one.
 	if( Info && Info->ContextRecord )
 	{
 		#ifndef _WIN64
@@ -2781,15 +2741,12 @@ static LONG WINAPI appWinUnhandledException( EXCEPTION_POINTERS* Info )
 				(DWORD)(size_t)Frames[i], (DWORD)((const BYTE*)Frames[i] - Base) );
 	}
 
-	// ⚠ Label this honestly: appInit SEEDS GErrorHist with "General protection fault!" and the guard
-	// chain appends to it, so a non-empty buffer does NOT mean an error just happened -- it is whatever
-	// the last unwind left there, possibly long ago and already handled.
+	// appInit seeds GErrorHist with "General protection fault!" and the guard chain appends to it, so a
+	// non-empty buffer does not mean an error just happened: it is whatever the last unwind left there.
 	if( GErrorHist[0] )
 		debugf( NAME_Critical, TEXT("Guard history (may be stale, not necessarily this crash): %s"), GErrorHist );
 
-	// The image base, not a literal: 0x400000 is the 32-bit PE default and is wrong by
-	// 0x13fc00000 on x86-64. Printing the number the reader must actually add removes the step
-	// where they guess it.
+	// The image base, not a literal: 0x400000 is the 32-bit PE default and is wrong on x86-64.
 	debugf( NAME_Critical,
 	        TEXT("Symbolise with: addr2line -f -C -e ut2004.exe <rva + 0x%016llx>"),
 	        (QWORD)(size_t)GetModuleHandleA( NULL ) );
@@ -3112,18 +3069,12 @@ void appPlatformInit()
 	}
 
 #ifdef UT_NO_X86_INTRIN
-	// ★★ ufront 2.53 — appCycles() COUNTS MICROSECONDS ON THIS PATH, so the conversion factor is fixed
-	// and the CPUSPEED= override above must not be allowed to scale it. Both are still needed:
-	// CPUSPEED= is what stops the `#else` branch a few lines up from appErrorf'ing out of the boot
-	// (there is no CPU-speed detection for wasm or arm), and it is what GMachineCPU reports — but as a
-	// clock rate it is fiction, so applying it here turned a microsecond into 1/3000th of one.
-	//
-	// ⚠ THIS IS ONLY SAFE BECAUSE NOTHING TIMES GAMEPLAY WITH IT, which was checked rather than assumed:
-	// the rdtsc appSeconds() in UnGnuG.h is `#if 0`'d, so the game loop runs on appSecondsSlow()
-	// wall-clock and never reads GSecondsPerCycle. Every remaining consumer in a wasm/arm build is a
-	// `stat` display, a debugf, or the -benchmark frame log — and all of them read 0 today, so this can
-	// only make them correct. (The one arithmetic user, UnActor.cpp's SlowOverlapThreshTime, gates a
-	// debugf and nothing else. D3D's CPUSpeed readback is inside a `#if 0`.)
+	// appCycles() counts microseconds on this path, so the conversion factor is fixed and the CPUSPEED=
+	// override above must not scale it. CPUSPEED= is still needed: it keeps the `#else` branch above from
+	// appErrorf'ing (there is no CPU-speed detection for wasm or arm) and it is what GMachineCPU reports.
+	// Nothing times gameplay with GSecondsPerCycle: the game loop runs on appSecondsSlow() (the rdtsc
+	// appSeconds() in UnGnuG.h is `#if 0`'d); its readers here are stats, debugf lines and the -benchmark
+	// frame log.
 	GSecondsPerCycle = 0.000001;
 	debugf( NAME_Init, TEXT("[ufront] appCycles() is a microsecond counter; GSecondsPerCycle pinned to %e"), GSecondsPerCycle );
 #endif
@@ -3131,46 +3082,28 @@ void appPlatformInit()
 	unguard;
 
 #ifdef _WIN32
-	// ufront 2.33 skipped the POSIX process plumbing here:
-	//   * setrlimit(RLIMIT_NOFILE) — Windows has no per-process descriptor limit to raise; the CRT's
-	//     _setmaxstdio ceiling only applies to stdio streams, which the engine does not use for packages.
-	//     Still true, still skipped.
-	//   * sigaction() crash handlers — skipped with the note that "the guard/unguard chain still reports
-	//     the call site". ★ ufront 2.37: that is only true for a THROWN error. A hardware fault does not
-	//     unwind, so on Windows a segfault killed the process with NO output whatsoever — the log simply
-	//     stopped mid-line, which reads exactly like a hang or a clean exit and is undiagnosable. That is
-	//     how the first Settings-menu crash report arrived: a truncated log ending in an unrelated
-	//     warning. Install the Win32 equivalent so a fault at least says so.
+	// The POSIX process plumbing is skipped here:
+	//   * setrlimit(RLIMIT_NOFILE): Windows has no per-process descriptor limit to raise; the CRT's
+	//     _setmaxstdio ceiling applies only to stdio streams, which the engine does not use for packages.
+	//   * sigaction() crash handlers: the Win32 equivalent is installed instead, so a hardware fault is
+	//     reported (the guard/unguard chain reports only thrown errors).
 	SetUnhandledExceptionFilter( appWinUnhandledException );
-	// ⚠ SetUnhandledExceptionFilter covers HARDWARE faults only. The other two ways this process can die
-	// are an uncaught C++ throw (std::terminate) and abort(), and BOTH bypass it entirely -- observed
-	// for real: a crash that reported nothing at all while the segfault path reported fine. The engine
-	// throws for a living (appThrowf is how a failed load unwinds), so an escaped throw is not exotic.
+	// SetUnhandledExceptionFilter covers hardware faults only. An uncaught C++ throw (std::terminate) and
+	// abort() bypass it, and the engine throws for a living (appThrowf is how a failed load unwinds).
 	std::set_terminate( appWinTerminate );
 	signal( SIGABRT, appWinAbort );
 #endif
 #ifndef _WIN32
 	struct sigaction SigAction;
 
-	// ★ UT_NO_FAULT_HANDLER — LET THE OS SEE THE FAULT. On Android this handler is
-	// the reason a Karma crash is undiagnosable: it catches SIGSEGV, writes a line
-	// to the log and exits, so `debuggerd` never runs and there is NO TOMBSTONE and
-	// NO BACKTRACE — just "Signal: SIGSEGV" and a shutdown. On Linux gdb gets in
-	// first and this never matters; on a phone there is nothing to get in first.
-	//
-	// With the variable set, the six HARDWARE-FAULT signals are left at their
-	// default disposition and the platform's crash reporter produces a real
-	// backtrace (`logcat -s DEBUG`, then llvm-addr2line against the unstripped
-	// .so). The job-control signals below are still installed either way — those
-	// are how the engine shuts down cleanly, and dropping them turns a clean exit
-	// into a kill.
-	//
-	// ⚠ IT IS A DIAGNOSTIC, NOT A DEFAULT. Unset, behaviour is exactly as before.
-	// ⚠ ANDROID HAS NO WAY TO SET AN ENVIRONMENT VARIABLE FOR AN APP. `adb shell`
-	// runs in a different process and the launcher is Java, so the variable that
-	// works everywhere else is unreachable exactly where this is needed. The
-	// system property is the idiomatic equivalent and `debug.*` is settable on a
-	// stock user build without root: `adb shell setprop debug.ut2004.nofault 1`.
+	// UT_NO_FAULT_HANDLER leaves the hardware faults to the OS. On Android this handler catches SIGSEGV,
+	// logs a line and exits, so `debuggerd` never runs and there is no tombstone and no backtrace. With the
+	// variable set, the six hardware-fault signals keep their default disposition and the platform's crash
+	// reporter produces a real backtrace (`logcat -s DEBUG`, then llvm-addr2line against the unstripped
+	// .so). The job-control signals below are installed either way: they are how the engine shuts down
+	// cleanly. A diagnostic, off by default. An Android app cannot be given an environment variable, so
+	// there the system property does the same: `adb shell setprop debug.ut2004.nofault 1` (settable on a
+	// stock user build without root).
 #if defined(__ANDROID__)
 	char NoFaultProp[128] = { 0 };   /* bionic's PROP_VALUE_MAX is 92 */
 	__system_property_get( "debug.ut2004.nofault", NoFaultProp );
@@ -3453,8 +3386,8 @@ void appPlatformExit()
         ansiargs[args.Num()] = NULL;
 
 #ifdef _WIN32
-        // ufront 2.33: this is the "respawn the game after exit" path (GUnixSpawnOnExit). fork-then-execv
-        // becomes one _spawnv, and the parent then exits as it did before.
+        // The "respawn the game after exit" path (GUnixSpawnOnExit): fork-then-execv is one _spawnv, and the
+        // parent then exits.
         _spawnv( _P_NOWAIT, cmd, ansiargs );
         _exit(0);
 #else

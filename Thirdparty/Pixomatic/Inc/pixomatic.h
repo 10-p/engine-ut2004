@@ -29,10 +29,9 @@
 
 #endif
 
-// ufront 2.34 — MinGW needs a third combination this header never had: the shipped Windows
-// `pixomatic.lib` is a STATIC library whose symbols are stdcall-decorated C (`_PixoFoo@40`), so neither
-// existing branch fits — the dllimport one adds __declspec(dllimport) we must not have, and the
-// BUILDING_PIXO_STATIC one drops the __stdcall the symbols carry.
+// MinGW: the shipped Windows `pixomatic.lib` (the import library of pixomatic.dll) carries stdcall-decorated
+// C symbols (`_PixoFoo@40`). MinGW links through its thunks without __declspec(dllimport), and the
+// BUILDING_PIXO_STATIC branch would drop the __stdcall the symbols carry.
 #if defined(__MINGW32__) && !defined(BUILDING_PIXO)
   #define PIXO_DYNLINK(ret) __attribute__((stdcall)) ret
   #define PIXO_DYNLINKDATA(type) type

@@ -92,9 +92,8 @@ void ATcpLink::execBindPort( FFrame& Stack, RESULT_DECL )
 			closesocket(GetSocket());
 #if defined(__ANDROID__)
 			// Reset to INVALID_SOCKET, not 0: fd 0 is stdin, and PostScriptDestroyed's close-guard
-			// tests `!= INVALID_SOCKET`, so a 0 sentinel makes it later closesocket(0) -> Android's
-			// bionic fdsan aborts on the double-close of stdin. Web/desktop keep 0 (glibc tolerates
-			// it, and web uses WebRTC not BSD sockets) -> byte-identical.
+			// tests `!= INVALID_SOCKET`, so a 0 sentinel makes it later closesocket(0), which bionic's
+			// fdsan aborts on (a double close of stdin).
 			GetSocket()=INVALID_SOCKET;
 #else
 			GetSocket()=0;

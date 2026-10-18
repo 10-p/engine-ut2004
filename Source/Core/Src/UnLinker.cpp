@@ -267,7 +267,7 @@ ULinkerLoad::ULinkerLoad( UObject* InParent, const TCHAR* InFilename, DWORD InLo
 	if( !Loader )
 #ifdef __EMSCRIPTEN__
 	{
-		// Fail SOFT: Asyncify can't unwind a throw out of this (it does async file I/O),
+		// Fail soft: Asyncify can't unwind a throw out of this (it does async file I/O),
 		// so leave Success != 1 and emit a clear message. GetPackageLinker drops the
 		// half-built linker and returns NULL — the load fails with a message, not an abort.
 		debugf( NAME_Warning, TEXT("[PACKAGE-LOAD] Could not open package file '%s'"), InFilename );
@@ -620,7 +620,7 @@ void ULinkerLoad::VerifyImport( INT i )
 						return;
 					}
 #ifdef __EMSCRIPTEN__
-					// Fail SOFT: the dependency package is present but the referenced object
+					// Fail soft: the dependency package is present but the referenced object
 					// is private/incompatible (an incompatible mod). Mark broken links +
 					// message and continue, instead of a throw that Asyncify can't unwind.
 					if( Cast<UPackage>(LinkerRoot) )
@@ -681,7 +681,7 @@ void ULinkerLoad::VerifyImport( INT i )
 				return;
 			}
 #ifdef __EMSCRIPTEN__
-			// Fail SOFT: the dependency package is present but the referenced object is
+			// Fail soft: the dependency package is present but the referenced object is
 			// missing (an incompatible mod). Mark broken links + message and continue,
 			// instead of a throw that Asyncify can't unwind.
 			if( Cast<UPackage>(LinkerRoot) )

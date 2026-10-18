@@ -13,10 +13,8 @@
 #ifndef HEADER_OPENGLDRV
 #define HEADER_OPENGLDRV
 
-// ufront 2.33: OpenGLDrv's `WIN32` blocks mean "this build creates its own GL context, through WGL". That
-// is true only of Epic's original MSVC build — every build this repo produces gets the context from SDL
-// (SDLDrv on the legacy stack), Windows included. So give that idea its own name and key the blocks on it
-// rather than on the platform, and take the SDL path on MinGW exactly as Linux does.
+// UT_OPENGLDRV_WGL: this build creates its own GL context through WGL (an MSVC build). Every other build,
+// MinGW included, gets the context from SDL2Drv and takes the SDL path.
 #if defined(WIN32) && defined(_MSC_VER)
 #define UT_OPENGLDRV_WGL 1
 #endif

@@ -65,7 +65,7 @@ struct FCheckResult : public FIteratorActorList
 	friend QSORT_RETURN CDECL CompareHits( const FCheckResult* A, const FCheckResult* B )
 		{ return A->Time<B->Time ? -1 : A->Time>B->Time ? 1 : 0; }
 };
-// Standalone declaration for CompareHits (GCC 13 requires it for non-ADL lookup).
+// Standalone declaration for CompareHits (GCC requires it for non-ADL lookup).
 QSORT_RETURN CDECL CompareHits( const FCheckResult* A, const FCheckResult* B );
 
 /*-----------------------------------------------------------------------------

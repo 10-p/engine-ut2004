@@ -1,7 +1,6 @@
 /*=============================================================================
-	UnFpsLog.cpp: the frame rate in the log, one line per interval. ufront port; not
-	Epic's. Ported from engine-uc2 (Source/Engine/Src/UC2FpsLog.cpp, its F-2); the same
-	setting, command and line in every engine of the frontend. Quiet by default.
+	UnFpsLog.cpp: the frame rate in the log, one line per interval (not Epic's). The
+	same setting, command and line in every engine of the frontend. Quiet by default.
 
 	Why: STAT FPS draws the frame rate on the screen only; a benchmark run by a tool, a
 	headless run and a browser run need it in the log, and a mean alone hides the slow

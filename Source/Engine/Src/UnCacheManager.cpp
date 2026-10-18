@@ -35,9 +35,9 @@ IMPLEMENT_CLASS(UCacheManager);
 
 static UCacheManager* Cache=NULL;
 
-/** ufront 2.49 — defined with the quick-screenshot block above ParseMap; called from RefreshCache. */
+/** Defined with the quick-screenshot block above ParseMap; called from RefreshCache. */
 void FlushQuickScreenshotSet();
-/** ufront 2.49 — fills the quick-screenshot cache before any record is parsed. See its comment. */
+/** Fills the quick-screenshot cache before any record is parsed. See its comment. */
 void PrimeQuickScreenshots();
 
 static bool bReverseSort = false;
@@ -678,7 +678,7 @@ void UCacheManager::InitCache( const TCHAR* CacheKey )
 // it is culled from the list of packages that were found when the Tracker was initialized
 // This is where I determine which packages are new, and which packages no longer exist
 
-	// ufront 2.49 — the quick-screenshot listing happens HERE, once, and never from inside ParseMap.
+	// The quick-screenshot listing happens here, once, and never from inside ParseMap.
 	PrimeQuickScreenshots();
 
 	Time = appSeconds();
@@ -781,8 +781,8 @@ UBOOL UCacheManager::RefreshCache()
 	CacheAnnouncers.Empty();
 	CacheCrosshairs.Empty();
 
-	// ufront 2.49 — the quick-screenshot listing is part of the same cached view of the file system, so
-	// it goes when the records do. A mod load or an uploaded package can add packages under our path.
+	// The quick-screenshot listing is part of the same cached view of the file system, so it goes when
+	// the records do. A mod load or an uploaded package can add packages under our path.
 	FlushQuickScreenshotSet();
 
 	return 1;
@@ -1076,34 +1076,30 @@ void UCacheManager::IntegrateNewPackages( const TCHAR* CacheKey )
 }
 
 /*-----------------------------------------------------------------------------
-	Quick screenshots (ufront 2.49).
+	Quick screenshots.
 
-	A map's preview material lives INSIDE the map package: every GUI2K4 preview call site does
+	A map's preview material lives inside the map package: every GUI2K4 preview call site does
 	`Material(DynamicLoadObject(MapRecord.ScreenshotRef, class'Material'))`, and the first component of
 	`ScreenshotRef` is the map itself (`CTF-UCMP2-Orcus.zio_Textures.OrcusMatSequence`). So merely
-	HIGHLIGHTING a map costs a full level load — measured across this install: 441 map records,
-	7,275 MB of maps, mean 16.5 MB per browse — and on the web that is 16.5 MB over the network to draw
-	a thumbnail. Everything else the browser shows (FriendlyName, Description, Author, player counts) is
-	already in the .ucl; the screenshot is the ONLY thing forcing the load.
+	highlighting a map costs a full level load (on the web, megabytes over the network to draw a
+	thumbnail). Everything else the browser shows (FriendlyName, Description, Author, player counts) is
+	already in the .ucl.
 
-	The ufront preprocessor (`yarn quickshots`) emits a dependency-free copy of just that material graph
-	as `QuickScreenshots/<Map>-Screenshot.utx`, KEEPING the group and object names, so only the PACKAGE
-	component of the ref changes here. Mean 715 KB against 16.5 MB.
+	The host's asset preprocessor emits a dependency-free copy of just that material graph as
+	`QuickScreenshots/<Map>-Screenshot.utx`, keeping the group and object names, so only the package
+	component of the ref changes here.
 
-	★ THE PACKAGE MUST HAVE A DIFFERENT NAME, and that is not a style choice. `appFindPackageFile`
-	(Core/Src/UnMisc.cpp) is first-match-wins on the extension-less name with no way to express intent,
-	and `UObject::GetPackageLinker` (Core/Src/UnObj.cpp) reuses a linker whenever `LinkerRoot` matches —
-	so a `QuickScreenshots/<Map>.utx` would be the SAME UPackage as the map. Once the GUI held a Material
-	from it (and it does — GC cannot purge a referenced object), a later Play would load the stub and the
-	map would silently come up empty. `<Map>-Screenshot` cannot collide with anything.
+	The package must have a different name: `appFindPackageFile` (Core/Src/UnMisc.cpp) is
+	first-match-wins on the extension-less name, and `UObject::GetPackageLinker` (Core/Src/UnObj.cpp)
+	reuses a linker whenever `LinkerRoot` matches, so a `QuickScreenshots/<Map>.utx` would be the same
+	UPackage as the map; once the GUI held a Material from it, a later Play would load the stub and the
+	map would come up empty. `<Map>-Screenshot` cannot collide with anything.
 
-	★ OPTIONAL BY CONSTRUCTION. With no quick package the record is left byte-identical and the stock
-	path runs, so a missing, partial or stale set can never break the menu — it only costs the old
-	behaviour. That property is what lets the feature ship incrementally, and it is what the E2E's
-	third-map case exercises.
+	Optional by construction: with no quick package the record is left byte-identical and the stock
+	path runs, so a missing, partial or stale set never breaks the menu.
 
-	Only a ref that names the MAP ITSELF is redirected: 20 records already point at a shared texture
-	package, and those are cheap and must be left alone.
+	Only a ref that names the map itself is redirected: records that point at a shared texture
+	package are cheap and are left alone.
 -----------------------------------------------------------------------------*/
 
 #define QUICKSHOT_SUFFIX	TEXT("-Screenshot")
@@ -1111,9 +1107,8 @@ void UCacheManager::IntegrateNewPackages( const TCHAR* CacheKey )
 
 /**
  * Cache of "does <Package>-Screenshot exist?", keyed by lower-cased package name. NULL = not built yet.
- * A BYTE value of 1 means present, 0 means measured-absent — both are worth remembering, because the
- * absent answer is the common one (100 of 822 records have no quick package) and re-asking is the cost
- * this cache exists to avoid.
+ * A BYTE value of 1 means present, 0 means absent; both are remembered, because absent is a common
+ * answer and re-asking is the cost this cache avoids.
  */
 static TMap<FString,BYTE>* GQuickScreenshots = NULL;
 
@@ -1130,18 +1125,16 @@ void FlushQuickScreenshotSet()
 /**
  * Is there a quick screenshot package for this map?
  *
- * One `FileSize` probe per DISTINCT package name, memoised. Deliberately NOT `appFindPackageFile`,
- * which walks every `GSys->Paths` entry and tries a language variant of each — 822 records through that
- * is thousands of filesystem stats before the menu draws, and on the web every one crosses the JS/WASM
- * VFS boundary. The path is composed directly instead, which is sound because the directory name is a
+ * One `FileSize` probe per distinct package name, memoised. Not `appFindPackageFile`, which walks
+ * every `GSys->Paths` entry and tries a language variant of each: hundreds of records through that is
+ * thousands of filesystem stats before the menu draws, and on the web every one crosses the JS/wasm
+ * VFS boundary. The path is composed directly, which is sound because the directory name is a
  * constant of this feature on both sides (the generator writes `QuickScreenshots/`, `Default.ini` adds
- * the matching `Paths=` line so the LOAD can find it).
+ * the matching `Paths=` line so the load can find it). Paths are relative to the System directory,
+ * hence the `../`, the same convention `GSys->Paths` uses.
  *
- * ⚠ Paths are relative to the System directory, hence the `../` — the same convention `GSys->Paths`
- * uses.
- *
- * ⚠⚠ AND IT IS DELIBERATELY THE ONLY FILESYSTEM WORK LEFT ON THE ParseMap PATH — normally none at
- * all, because `PrimeQuickScreenshots` has already answered every question. See its comment.
+ * Normally no filesystem work at all on the ParseMap path: `PrimeQuickScreenshots` has already
+ * answered every question.
  */
 static UBOOL HaveQuickScreenshot( const TCHAR* PackageName )
 {
@@ -1151,13 +1144,13 @@ static UBOOL HaveQuickScreenshot( const TCHAR* PackageName )
 		GQuickScreenshots = new TMap<FString,BYTE>;
 
 	FString Key = FString(PackageName).Locs();
-	// ⚠ TMap<FString,BYTE> keys initialise from `const TCHAR*` (TTypeInfo<FString>::ConstInitType), not
-	// from an FString — hence the `*`.
+	// TMap<FString,BYTE> keys initialise from `const TCHAR*` (TTypeInfo<FString>::ConstInitType), not
+	// from an FString, hence the `*`.
 	if( BYTE* Cached = GQuickScreenshots->Find( *Key ) )
 		return *Cached != 0;
 
-	// ⚠ `+=`, never `+` — FString::operator+ is a NON-CONST member, so on anything const it silently
-	// falls back to operator UBOOL() and becomes pointer arithmetic. See RedirectToQuickScreenshot.
+	// `+=`, never `+`: FString::operator+ is a non-const member, so on anything const it falls back to
+	// operator UBOOL() and becomes pointer arithmetic. See RedirectToQuickScreenshot.
 	FString File = TEXT("../");
 	File += QUICKSHOT_DIR;
 	File += TEXT("/");
@@ -1172,24 +1165,12 @@ static UBOOL HaveQuickScreenshot( const TCHAR* PackageName )
 }
 
 /**
- * Populate the cache ONCE, from ONE directory listing, BEFORE record parsing starts.
+ * Populate the cache once, from one directory listing, before record parsing starts.
  *
- * ⚠⚠ THIS EXISTS FOR A MEASURED REASON, NOT FOR SPEED. Doing the directory listing lazily from inside
- * `UCacheManager::ParseMap` crashed the web build at boot, deterministically, before the menu:
- *
- *     memory access out of bounds
- *       __memset <- strncpy <- appStrncpy <- UCacheManager::ParseMap <- InitCache <- execInitCache
- *
- * i.e. inside ParseMap's OWN `Parse()` buffers, not in any of this code. Ruled out by experiment
- * rather than by reading: NOT Karma (a NO_KARMA build, 755 KB smaller and differently linked, crashes
- * identically 3/3), NOT inlining (`__attribute__((noinline))` changes nothing), NOT stack exhaustion
- * (4x the stack, 8 MB, changes nothing), NOT `FString::Mid`'s MAXINT overflow and NOT the `?:` (both
- * A/B'd inside ONE binary, both fine), and NOT the assets (it reproduces with the pre-feature
- * manifest). What did correlate was how much allocation the callee does while ParseMap is live.
- *
- * Rather than tune that — "it stopped crashing" is not a diagnosis — the heavy work is hoisted out of
- * ParseMap entirely. `InitCache` calls this before `ParseCacheFiles`, so by the time any record is
- * parsed the answer is already a pure in-memory lookup.
+ * The listing is kept out of `UCacheManager::ParseMap`: done lazily from inside it, the web build
+ * crashed at boot (memory access out of bounds inside ParseMap's own `Parse()` buffers), correlated
+ * with how much the callee allocates while ParseMap is live. `InitCache` calls this before
+ * `ParseCacheFiles`, so by the time any record is parsed the answer is a pure in-memory lookup.
  */
 void PrimeQuickScreenshots()
 {
@@ -1208,8 +1189,7 @@ void PrimeQuickScreenshots()
 			continue;
 		const FString Dir  = Spec.Left( Slash );
 		const INT DirSlash = Dir.InStr( TEXT("/"), 1 );
-		// ⚠ Explicit count: `FString::Mid(Start)` defaults Count to MAXINT and computes
-		// `DWORD End = Start+Count` from two INTs, which is signed overflow (UB).
+		// Explicit count: `FString::Mid(Start)` defaults Count to MAXINT.
 		const FString Leaf = DirSlash >= 0 ? Dir.Mid( DirSlash + 1, Dir.Len() - (DirSlash + 1) ) : Dir;
 		if( appStricmp( *Leaf, QUICKSHOT_DIR ) != 0 )
 			continue;
@@ -1241,13 +1221,10 @@ static void RedirectToQuickScreenshot( const FString& MapName, FString& Ref )
 	if( appStricmp( *Ref.Left(Dot), *MapName ) != 0 )
 		return;											// already a shared package — leave it alone
 
-	// ⚠⚠ BUILD THESE WITH `+=`, NEVER WITH `+`. `FString::operator+` (UnTemplate.h) is a NON-CONST
-	// member, so it does not apply to a `const FString&` — and instead of failing, overload resolution
-	// falls back to `FString::operator UBOOL()` (also in UnTemplate.h) and the expression becomes
-	// `1 + (const TCHAR*)`, i.e. POINTER ARITHMETIC. `MapName + TEXT("-Screenshot")` compiles clean and
-	// evaluates to `"Screenshot"`. Measured 2026-09-03: every record looked up the package name
-	// "Screenshot", found nothing, and the feature silently did nothing at all while the set of 605
-	// packages sat correctly built one function away.
+	// Build these with `+=`, never with `+`. `FString::operator+` (UnTemplate.h) is a non-const member,
+	// so it does not apply to a `const FString&`, and overload resolution falls back to
+	// `FString::operator UBOOL()` instead of failing: `MapName + TEXT("-Screenshot")` compiles clean and
+	// is `1 + (const TCHAR*)`, i.e. the string "Screenshot".
 	FString Quick = MapName;
 	Quick += QUICKSHOT_SUFFIX;
 	if( !HaveQuickScreenshot( *Quick ) )
@@ -1277,8 +1254,8 @@ UBOOL UCacheManager::ParseMap( const TCHAR* Value )
 	Parse( Value, TEXT("PlayerCountMax="), Record.PlayerCountMax );
 	Parse( Value, TEXT("TextName="), Record.TextName );
 	Parse( Value, TEXT("Screenshot="), Record.ScreenshotRef );
-	// ufront 2.49 — prefer the map's dependency-free quick screenshot package if one was generated.
-	// A no-op (record left byte-identical) when there is none; see the block above ParseMap.
+	// Prefer the map's dependency-free quick screenshot package if one was generated. A no-op (record
+	// left byte-identical) when there is none; see the block above ParseMap.
 	RedirectToQuickScreenshot( Record.MapName, Record.ScreenshotRef );
 	Parse( Value, TEXT("ExtraInfo="), Record.ExtraInfo );
 

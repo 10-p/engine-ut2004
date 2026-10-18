@@ -93,7 +93,7 @@ UBOOL UDemoRecDriver::InitBase( UBOOL Connect, FNetworkNotify* InNotify, FURL& C
 
 	// Zero the frame-time distribution here as well as at the start of timing: the reporting block is
 	// guarded on FrameTimeSamples, and a demo that ends before precaching finishes never reaches the
-	// timing-start branch. UObject memory is zeroed on construction, but a LOOPED demo reuses the
+	// timing-start branch. UObject memory is zeroed on construction, but a looped demo reuses the
 	// driver, and without this the second run would report the first run's tail.
 	FrameTimeSamples    = 0;
 	WorstFrameMs        = 0.0;
@@ -479,11 +479,9 @@ void UDemoRecDriver::TickDispatch( FLOAT DeltaTime )
 					debugf(TEXT("%s"),*Result);
 					ServerConnection->Actor->eventClientMessage( *Result, NAME_None );//!!localize!!
 
-					// ★ THE DISTRIBUTION, not just the mean (ufront step 2.30). The average above cannot
-					// distinguish a steady 30 fps from an alternating 120/15, and the complaint this
-					// instrument exists to chase is precisely about the bad frames. Printed on ONE line,
-					// machine-greppable, in frame-rate bands rather than milliseconds so it can be read
-					// without conversion. Percentages are of the timed frames only.
+					// The distribution, not just the mean: the average above cannot distinguish a steady
+					// 30 fps from an alternating 120/15. One machine-greppable line, in frame-rate bands
+					// rather than milliseconds; percentages are of the timed frames only.
 					if( FrameTimeSamples > 0 )
 					{
 						static const TCHAR* BandNames[DEMO_FT_BUCKETS] =
@@ -495,8 +493,7 @@ void UDemoRecDriver::TickDispatch( FLOAT DeltaTime )
 						for( INT i=0; i<DEMO_FT_BUCKETS; i++ )
 							Dist += FString::Printf( TEXT("%s:%d(%.1f%%) "), BandNames[i], FrameTimeBuckets[i],
 								100.f * FrameTimeBuckets[i] / FrameTimeSamples );
-						// "below 30 fps" is the number a player feels, so state it outright rather than
-						// leaving it to be summed from the bands by whoever reads the log.
+						// "below 30 fps" is the number a player feels, so it is stated outright.
 						const INT Below30 = FrameTimeBuckets[3]+FrameTimeBuckets[4]+FrameTimeBuckets[5]+FrameTimeBuckets[6]+FrameTimeBuckets[7];
 						debugf( TEXT("Demo %s distribution (%d frames): %s| worst %.1f ms | below 30fps: %.1f%%"),
 							*DemoFilename, FrameTimeSamples, *Dist, WorstFrameMs, 100.f * Below30 / FrameTimeSamples );

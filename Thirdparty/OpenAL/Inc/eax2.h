@@ -9,7 +9,7 @@
 #ifndef EAX20_H_INCLUDED
 #define EAX20_H_INCLUDED
 
-// ufront 2.61: `long` -> `int`, for the reason given at the top of eax3.h (32-bit fields on every ABI).
+// `int` where the original says `long`: 32-bit fields on every ABI (see the top of eax3.h).
 
 #ifdef __cplusplus
 extern "C" {

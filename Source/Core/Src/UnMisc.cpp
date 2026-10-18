@@ -1251,25 +1251,10 @@ CORE_API UBOOL appIsGlobalOptionToken( const TCHAR* Token )
 //
 // Apply every `-ini:<File>:[<Section>]:<Key>=<Value>` token on the command line. See UnFile.h.
 //
-// ★★ ufront 2.38 — THIS SWITCH HAD NO IMPLEMENTATION ANYWHERE, in any of the four engines, and the
-// shipped launcher has been emitting it since the config UI was written:
-//
-//     packages/frontend/src/config/controller.ts
-//         opts.push('-ini:User:[DefaultPlayer]:Name=' + net.name);
-//
-// So the "Player Name" box in the Network panel did nothing unless the SAME launch also carried a travel
-// URL with `?Name=…` in it — i.e. it worked when you hosted or joined from the launcher form, and was
-// silently ignored when you booted to the menu and then hosted or joined from the game's OWN multiplayer
-// menus. Measured 2.38 on the ut99 sibling: argv contained `-ini:User:[DefaultPlayer]:Name=GuestPlayer`
-// and the engine logged `ScriptLog: Login: Player`.
-//
-// ⚠ Found by a TEST that needed two distinguishable players, not by anyone reading the code — an
-// unrecognised switch is silence. There is even a frontend unit test asserting the token is EMITTED
-// (packages/frontend/test/config-controller.test.ts); nothing asserted anything ever READ it.
-//
 // The file part uses the config cache's own generic names, so `User` and `System` resolve to whatever
-// this platform's inis actually are (FConfigCacheIni translates them) — no path is hardcoded here.
-// Applied straight after GConfig->Init, i.e. before any class loads its config properties.
+// this platform's inis are (FConfigCacheIni translates them); no path is hardcoded here. Applied straight
+// after GConfig->Init, before any class loads its config properties. The launcher uses it, for example,
+// for the player name (`-ini:User:[DefaultPlayer]:Name=<name>`).
 //
 CORE_API void appApplyIniOverrides()
 {
@@ -1692,12 +1677,10 @@ CORE_API UBOOL appLoadFileToString( FString& Result, const TCHAR* Filename, FFil
 	{
 		// Unicode Intel byte order.
 #if defined(__ANDROID__)
-		// 2.10c: the source is UTF-16 (2 bytes/code unit) regardless of TCHAR width, so the element
-		// count is Size/2. The stock `Size/sizeof(TCHAR)` is only right when sizeof(TCHAR)==2 (the native
-		// UNICODE build); on the ANSI build (TCHAR=char, sizeof==1) it yields `Size`, so the loop below
-		// reads Ch(i*2+..) ~2x past the Size+2 buffer -> SIGSEGV (hit by the UTF-16 CacheRecords.ucl on
-		// Android). Web (wasm32) is also ANSI and shares this latent bug but isn't exercised — kept
-		// byte-identical here; fix on web at its next re-stamp.
+		// The source is UTF-16 (2 bytes per code unit) whatever the TCHAR width, so the element count is
+		// Size/2. The stock `Size/sizeof(TCHAR)` is right only when sizeof(TCHAR)==2 (the UNICODE build); on
+		// an ANSI build (TCHAR=char) it yields `Size`, and the loop below reads about twice past the Size+2
+		// buffer.
 		ResultArray.Add( Size/2 );
 #else
 		ResultArray.Add( Size/sizeof(TCHAR) );
@@ -2186,7 +2169,7 @@ CORE_API void appInit( const TCHAR* InPackage, const TCHAR* InCmdLine, FMalloc* 
 			InCmdLine++;
 	#endif
 
-	appStrncpy( GCmdLine, InCmdLine, ARRAY_COUNT(GCmdLine) );	// ufront: bounded (an unbounded strcpy before)
+	appStrncpy( GCmdLine, InCmdLine, ARRAY_COUNT(GCmdLine) );	// bounded
 
 	// Error history.
 	appStrcpy( GErrorHist, TEXT("General protection fault!\r\n\r\nHistory: ") );
@@ -2210,7 +2193,7 @@ CORE_API void appInit( const TCHAR* InPackage, const TCHAR* InCmdLine, FMalloc* 
 	{
 		FString	Command;
 		verify(appLoadFileToString(Command,CommandFile,GFileManager));
-		appStrncpy(GCmdLine,*Command,ARRAY_COUNT(GCmdLine));	// ufront: bounded
+		appStrncpy(GCmdLine,*Command,ARRAY_COUNT(GCmdLine));	// bounded
 		GFileManager->Delete(CommandFile);
 	}
 
@@ -2326,8 +2309,8 @@ CORE_API void appInit( const TCHAR* InPackage, const TCHAR* InCmdLine, FMalloc* 
 
 	debugf( NAME_Init, TEXT("Character set: %s"), sizeof(TCHAR)==1 ? TEXT("ANSI") : TEXT("Unicode") );
 	debugf( NAME_Init, TEXT("Base directory: %s"), appBaseDir() );
-	// ufront 2.37: say which path won. User files default to the base dir; -usehomedir opts back
-	// into the ~/.ut2004 redirect, and when it is on this is the ONLY line that says so.
+	// User files default to the base dir; -usehomedir opts into the ~/.ut2004 redirect, and this line says
+	// which one won.
 	debugf( NAME_Init, TEXT("User directory: %s"), GFileManager->GetUserDir() );
 	debugf( NAME_Init, TEXT("Ini:%s   UserIni:%s"), GIni, GUserIni );
 
@@ -2340,8 +2323,7 @@ CORE_API void appInit( const TCHAR* InPackage, const TCHAR* InCmdLine, FMalloc* 
 	TCHAR Temp[256];
 	if( GConfig->GetString( TEXT("Engine.Engine"), TEXT("Language"), Temp, ARRAY_COUNT(Temp) ) )
 		UObject::SetLanguage( Temp );
-	// ufront (the launcher's Language, G-4 of the UC2 port): say which language this run uses, so a log alone tells
-	// which localisation the menus come from (the -ini: override above is logged as such, not whether it took).
+	// Which language this run uses, so a log alone tells which localisation the menus come from.
 	debugf( NAME_Init, TEXT("Language: %s"), UObject::GetLanguage() );
 
     // gam ---
@@ -2535,41 +2517,18 @@ CORE_API const TCHAR* appFromUnicode( const UNICHAR* UCh, TCHAR* Ch, INT maxlen 
 //
 CORE_API void VARARGS appUnwindf( const TCHAR* Fmt, ... )
 {
-	// ★★ ufront 2.37c — this used to begin `GIsCriticalError = 1;`, unconditionally, and NOTHING in the
-	// engine ever cleared it again.
-	//
-	// unguard calls this for EVERY exception that passes through a guarded scope, and most of them are
-	// not fatal: `appThrowf` is how a failed load unwinds, and StaticLoadObject / GetPackageLinker /
-	// ULinkerLoad::Create all CATCH it and carry on (that is what "Failed to load 'X'" is -- a handled,
-	// recoverable miss). So the first missing texture in a session latched the engine into
-	// permanent-critical-error mode.
-	//
-	// ⚠ What that costs is not a stray flag. UObject::~UObject reads it:
-	//     if( Index!=INDEX_NONE && GObjInitialized && !GIsCriticalError ) { ... GObjObjects(Index)=NULL;
-	//                                                                       GObjAvailable.AddItem(Index); }
-	// so from the first recovered load error onwards, EVERY destroyed object skips its own cleanup: it
-	// stays in the object table as a dangling pointer, and its index never returns to the free list.
-	// Both halves then bite:
-	//   * StaticAllocateObject's next replace hits `check(GObjAvailable.Last()==Index)` -- the assertion
-	//     storm the owner saw on map thumbnails, and why a package that loaded fine before visiting a
-	//     menu fails after;
-	//   * anything that WALKS the object table reads a freed object -- which is the Settings-menu
-	//     segfault (2.37b §7.4), whose real cause was this, not the walk.
-	// ★ One latched flag, and the engine quietly corrupts its object system for the rest of the run.
-	//
-	// A genuinely fatal error does NOT rely on this: FOutputDeviceAnsiError::Serialize sets
-	// GIsCriticalError itself, before it throws, so the flag is already 1 by the time the unwind starts.
-	// Setting it here only ever mislabelled the recoverable case.
-	//
-	// ⚠ NOT Windows-specific. The same latch happens on Linux and on the web build; there the dangling
-	// entries simply do not fault, so the corruption is silent.
+	// GIsCriticalError is left alone here. unguard calls this for every exception that passes through a
+	// guarded scope, and most are not fatal: appThrowf is how a failed load unwinds, and StaticLoadObject /
+	// GetPackageLinker / ULinkerLoad::Create catch it and carry on. UObject::~UObject skips its cleanup
+	// (the object-table slot and the free-list entry) while the flag is set, so latching it on a recovered
+	// load error would leave dangling objects in the table for the rest of the run. A fatal error does not
+	// need it set here: FOutputDeviceAnsiError::Serialize sets GIsCriticalError itself before it throws.
 
 	TCHAR TempStr[4096];
 	GET_VARARGS( TempStr, ARRAY_COUNT(TempStr), Fmt, Fmt );
 
-	// Accumulate the History: chain only for a REAL error -- otherwise every recovered load failure in the
-	// session appends to GErrorHist forever, which is how one crash report arrived carrying a kilobyte of
-	// unrelated history from menu textures that had loaded fine.
+	// Accumulate the History: chain only for a real error; otherwise every recovered load failure of the
+	// session would be appended to GErrorHist.
 	if( GIsCriticalError )
 	{
 		static INT Count=0;

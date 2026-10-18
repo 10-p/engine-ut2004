@@ -89,25 +89,12 @@ void UClient::StaticConstructor()
 	new(GetClass(),TEXT("AnimMeshDynamicLOD"),	RF_Public)UFloatProperty(CPP_PROPERTY(AnimMeshDynamicLOD	), TEXT("Display"), CPF_Config );
 	new(GetClass(),TEXT("DrawDistanceLOD"),		RF_Public)UFloatProperty(CPP_PROPERTY(DrawDistanceLOD		), TEXT("Display"), CPF_Config );
 
-	// ufront 2.50 — USABLE DEFAULTS FOR A CONFIG THAT DOES NOT MENTION US.
-	//
-	// Registering a CPF_Config property does not give it a value: with nothing assigned here the class
-	// default object keeps its zero-initialised state, so every one of these reads False / 0.0 when the
-	// ini has no [SDL2Drv.SDL2Client] section -- and the engine then WRITES those zeros back, making the
-	// bad state permanent and self-consistent.
-	//
-	// That is not a hypothetical. Engine/Config/Default.ini carries the right values, but it only seeds
-	// a FRESH install (Default.ini -> UT2004.ini). Native players bring their own retail install, whose
-	// UT2004.ini predates this class and names [WinDrv.WindowsClient] / [SDLDrv.SDLClient] instead -- so
-	// the section is absent, and the game silently comes up with decoration layers, projectors, coronas,
-	// decals and weather all OFF, plus a 0x0 viewport and DrawDistanceLOD=0. Measured on this box: the
-	// terrain deco grass on ONS-Torlan simply did not draw, and it read as "the renderer is fine" until
-	// the ini was checked.
-	//
-	// So the defaults live in code, where a missing key resolves to the value the game is meant to have.
-	// The ini still wins whenever it says anything; this only decides what "unset" means. The web build
-	// ships its own complete Engine/Config/web/Default.ini and is therefore unaffected either way.
-	// Values below deliberately mirror Engine/Config/Default.ini's [SDL2Drv.SDL2Client] verbatim.
+	// Compiled defaults for a config that does not mention this class: registering a CPF_Config
+	// property does not give it a value, so without these every one reads False / 0.0 when the ini has
+	// no [SDL2Drv.SDL2Client] section (a retail UT2004.ini names [WinDrv.WindowsClient] instead), and
+	// the engine writes those zeros back: decoration layers, projectors, coronas, decals and weather
+	// off, a 0x0 viewport and DrawDistanceLOD=0. The ini wins whenever it says anything. The values
+	// mirror Engine/Config/Default.ini's [SDL2Drv.SDL2Client].
 	WindowedViewportX		= 1024;
 	WindowedViewportY		= 768;
 	FullscreenViewportX		= 1280;
@@ -126,7 +113,7 @@ void UClient::StaticConstructor()
 	Projectors				= 1;
 	WeatherEffects			= 1;
 	DrawDistanceLOD			= 1.f;
-	// Left at their zero-initialised value ON PURPOSE, because zero is already the wanted default:
+	// Left at their zero-initialised value, because zero is the wanted default:
 	// NoLighting, NoDynamicLights, NoFractalAnim, ReportDynamicUploads (all "off" switches), ScaleHUDX,
 	// AnimMeshDynamicLOD, and TextureLODSet[*] (0 == UltraHigh, the first PTextureDetail name).
 

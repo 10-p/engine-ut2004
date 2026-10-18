@@ -170,9 +170,9 @@ void UGameEngine::Init()
 		GRenDev->Init();
 	}
     
-	// ufront 2.53 — apply [ufront.Shadows] to the ShadowProjector class default before any level (and so
-	// any pawn, and so any shadow) exists. Must be after Engine.u is loaded, which it is by here.
-	// See UnShadowProjector.cpp for why the distance has to reach the ACTOR and not just the fade.
+	// Apply [ufront.Shadows] to the ShadowProjector class default before any level (and so any pawn and
+	// any shadow) exists; Engine.u is loaded by here. UnShadowProjector.cpp: the distance has to reach the
+	// actor, not just the fade.
 	{
 		extern void ufrontApplyShadowCfg();
 		ufrontApplyShadowCfg();
@@ -193,9 +193,8 @@ void UGameEngine::Init()
 	printf("[ENGINE-DBG] About to load Packages.md5\n");
 
 #ifdef __EMSCRIPTEN__
-	// Skip MD5 package validation on Emscripten — package integrity is
-	// guaranteed by the HTTP server, and the validation file loading
-	// path has issues with the Emscripten VFS.
+	// Skip MD5 package validation on the web: the host serves the packages, and the validation file is
+	// not loaded through the web file system.
 	MD5Package = NULL;
 	printf("[ENGINE-DBG] Skipped Packages.md5 on Emscripten\n");
 #else
@@ -261,8 +260,7 @@ void UGameEngine::Init()
 	(	!ParseToken( Tmp, Parm, ARRAY_COUNT(Parm), 0 )
 	||	(appStricmp(Parm,TEXT("SERVER"))==0 && !ParseToken( Tmp, Parm, ARRAY_COUNT(Parm), 0 ))
 	||	Parm[0]=='-'
-	// ufront 2.38: …and a global option is not a map either. See appIsGlobalOptionToken — one launcher
-	// dropping its leading flag turned `CPUSPEED=3000` into "the map" and cost the main menu entirely.
+	// ...and a global option (`Key=Value`) is not a map either (appIsGlobalOptionToken).
 	||	appIsGlobalOptionToken(Parm) )
 	{
 		appStrcpy( Parm, *FURL::DefaultLocalMap );
@@ -283,9 +281,9 @@ void UGameEngine::Init()
 #ifdef __EMSCRIPTEN__
 	{
 		// Web: a bad startup map must not be fatal. appErrorf is GError->Logf, which
-		// throws to unwind to the guarded frame — and that throw can't cross Asyncify
+		// throws to unwind to the guarded frame, and that throw can't cross Asyncify
 		// frames (uncaught abort). Entry is already loaded, so fall back to the menu
-		// and let the user pick a valid map / host from the UI instead of crashing.
+		// and let the player pick a valid map or host from the UI.
 		debugf( TEXT("[WebRTC] Startup map '%s' failed to load (%s) — falling back to the menu"), Parm, *Error );
 		if( !GLevel )
 			GLevel = GEntry;
@@ -443,9 +441,8 @@ void UGameEngine::SetProgress( const TCHAR* CmdStr,  const TCHAR* Str1, const TC
 {
 	guard(UGameEngine::SetProgress);
 
-	// 2.12 hardening (parity with engine-ut99): the viewport can exist with a NULL Actor — e.g. after a failed
-	// travel tears the pawn down. SetProgress dereferences Actor below (Actor->event...), so without this
-	// null-check that becomes a NULL deref → crash on the web build (catching is off). Bail with no live actor.
+	// The viewport can exist with a NULL Actor (a failed travel tears the pawn down), and SetProgress
+	// dereferences it below: bail with no live actor.
 	if( !Client || !Client->Viewports.Num() || !Client->Viewports(0)->Actor )
 	    return;
 	APlayerController* Actor = Client->Viewports(0)->Actor;
@@ -497,8 +494,8 @@ UBOOL UGameEngine::GUIActive( const UClient* InClient ) const
 // This always going to be the last exec handler in the chain. It
 // handles passing the command to all other global handlers.
 //
-// ufront port (from engine-uc2): WHEREAMI / TELEPORT <x> <y> <z> (UnCheats.cpp) and the frame rate in the log,
-// [Engine.GameEngine] FpsLogSeconds / FPSLOG (UnFpsLog.cpp).
+// WHEREAMI / TELEPORT <x> <y> <z> (UnCheats.cpp) and the frame rate in the log, [Engine.GameEngine]
+// FpsLogSeconds / FPSLOG (UnFpsLog.cpp).
 ENGINE_API UBOOL UfrontCheatExec( UEngine* Engine, APlayerController* PC, const TCHAR* Cmd, FOutputDevice& Ar );
 ENGINE_API void UfrontFpsLogTick( UEngine* Engine );
 ENGINE_API UBOOL UfrontFpsLogExec( const TCHAR* Cmd, FOutputDevice& Ar );
@@ -507,7 +504,7 @@ UBOOL UGameEngine::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 {
 	guard(UGameEngine::Exec);
 	const TCHAR* Str=Cmd;
-	// ufront: the web's ue_exec_command reaches this engine only (never the viewport or the player); the typed console
+	// The web's ue_exec_command reaches this engine only (never the viewport or the player); the typed console
 	// takes the cheats in UPlayer::Exec, before the scripts.
 	if( UfrontCheatExec( this, NULL, Cmd, Ar ) )
 		return 1;
@@ -946,7 +943,7 @@ static void MatchViewportsToActors( UClient* Client, ULevel* Level, const FURL& 
         if( !PlayerController)
 			appErrorf( TEXT("%s"), *Error );
 
-		// ufront 2.36b DIAGNOSTIC — and the window CLOSES here. Pair it with the dissociate line.
+		// Devnet diagnostic: the window where Viewport->Actor is NULL closes here (pairs with the dissociate line).
 		debugf( NAME_DevNet, TEXT("[UFRONT-DIAG] MatchViewportsToActors: viewport %s -> actor %s (0x%08x, class %s) in level %s"),
 			Viewport->GetName(), PlayerController->GetName(), (DWORD)(PTRINT)PlayerController,
 			PlayerController->GetClass()->GetName(), Level->GetName() );
@@ -1315,10 +1312,9 @@ UBOOL UGameEngine::Browse( FURL URL, const TMap<FString,FString>* TravelInfo, FS
 
 	// Handle normal URL's.
 #ifdef __EMSCRIPTEN__
-	// WebRTC client connect (D-06): when the URL has a "connect" travel option,
-	// the "map" name is actually a room name. Re-interpret it as a network Host
-	// so the engine takes the UNetPendingLevel path instead of LoadMap.
-	// This option is added by config-form.js when ?connect=roomname is used.
+	// WebRTC client connect: when the URL has a "connect" travel option, the "map" name is a room
+	// name. Re-interpret it as a network Host so the engine takes the UNetPendingLevel path instead
+	// of LoadMap.
 	printf("[WebRTC] Browse: PRE-REDIRECT Map='%s' Host='%s' IsLocalInternal=%d HasConnect=%d GIsClient=%d\n",
 		TCHAR_TO_ANSI(*URL.Map), TCHAR_TO_ANSI(*URL.Host),
 		(INT)URL.IsLocalInternal(), (INT)URL.HasOption(TEXT("connect")), (INT)GIsClient);
@@ -2172,11 +2168,10 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 				);
 			}
 #ifdef __EMSCRIPTEN__
-			// ufront (2.79o): on the web GetPackageLinker answers NULL for a package it cannot have -- not found, or
-			// found in ANOTHER VERSION than the server's ([PACKAGE-LOAD] ... GUID mismatch) -- and VerifyLinker
-			// would then call Verify() on NULL (in wasm that reads low memory instead of trapping). Fail the join
-			// HERE, with the reason a native client shows, before the live level is torn down. (The UE1 line
-			// aborted outright on this, on a real server; this engine was one dereference behind it.)
+			// On the web GetPackageLinker answers NULL for a package it cannot have (not found, or found in
+			// another version than the server's: [PACKAGE-LOAD] ... GUID mismatch), and VerifyLinker would
+			// then call Verify() on NULL (in wasm that reads low memory instead of trapping). Fail the join
+			// here, with the reason a native client shows, before the live level is torn down.
 			for( INT i=0; i<PackageMap->List.Num(); i++ )
 				if( !PackageMap->List(i).Linker )
 				{
@@ -2186,7 +2181,7 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 					Error = FString::Printf( HaveFile ? LocalizeError(TEXT("PackageVersion"),TEXT("Core")) : LocalizeError(TEXT("PackageNotFound"),TEXT("Core")), Name );
 					debugf( TEXT("[WebRTC] LoadMap: %s — failing the join gracefully (no abort)"), *Error );
 					EndLoad();
-					// Error stays SET: the caller (AttemptLoadPending) shows the disconnect menu with it -- an EMPTY
+					// Error stays set: the caller (AttemptLoadPending) shows the disconnect menu with it; an empty
 					// Error there means "loaded", and it would send the join from the level we are still in.
 					return NULL;
 				}
@@ -2202,21 +2197,18 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 		EndLoad();
 		(void)LoadedLevel;
 #ifdef __EMSCRIPTEN__
-		// On Emscripten, SafeLoadError no longer re-throws (Asyncify breaks the
-		// cross-frame exception unwind the catch below relies on — and that catch is
-		// const-mismatched anyway), so a failed map load arrives here as a NULL
-		// object instead of an exception. Route it through the same graceful failure
-		// the catch handler performs: report "could not load map" and return to the
-		// menu rather than aborting the WASM module.
+		// On the web SafeLoadError does not re-throw (Asyncify breaks the cross-frame exception unwind
+		// the catch below relies on), so a failed map load arrives here as a NULL object instead of an
+		// exception. Route it through the same failure the catch handler performs: report "could not
+		// load map" and return to the menu.
 		if( !LoadedLevel )
 		{
 			debugf( TEXT("[WebRTC] LoadMap: map '%s' could not be loaded — failing gracefully (no abort)"), *URL.Map );
 			Error = FString::Printf( TEXT("Could not load map '%s'"), *URL.Map );
 			if( Pending && Pending->NetDriver && Pending->NetDriver->ServerConnection )
 			{
-				// ufront (2.79o): Error stays SET -- the caller (AttemptLoadPending) shows the disconnect menu with it.
-				// It used to be cleared here "so no generic error pops too", but an EMPTY Error is how that caller
-				// knows the map LOADED: it would then have sent the join from the level we are still in.
+				// Error stays set: the caller (AttemptLoadPending) shows the disconnect menu with it; an empty
+				// Error is how that caller knows the map loaded.
 			}
 			else if( GLevel==GEntry )
 				SetProgress( *FString::Printf(TEXT("menu:%s"),*MainMenuClass), LocalizeError(TEXT("UrlFailed"),TEXT("Core")), *URL.Map );
@@ -2358,7 +2350,7 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 		for( INT i=0; i<Client->Viewports.Num(); i++ )
 		{
 			APlayerController* Actor    = Client->Viewports(i)->Actor;
-			// ufront 2.36b DIAGNOSTIC — the window where Viewport->Actor is NULL opens HERE.
+			// Devnet diagnostic: the window where Viewport->Actor is NULL opens here.
 			debugf( NAME_DevNet, TEXT("[UFRONT-DIAG] LoadMap: dissociating viewport %s (actor=%s) — Actor goes NULL until MatchViewportsToActors"),
 				Client->Viewports(i)->GetName(), Actor ? Actor->GetName() : TEXT("NULL") );
 			ULevel*      Level          = Actor->GetLevel();
@@ -3137,7 +3129,7 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 // Draw a global view.
 //
 //
-// Scoped AutoFOV override (step 2.16). Everything that consumes the FOV during a frame ultimately reads
+// Scoped AutoFOV override. Everything that consumes the FOV during a frame ultimately reads
 // Viewport->Actor->FovAngle: the scene node built at the three FPlayerSceneNode sites below, the
 // distance-cull bias (UnRenderVisibility.cpp) and the shadow projector bias. Overriding it for the
 // duration of the draw keeps all of them in agreement with one value and needs no render-device change
@@ -3173,19 +3165,18 @@ void UGameEngine::Draw( UViewport* Viewport, UBOOL Blit, BYTE* HitData, INT* Hit
 
 	clock(GStats.DWORDStats( GEngineStats.STATS_Frame_RenderCycles ));
 
-	// ---- ufront 2.36b DIAGNOSTIC — NOT FOR SHIPPING -----------------------------------------
-	// A web guest traps just below with "indirect call to null". The eventPlayerCalcView call is a
-	// VTABLE call, and on wasm a NULL or dead Actor does NOT fault on the Location/Rotation reads
-	// above — address 0 is readable there, so the corpse is only found at the first virtual call.
-	// Report what Viewport->Actor actually is, and skip the frame instead of trapping, so the
-	// session survives and the log shows what the client does next.
+	// ---- Viewport actor check ------------------------------------------------------------------
+	// The eventPlayerCalcView call below is a vtable call, and on wasm a NULL or dead Actor does not
+	// fault on the Location/Rotation reads above (address 0 is readable there), only at the first
+	// virtual call ("indirect call to null"). Log what Viewport->Actor is (devnet) and skip the frame
+	// instead of trapping.
 	{
 		APlayerController* DiagActor = Viewport->Actor;
 		// GetIndexedObject() is the public, bounds-checked way in (GObjObjects itself is private) and
 		// returns NULL for an out-of-range index, so a wild pointer answers "not live" rather than trapping.
-		// ★ The CLASS check is not paranoia: once the freed controller's block is recycled the pointer is
-		// live again but is some other actor — measured, a replicated GameReplicationInfo — and without
-		// this the engine reaches FindFunctionChecked(PlayerCalcView) and appErrors on it.
+		// The class check matters: once the freed controller's block is recycled the pointer is live again
+		// but is some other actor (a replicated GameReplicationInfo, say), and without it the engine reaches
+		// FindFunctionChecked(PlayerCalcView) and appErrors on it.
 		UBOOL DiagLive = DiagActor
 			&& UObject::GetIndexedObject( (INT)DiagActor->GetIndex() ) == (UObject*)DiagActor
 			&& DiagActor->IsA( APlayerController::StaticClass() );
@@ -3792,7 +3783,7 @@ void UGameEngine::Tick( FLOAT DeltaSeconds )
 	guard(UGameEngine::Tick);
 	INT LocalTickCycles=0;
 	clock(LocalTickCycles);
-	UfrontFpsLogTick( this );	// ufront: FpsLogSeconds / FPSLOG; nothing unless asked for
+	UfrontFpsLogTick( this );	// FpsLogSeconds / FPSLOG; nothing unless asked for
 
     if( DeltaSeconds < 0.0f )
         appErrorf(TEXT("Negative delta time!"));
@@ -3890,10 +3881,8 @@ void UGameEngine::Tick( FLOAT DeltaSeconds )
 	unguard;
 #endif
 
-	// ufront 2.36b — `Actor` may legitimately be NULL now: 2.36b clears it when the installed
-	// PlayerController is destroyed (rather than leaving a dangling pointer), and UE2 wrote this line
-	// assuming a viewport always has one. Under wasm the null deref does not fault here — it reads far
-	// enough out to trap as "index out of bounds", which is what it did.
+	// `Actor` may be NULL: it is cleared when the installed PlayerController is destroyed (UnLevAct.cpp).
+	// Under wasm the null deref would not fault here but trap further on as "index out of bounds".
 	if( Client && Client->Viewports.Num() && Client->Viewports(0)->Actor
 		&& Client->Viewports(0)->Actor->GetLevel()!=GLevel )
 	{

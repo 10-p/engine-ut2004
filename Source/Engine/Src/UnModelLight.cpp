@@ -1310,12 +1310,9 @@ static HRESULT LightMapCompressionCallback(void* Data,INT MipIndex,DWORD Size,IN
 void UModel::CompressLightmaps()
 {
 	guard(UModel::CompressLightmaps);
-// ufront 2.33: this body calls Epic's nvDXTlib (nvDXTcompress plus its kDXT1/kMIPFilterCubic enums), a
-// Windows-only NVIDIA library that NO cmake target links — so, exactly like ut99's s3tc.lib, it only ever
-// built under Epic's original MSVC project. The guard spelled "that build" as `!CONSOLE && !__UNIX__`,
-// which is true of any platform that is not Unix — a MinGW Windows build included, which then failed on
-// the undeclared symbols. Keyed on _MSC_VER as well now, so every build this repo actually produces takes
-// the same no-op path it has always taken on Linux and the web.
+// This body calls Epic's nvDXTlib (nvDXTcompress plus its kDXT1/kMIPFilterCubic enums), a Windows-only
+// NVIDIA library no CMake target links, so it builds only under Epic's MSVC project (_MSC_VER); every
+// other build, MinGW included, takes the no-op path.
 #if !CONSOLE && !__UNIX__ && !_WIN64 && _MSC_VER
 	GWarn->BeginSlowTask(TEXT("Compressing lightmaps..."),1);
 	for(INT TextureIndex = 0;TextureIndex < LightMapTextures.Num();TextureIndex++)

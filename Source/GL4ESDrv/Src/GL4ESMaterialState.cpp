@@ -3124,18 +3124,10 @@ UBOOL FGL4ESRenderInterface::SetProjectorMaterial( UProjectorMaterial* Projector
 			}
 		}
 
-		// ufront 2.50 - THE PROJECTOR GRADIENT STAGE IS BACK ON.
-		//
-		// This block shipped disabled in stock UT2004's OpenGL renderer, with icculus' note that it
-		// "causes player shadows to not render on terrain or static meshes". D3D8/D3D9 ship it LIVE
-		// (D3D9MaterialState.cpp:3068), which is why a Windows retail client projects onto terrain and
-		// every OpenGL-lineage build - stock 3369 included, verified - does not. The gradient IS the
-		// projector's axial attenuation, so without it terrain gets no usable projector contribution
-		// at all, and shadows pick up a viewing-angle dependence they should not have.
-		//
-		// The stage budget was the likely reason it broke in 2004: it needs one more texture unit and
-		// the code hard-fails (return 0 -> the whole material is dropped, nothing draws) when it runs
-		// out. MaxTextureStages here is RenDev->NumTextureUnits, which is 8 on anything current.
+		// The projector gradient stage (the projector's axial attenuation). Stock UT2004's OpenGL renderer
+		// shipped it disabled; D3D8/D3D9 run it, and without it terrain gets no usable projector
+		// contribution. It needs one more texture unit, and the code returns 0 (the whole material is
+		// dropped) when it runs out; MaxTextureStages is RenDev->NumTextureUnits.
 		if (ProjectorMaterial->bGradient)
 		{
 			// Handle the gradient texture.

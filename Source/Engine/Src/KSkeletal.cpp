@@ -338,26 +338,10 @@ void MEAPI KInitSkeletonKarma(USkeletalMeshInstance* inst)
 	/* Get skeletal mesh name and look up asset. */
 	char cSkelName[512];
 
-    /* ufront 2026-08-28 — NO #if HERE, AND THE TWO IT REPLACES WERE BOTH WRONG.
-
-       `#if WIN32` (the original) picked wcstombs on Windows and appToAnsi elsewhere, which is
-       right by accident on both. `#if defined(_UNICODE)` (mine, 2026-08-27) was written on the
-       belief that this tree is ANSI everywhere — IT IS NOT. CMakeLists defines UNICODE and
-       _UNICODE on every target except the two that set NO_UNICODE_OS_SUPPORT (web and MinGW),
-       so on LINUX _UNICODE is defined, TCHAR is a 2-byte UNICHAR, and that change silently
-       routed Linux into wcstombs — where glibc's wchar_t is FOUR bytes and cannot read a
-       2-byte UNICHAR at all. Measured, with the inputs and the output side by side:
-
-         raw='Male2' len=5   conv='Male2'   cSkelName='\u0404\xa1a\x9cG\xbfZ'
-
-       The asset DB held 'Male2'; the lookup asked for eight bytes of noise, and EVERY ragdoll
-       silently failed to initialise. That is what the original author's own
-       "!!! FIXME: this conflicts on Linux. --ryan." was pointing at, and I read the comment as
-       describing the compile error rather than the runtime one.
-
-       appToAnsi IS the engine's own TCHAR->ANSI conversion and is correct on every target
-       whatever TCHAR is, so there is no platform question left to get wrong. Verified: it
-       returns 'Male2' on the same input wcstombs mangles. */
+    /* appToAnsi is the engine's own TCHAR->ANSI conversion and is correct on every target
+       whatever TCHAR is. wcstombs is not: UNICODE builds (native Linux) have a 2-byte UNICHAR
+       TCHAR, and glibc's wchar_t is 4 bytes, so the skeleton name would be noise and every
+       ragdoll would fail to initialise. */
 	strncpy(cSkelName, appToAnsi(*skelParams->KSkeleton), 512);
 	cSkelName[511] = 0;
 
@@ -424,8 +408,7 @@ void MEAPI KInitSkeletonKarma(USkeletalMeshInstance* inst)
 	for(boneIdx = 0; boneIdx<numBones; boneIdx++)
 	{
 		char cBoneName[512];
-		// Same defect, same cure — see the note on cSkelName above. Every bone name went through
-		// wcstombs too, so even a ragdoll that found its asset would have matched no bone.
+		// appToAnsi, as for cSkelName above.
 		strncpy(cBoneName, appToAnsi(*skelmesh->RefSkeleton(boneIdx).Name), 512);
 		cBoneName[511] = 0;
 

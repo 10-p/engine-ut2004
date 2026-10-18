@@ -8,7 +8,7 @@
 
 #include "CorePrivate.h"
 
-// Forward declaration for GCC 13 compatibility (defined later in this file).
+// Forward declaration (defined later in this file); GCC requires it.
 CORE_API FNameEntry* AllocateNameEntry( const TCHAR* Name, DWORD Index, DWORD Flags, FNameEntry* HashNext );
 
 /*-----------------------------------------------------------------------------

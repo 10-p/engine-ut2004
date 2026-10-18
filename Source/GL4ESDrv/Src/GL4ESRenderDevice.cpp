@@ -6,19 +6,17 @@
 =============================================================================*/
 
 #if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
-// ufront 2.13.2 — the WebGL context is created and presented by us on the worker (hatch (c)), so both
-// the entry-point resolver and the frame present come from Emscripten rather than from SDL. Included
-// BEFORE the engine headers: this pulls in <time.h>, and UnFile.h #defines clock(Timer), which then
-// mangles time.h's `clock_t clock(void)` into a syntax error pointing at a system header.
+// On the threaded web the viewport creates and presents the WebGL context on the worker, so the entry-point
+// resolver and the frame present come from Emscripten. Included before the engine headers: this pulls in
+// <time.h>, whose clock() declaration UnFile.h's clock(Timer) macro would mangle.
 #include <emscripten/html5_webgl.h>
 #endif
 
 #include "GL4ESDrv.h"
 
-// ufront 2.34 (Windows) — MinGW's CRT has no POSIX setenv(); the equivalent is _putenv_s, whose argument
-// order and "overwrite" semantics differ. gl4es is configured entirely through LIBGL_* environment
-// variables, so this shim is what makes the translation layer configurable on Windows at all. Named
-// setenv so the 13 call sites below stay one shared list rather than a per-platform fork of them.
+// MinGW's CRT has no POSIX setenv(); the equivalent is _putenv_s, with a different argument order. gl4es is
+// configured through LIBGL_* environment variables, so this shim keeps one list of setenv calls for every
+// platform.
 #if defined(_WIN32) && !defined(__CYGWIN__)
 #include <stdlib.h>
 static inline int setenv( const char* Name, const char* Value, int Overwrite )
@@ -37,9 +35,8 @@ static inline int setenv( const char* Name, const char* Value, int Overwrite )
 	Constants & static stuff.
 -----------------------------------------------------------------------------*/
 
-// GL4ESDrv is SDL2/Linux-only. No Win32/MACOSX paths.
-// GL4ES is statically linked -- no runtime library loading (no GL_DLL).
-// USE_SDL remains defined so existing platform conditionals select the SDL path.
+// GL4ES is statically linked: no runtime library loading (no GL_DLL).
+// USE_SDL selects the SDL paths of the shared platform conditionals.
 #define USE_SDL 1
 
 // Static variables.
@@ -107,40 +104,21 @@ void UGL4ESRenderDevice::StaticConstructor()
 	GIsOpenGL						= 1;
 	GIsPixomatic					= 0;
 
-	// GL4ESDrv ships without a [GL4ESDrv.GL4ESRenderDevice] Default.ini section, so
-	// inherited CPF_Config render toggles fall back to their zero default. DetailTextures
-	// must default on (as Default.ini does for OpenGLDrv/D3DDrv) or the HandleDetail gate
-	// is never reached and detail-texture material layers silently vanish. Overridable via ini.
+	// Compiled defaults: an ini without a [GL4ESDrv.GL4ESRenderDevice] section (a retail install) leaves
+	// every CPF_Config option at zero. DetailTextures defaults on (as Default.ini does for OpenGLDrv/D3DDrv),
+	// or the HandleDetail gate is never reached and detail-texture layers vanish. The ini wins.
 	DetailTextures					= 1;
 
-	// ★ UseVBO must default ON, and on the web it is the single largest render cost there is.
-	//
-	// Same failure as DetailTextures above, but far more expensive. With UseVBO false,
-	// SUPPORTS_GL_ARB_vertex_buffer_object is cleared (see Init), so CommitStreams hands
-	// glVertexPointer/glColorPointer/glTexCoordPointer RAW CLIENT-SIDE POINTERS. GL4ES passes those
-	// straight through, and WebGL does not accept client-side arrays at all -- Emscripten's FULL_ES2
-	// emulation therefore COPIES THE VERTEX RANGE INTO A TEMP BUFFER ON EVERY SINGLE DRAW CALL.
-	//
-	// MEASURED on the CTF-CBP2-Skorbut timedemo (ufront step 2.30, RTX 3090, 1024x768): 882 draws per
-	// frame turned into 15,322 WebGL calls per frame and 585 MB of per-frame vertex re-upload
-	// (7.6 GB/s) -- 4.9 bufferSubData + 6.9 bindBuffer + 3.9 vertexAttribPointer PER DRAW. That is
-	// also why the link has to raise Emscripten's MAX_TEMP_BUFFER_SIZE to 16 MB (see
-	// Source/SDLLaunch/CMakeLists.txt): the temp buffer only exists because of this default.
-	//
-	// The VBO path (FGL4ESVertexStreamARB_VBO / FGL4ESIndexBufferARB_VBO) is fully implemented and
-	// GL4ES advertises GL_ARB_vertex_buffer_object, so the data belongs in real buffer objects that
-	// are uploaded once and re-bound per draw. The false default is inherited from stock UT2004's
-	// [OpenGLDrv.OpenGLRenderDevice], where it dates from 2004-era desktop drivers; it was never a
-	// decision about the web. Overridable via ini, like every other option here.
+	// UseVBO defaults on: generally supported, and the web needs it for performance. With UseVBO off,
+	// SUPPORTS_GL_ARB_vertex_buffer_object is cleared (see Init) and CommitStreams hands GL client-side
+	// pointers; WebGL has no client-side arrays, so Emscripten's FULL_ES2 emulation copies the vertex range
+	// into a temp buffer on every draw call (the reason the link raises MAX_TEMP_BUFFER_SIZE). The VBO path
+	// (FGL4ESVertexStreamARB_VBO / FGL4ESIndexBufferARB_VBO) uploads once and rebinds per draw.
 	UseVBO							= 1;
 
-	// ufront 2.50 — DEFAULT THIS DEVICE TO ITS BEST QUALITY, not to zero.
-	//
-	// Every option above is registered CPF_Config and, until now, assigned nothing -- so a config with
-	// no [GL4ESDrv.GL4ESRenderDevice] section (i.e. every retail install, which predates this class)
-	// ran with MaxTextureUnits=0, no trilinear, no anisotropy and a zero VAR size. Values mirror the
-	// shipped Engine/Config/web/Default.ini, which is the combination the web target is tested on.
-	// The ini still wins wherever it speaks; this only decides what "unset" means.
+	// Default the device to its best quality: an ini without this section otherwise runs with
+	// MaxTextureUnits=0, no trilinear, no anisotropy and a zero VAR size. The values match
+	// Engine/Config/web/Default.ini; the ini wins wherever it sets one.
 	MaxTextureUnits					= 8;		// clamped to the real GL limit at init
 	UseTrilinear					= 1;
 	LevelOfAnisotropy				= 16.f;		// max; the driver clamps to what the GPU offers
@@ -150,7 +128,7 @@ void UGL4ESRenderDevice::StaticConstructor()
 	AppleVA							= 1;
 	MultisampleHint					= 2;
 
-	// Deliberately NOT raised, each for a reason:
+	// Not raised:
 	//   UsePixelShaders   0 - the fixed-function path is the one this device actually implements.
 	//   ForceCompression  0 - forcing DXT on already-decoded textures LOSES quality; off is better.
 	//   UseVSync          0 - the browser paces frames; vsync here fights the host's own scheduling.
@@ -161,14 +139,9 @@ void UGL4ESRenderDevice::StaticConstructor()
 	ReduceMouseLag					= 0;
 	DesiredRefreshRate				= 0;
 
-	// ufront 2.50 — MSAA ON BY DEFAULT (4x).
-	// UT2004 is a 2004 game and the fill cost is trivial for anything with a GPU; on the web the
-	// bottleneck is the CPU side, so this is expected to be close to free. ⚠ On the web this is a
-	// BOOLEAN, not a sample count: the threaded build creates its WebGL context directly (see
-	// SDL2Viewport.cpp) and WebGL exposes only `antialias: true/false`, letting the browser pick the
-	// sample count -- in practice 4. The number here still governs native, and still decides on/off
-	// for the web. Both are read back out of the ACTIVE render device's ini section by
-	// SDL2Viewport.cpp, so these two values remain the single place the default is stated.
+	// MSAA on by default (4x). On the threaded web this is on/off only: the viewport creates the WebGL
+	// context itself (SDL2Viewport.cpp) and WebGL's `antialias` flag lets the browser pick the sample count.
+	// The viewport reads these from the active render device's ini section.
 	MultisampleBuffers				= 1;
 	MultisampleSamples				= 4;
 
@@ -206,7 +179,7 @@ void UGL4ESRenderDevice::FindProc( void*& ProcAddress, char* Name, char* Support
 {
 	guard(UGL4ESRenderDevice::FindProc);
 
-	// GL4ESDrv: resolve GL functions through GL4ES translation layer (D-09).
+	// Resolve GL functions through the GL4ES translation layer.
 	if( !ProcAddress )
 		ProcAddress = gl4es_GetProcAddress( Name );
 
@@ -246,8 +219,7 @@ void UGL4ESRenderDevice::MakeCurrent()
 	guard(UGL4ESRenderDevice::MakeCurrent);
 
 	check(ValidContext);
-	// GL4ESDrv: SDL2 manages GL context -- no explicit MakeCurrent needed.
-	// SDL_GL_MakeCurrent is called by SDL2Drv viewport.
+	// SDL2 manages the GL context; the SDL2Drv viewport makes it current.
 
 	unguard;
 }
@@ -314,9 +286,8 @@ UBOOL UGL4ESRenderDevice::Init()
 	SupportsRenderToTextureRGB565	= 0;
 	SupportsRenderToTextureNPOT		= 0;
 
-	// GL4ESDrv: GL4ES is statically linked. No runtime library loading needed.
-	// FindProcs(0) and GL4ES initialization happen in SetRes() after the
-	// GLES2 context is created (Pitfall 3, Pitfall 4).
+	// GL4ES is statically linked: no runtime library loading. FindProcs(0) and the GL4ES
+	// initialization run in SetRes(), after the GLES2 context exists.
 	if( NumDevices==0 )
 	{
 		GLLoaded = true;
@@ -355,7 +326,7 @@ void UGL4ESRenderDevice::Exit(UViewport* Viewport)
 
 	RestoreGamma();
 
-	// GL4ESDrv: GL4ES is statically linked, no DLLs to free.
+	// GL4ES is statically linked: no DLLs to free.
 	NumDevices--;
 
 	unguard;
@@ -562,41 +533,24 @@ UBOOL UGL4ESRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Ful
 	ValidContext = 1;
 	MakeCurrent();
 
-	// ===== GL4ES INITIALIZATION (D-09, D-10) =====
-	// Must happen after SDL2 creates the GLES2 context (Pitfall 3, Pitfall 4).
-	// Guarded by static bool to run only once.
+	// GL4ES initialization: after SDL2 (or the web viewport) has created the GLES2 context, once.
 	{
 		static bool gl4es_initialized = false;
 		if( !gl4es_initialized )
 		{
 			debugf( TEXT("GL4ES: Configuring GL4ES environment...") );
 
-			// Configure GL4ES before initialization (D-10, T-05.1-01).
-			// All LIBGL_* values hardcoded -- no user env var passthrough.
+			// Configure GL4ES before initialization. Every LIBGL_* value is fixed here; the
+			// user's environment is not passed through.
 			setenv("LIBGL_ES", "2", 1);               // Target GLES2
 			setenv("LIBGL_NOBANNER", "1", 1);          // Suppress GL4ES banner
 			setenv("LIBGL_NOERROR", "0", 1);           // Keep error reporting for debugging
-			// ★★ LIBGL_USEVBO=1 -- the single largest render cost on the web, and the SECOND of two
-			// switches that both had to say "VBO" (see the UseVBO note in StaticConstructor for the
-			// first). With this at 0, gl4es never gives its buffer objects a real_buffer, so
-			// realize_glenv hands glVertexAttribPointer RAW CLIENT-SIDE POINTERS no matter what the
-			// driver did -- flipping only the driver's UseVBO changes the engine's log line and
-			// nothing else whatsoever (measured: the GL stream was bit-for-bit identical).
-			//
-			// Client-side arrays DO NOT EXIST IN WebGL. Emscripten's FULL_ES2 emulation therefore
-			// copies the used vertex range into a temp buffer BEFORE EVERY DRAW CALL, and the same
-			// for indices. MEASURED on the CTF-CBP2-Skorbut timedemo (ufront step 2.30, RTX 3090,
-			// 1024x768) with a WebGL call census + JS stack attribution: 882 draws/frame became
-			// 15,322 WebGL calls/frame and 585 MB/frame of re-upload (7.6 GB/s), with the stacks
-			// naming Object.preDrawHandleClientVertexAttribBindings and _emscripten_glDrawElements
-			// as the callers -- i.e. every byte of it was emulation overhead, not our data.
-			//
-			// The old comment justified 0 as "OpenGLDrv default", which is a 2004 DESKTOP default
-			// where client arrays are legal and cheap. It is not a statement about GLES/WebGL.
-			// Android benefits too (tiled GLES2 drivers hate client arrays), so this is deliberately
-			// NOT scoped to __EMSCRIPTEN__.
+			// LIBGL_USEVBO=1: real buffer objects. With 0, gl4es hands glVertexAttribPointer client-side
+			// pointers whatever the driver's UseVBO says, and WebGL has no client-side arrays (Emscripten
+			// copies the vertex and index ranges before every draw). Tiled GLES2 drivers on Android
+			// prefer VBOs too, so this applies everywhere.
 			setenv("LIBGL_USEVBO", "1", 1);            // Real VBOs; client arrays don't exist in WebGL
-			setenv("LIBGL_BATCH", "0", 1);             // No draw-call batching: MEASURED as a big regression (2.30)
+			setenv("LIBGL_BATCH", "0", 1);             // No draw-call batching (slower here)
 			setenv("LIBGL_NOARBPROGRAM", "0", 1);      // Allow ARB_fragment_program conversion
 			setenv("LIBGL_AVOID16BITS", "1", 1);       // 32-bit textures for quality
 			setenv("LIBGL_MIPMAP", "0", 1);            // Normal mipmap handling
@@ -604,22 +558,19 @@ UBOOL UGL4ESRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Ful
 			setenv("LIBGL_SILENTSTUB", "1", 1);        // Hide stub function warnings
 			setenv("LIBGL_NPOT", "2", 1);              // Advertise full NPOT support
 			setenv("LIBGL_NOTEXRECT", "1", 1);         // Hide texture_rectangle
-			// ufront (from engine-uc2's UC2GL4ESDrv, the owner's 2026-10-11 parity list): no precompiled-shader
-			// archive. Natively gl4es otherwise writes one into the player's home ($HOME/.gl4es.psa), and a test run
-			// should build its programs the way the browser must (WebGL has no program binaries).
+			// No precompiled-shader archive: natively gl4es would write one into the player's home
+			// ($HOME/.gl4es.psa); every target builds its programs as the browser must (WebGL has no
+			// program binaries).
 			setenv("LIBGL_NOPSA", "1", 1);
 			// NVIDIA's own OpenGL ES driver rejects the int overloads gl4es inserts into converted shaders.
 			setenv("LIBGL_NOINTOVLHACK", "1", 1);
 
 #if defined(__ANDROID__)
-			// 2.10c-2 item#1: the Android EMULATOR's emugl GLES translator mishandles GL_BGRA texture
-			// uploads (it advertises GL_EXT_texture_format_BGRA8888, so gl4es keeps GL_BGRA, then emugl
-			// corrupts channels/alpha -- overbright cubemap/base, opaque translucent HUD). LIBGL_NOBGRA
-			// makes gl4es swizzle BGRA->RGBA in SOFTWARE (the web/WebGL path). But that SW swizzle is
-			// per-texture CPU work, and REAL devices' GLES drivers (Adreno/Mali) support BGRA8888
-			// natively -- so applying it device-wide is pure wasted CPU on real (esp. weak) hardware.
-			// Scope the workaround to the emulator (ro.kernel.qemu / ro.hardware=goldfish|ranchu); real
-			// devices upload BGRA natively. Web byte-identical (Emscripten never reaches this).
+			// The Android emulator's emugl GLES translator mishandles GL_BGRA texture uploads (it
+			// advertises GL_EXT_texture_format_BGRA8888, then corrupts channels and alpha). LIBGL_NOBGRA
+			// makes gl4es swizzle BGRA->RGBA in software, which is per-texture CPU work that real
+			// devices' drivers (Adreno/Mali, native BGRA8888) do not need, so it is scoped to the
+			// emulator (ro.kernel.qemu / ro.hardware=goldfish|ranchu).
 			{
 				char qemu[PROP_VALUE_MAX] = {0}, hw[PROP_VALUE_MAX] = {0};
 				__system_property_get( "ro.kernel.qemu", qemu );
@@ -634,11 +585,9 @@ UBOOL UGL4ESRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Ful
 
 			// Tell GL4ES how to find GLES2 functions via SDL2.
 #if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
-			// ufront 2.13.2 hatch (c): the context was created with emscripten_webgl_create_context, NOT
-			// through SDL, so SDL_GL_GetProcAddress has no context to resolve against and hands back
-			// nulls — gl4es would then translate into a table of null entry points and the device would
-			// render nothing (or die on the first call). Emscripten's own resolver is context-aware and
-			// works on the worker.
+			// The context was created with emscripten_webgl_create_context, not through SDL, so
+			// SDL_GL_GetProcAddress has no context to resolve against; Emscripten's resolver is
+			// context-aware and works on the worker.
 			set_getprocaddress(emscripten_webgl_get_proc_address);
 #else
 			set_getprocaddress(SDL_GL_GetProcAddress);
@@ -798,12 +747,9 @@ UBOOL UGL4ESRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Ful
 	else
 		SUPPORTS_GL_ARB_vertex_buffer_object = 0;
 
-	// SAY WHICH PATH WON. This decision is the difference between uploading each vertex range once
-	// and re-uploading it on every draw call (see the UseVBO note in StaticConstructor), and it was
-	// previously silent -- so an ini that never reached the driver looked exactly like an ini that
-	// did. Report BOTH inputs, not just the outcome: "off" because the device lacks the extension and
-	// "off" because config said so need completely different fixes, and the outcome alone cannot tell
-	// them apart. DeviceHasVBO is snapshotted above precisely because the else branch destroys it.
+	// Log which vertex path won and both of its inputs: "off" because the device lacks the extension
+	// and "off" because the config said so need different fixes. DeviceHasVBO is taken above because
+	// the else branch clears the flag.
 	debugf( TEXT("GL4ES: Vertex buffers: %s (UseVBO=%i, device GL_ARB_vertex_buffer_object=%i)"),
 		SUPPORTS_GL_ARB_vertex_buffer_object ? TEXT("VBO") : TEXT("CLIENT-SIDE ARRAYS (slow on WebGL)"),
 		(INT)UseVBO, (INT)DeviceHasVBO );
@@ -950,9 +896,8 @@ UBOOL UGL4ESRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Ful
 	glTexImage2D( GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, &Black );
 
 	// Vertex array range.
-	// GL4ESDrv: NV/APPLE vertex array range not supported via GL4ES.
-	// These extensions are vendor-specific and GL4ES doesn't advertise them,
-	// so this block will never execute. Keep the variables initialized.
+	// NV/APPLE vertex array range is not available through GL4ES, so this block never
+	// runs; the variables stay initialised.
 	VARPointer		= NULL;
 	VARSize			= 0;
 	VARIndex		= 0;
@@ -980,7 +925,7 @@ void UGL4ESRenderDevice::UnSetRes( UBOOL RestoreDisplaySettings )
 	if( ValidContext )
 		glDeleteTextures( 1, &NullTextureID );
 
-	// Vertex array range: GL4ESDrv doesn't use vendor VAR extensions.
+	// Vertex array range: not used.
 	VARPointer	= NULL;
 	VARSize		= 0;
 	VARIndex	= 0;
@@ -1142,7 +1087,7 @@ void UGL4ESRenderDevice::UpdateGamma(UViewport* Viewport)
 	for(INT i=0; i<256; i++)
 		Ramp.red[i] = Ramp.green[i] = Ramp.blue[i] = Clamp<INT>( appRound( (Contrast+0.5f)*appPow(i/255.f,1.0f/Gamma)*65535.f + (Brightness-0.5f)*32768.f - Contrast*32768.f + 16384.f ), 0, 65535 );
 
-	// GL4ESDrv: SDL2-only gamma.
+	// Gamma through SDL2.
 	SDL_SetWindowGammaRamp( (SDL_Window*)Viewport->GetWindow(), Ramp.red, Ramp.green, Ramp.blue );
 
 	unguard;
@@ -1169,7 +1114,7 @@ void UGL4ESRenderDevice::RestoreGamma()
 	for(INT i=0; i<256; i++)
 		Ramp.red[i] = Ramp.green[i] = Ramp.blue[i] = i << 8;
 
-	// GL4ESDrv: SDL2-only gamma restore.
+	// Restore the gamma through SDL2.
 	SDL_Window* GammaWindow = SDL_GetKeyboardFocus();
 	if( GammaWindow )
 		SDL_SetWindowGammaRamp( GammaWindow, Ramp.red, Ramp.green, Ramp.blue );
@@ -1431,10 +1376,10 @@ void UGL4ESRenderDevice::Present(UViewport* Viewport)
 {
 	guard(UGL4ESRenderDevice::Present);
 
-	// GL4ESDrv: SDL2-only swap.
+	// Present.
 #if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
-	// ufront 2.13.2: the context was created with explicitSwapControl, so THIS is the present.
-	// SDL_GL_SwapWindow would go through the EGL emulation, which cannot see our worker context.
+	// The context was created with explicitSwapControl, so this is the present (SDL_GL_SwapWindow
+	// would go through the EGL emulation, which cannot see the worker's context).
 	emscripten_webgl_commit_frame();
 #else
 	SDL_GL_SwapWindow((SDL_Window*)Viewport->GetWindow());

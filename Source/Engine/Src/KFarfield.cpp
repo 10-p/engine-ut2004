@@ -1020,23 +1020,11 @@ MeBool KIntersect(McdModelPair *p, McdIntersectResult *result)
 
 	unguard;
 
-	/* KD_IXPROBE — one line per NEARFIELD INTERSECTION: the two actors, their geometry types,
-	   and what the interaction concluded. Off unless the environment variable is set.
-
-	   ★ THIS IS THE INSTRUMENT THAT LOCALISED THE OPEN LP64 DEFECT, and it is kept because that
-	   defect is still open. The two traces are a pure SEQUENCE: both widths are deterministic, so
-	   `diff` on the two logs names the first pair whose answer differs, and everything before it
-	   is proof the inputs agreed. On test-karma-1 under Onslaught it was identical for 733 lines
-	   and then:
-
-	       IX ONSHoverBike3(t2) StaticMeshActor2(t7) touch=1 n=3      SSE-32
-	       IX ONSHoverBike3(t2) StaticMeshActor2(t7) touch=0 n=0      LP64
-
-	   t2 is Box and t7 is ConvexMesh, so that is `McdGjkCgIntersect` — from inputs the body rows
-	   show to be bit-identical up to that frame. See decomp/docs/STATE.md, OPEN ITEMS item 1.
-
-	   ⚠ The flag is read ONCE. This is called for every model pair every frame, and a getenv() in
-	   that loop is a measurable cost on a build whose timing nobody is watching. */
+	/* KD_IXPROBE: one line per nearfield intersection (the two actors, their geometry types, and what
+	   the interaction concluded). Off unless the environment variable is set. The traces are a pure
+	   sequence and both builds are deterministic, so `diff` on two logs (two pointer widths, two
+	   builds) names the first pair whose answer differs, and everything before it shows the inputs
+	   agreed. The flag is read once: this runs for every model pair every frame. */
 	{
 		static INT IxProbe = -1;
 		if(IxProbe < 0)

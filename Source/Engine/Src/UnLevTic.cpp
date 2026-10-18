@@ -1359,12 +1359,9 @@ INT ULevel::ServerTickClients( FLOAT DeltaSeconds )
 					}
 					else if( Channel )
 					{
-						// ufront 2.36b DIAGNOSTIC — WHY was this closed? Measured: a listen server closes
-						// the guest's own xPlayer channel over and over (and its GRI/PRI), so the guest
-						// gets a PlayerController, loses it, gets another — forever on the loading screen.
-						// Every input to the decision is printed, because the two candidates (relevance
-						// really false vs. RelevantTime/Time arithmetic) are indistinguishable from the
-						// outside. Capped, so it cannot become the next console flood.
+						// Devnet diagnostic: why this channel was closed. Every input to the decision is
+						// printed (relevance really false vs. the RelevantTime/Time arithmetic look the same
+						// from outside). Capped, so it cannot flood the console.
 						{
 							static INT UfrontRelClose = 0;
 							if( UfrontRelClose++ < 40 )
@@ -1416,10 +1413,8 @@ INT ULevel::ServerTickClients( FLOAT DeltaSeconds )
 	}
 	Mark.Pop();
 
-	// ufront 2.36b — WINDOWED replication summary. "Every 30th pass" still lands ~twice a second, and
-	// the console keeps a bounded ring: this is one of the lines that truncated the logs the guest bug
-	// was diagnosed from. Same 10s window as the other net accumulators; the peak is kept because an
-	// average hides the burst that actually matters.
+	// Windowed replication summary: one line per 10 s window (the browser console keeps a bounded ring),
+	// the same window as the other net accumulators; the peak is kept because an average hides a burst.
 	{
 		static DOUBLE UfrontRepWinStart = 0.0;
 		static INT    UfrontRepActors = 0, UfrontRepPasses = 0, UfrontRepPeak = 0;
@@ -1436,7 +1431,7 @@ INT ULevel::ServerTickClients( FLOAT DeltaSeconds )
 		if( RepElapsed >= 10.0 )
 		{
 			if( UfrontRepPasses > 0 )
-				// ★ Legacy prefix kept verbatim: the E2E's REPLICATING milestone matches it (see UnConn.cpp).
+				// The prefix is kept verbatim: the E2E's REPLICATING milestone matches it (see UnConn.cpp).
 				printf("[NET-TRAFFIC] Server: Replicated %d actors to %d clients  [%.0fs window: %d passes, avg %.1f/pass, peak %d]\n",
 					UfrontRepActors, NetDriver->ClientConnections.Num(),
 					RepElapsed, UfrontRepPasses, (FLOAT)UfrontRepActors/UfrontRepPasses, UfrontRepPeak);

@@ -1,18 +1,18 @@
 /*=============================================================================
-	WebServerList.h: where the in-game Internet browser gets its list in a BROWSER build.
+	WebServerList.h: where the in-game Internet browser gets its list in a browser build.
 
 	A web build has no sockets (under -sWASMFS every socket syscall is -ENOSYS), so on
 	__EMSCRIPTEN__ AMasterServerClient cannot ask a master server. In Proxy networking mode the game
 	proxy already holds that list (it polls the masters for everybody), so the client asks whoever
 	registered GWebServerList instead, and answers the browser's own pings from the same rows.
 
-	Same shape as WebHttp.h, for the same reasons: IpDrv imports NOTHING from JavaScript for this;
+	Same shape as WebHttp.h, for the same reasons: IpDrv imports nothing from JavaScript for this;
 	the package that owns the transport (ProxyNetDrv) registers the table, so removing that package
 	leaves it empty rather than the build broken.
 
-	NO HOOK, or Active() false (P2P mode) = EXACTLY TODAY'S BEHAVIOUR: the WebRTC discovery path.
-	Active() is a native check with no JavaScript behind it, so a query can decide at once; the list
-	itself is only ever asked for from Poll(), never from inside a script call.
+	No hook, or Active() false (P2P mode): the WebRTC discovery path. Active() is a native check with
+	no JavaScript behind it, so a query can decide at once; the list itself is only ever asked for
+	from Poll(), never from inside a script call.
 =============================================================================*/
 
 #ifndef _INC_WEBSERVERLIST

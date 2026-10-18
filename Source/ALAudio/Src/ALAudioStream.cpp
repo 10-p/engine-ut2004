@@ -554,9 +554,9 @@ void FALAudioStreamManager::Destroy()
 	if( Destroyed == 0 )
 	{
 #ifdef __EMSCRIPTEN__
-		// Single-threaded web build: there is no FileStreamingThread to signal and
-		// wait on, so the busy-wait below would spin forever. Perform the same stream
-		// teardown the thread does on exit (see FileStreamingThread), synchronously.
+		// On the web there is no FileStreamingThread to signal and wait on (Init does not start it), so
+		// the busy-wait below would spin forever. Perform the teardown the thread does on exit (see
+		// FileStreamingThread), synchronously.
 		Destroyed = 1;
 		FALAudioStream* Stream = First;
 		while( Stream )
@@ -571,8 +571,8 @@ void FALAudioStreamManager::Destroy()
 #else
 		Destroyed = 1;
 		debugf(TEXT("Waiting for file streaming thread to finish..."));
-		// ufront (engine-uc2's D-1, FFileStream::Destroy): at most 5 s, polled at 0.1 s. An exit that interrupted the
-		// streaming thread itself (a signal, a crash report) waited here for ever.
+		// At most 5 s, polled at 0.1 s: an exit that interrupted the streaming thread itself (a signal, a
+		// crash report) would otherwise wait here for ever.
 		for( INT Polls=0; Destroyed == 1 && Polls < 50; Polls++ )
 			appSleep(0.1f);
 		if( Destroyed == 1 )
@@ -588,11 +588,11 @@ void FALAudioStreamManager::Destroy()
 //
 //	FALAudioStreamManager::Tick
 //
-//	Single-threaded (Emscripten/web) builds have no background FileStreamingThread,
-//	so the per-stream decode that refills FALSoundBuffer::AudioStreamData must be
-//	driven from the main thread once per audio update. This mirrors exactly one
-//	iteration of the streaming-thread loop below. ReadChunks() is a no-op for any
-//	stream whose ChunksRequested is 0, so this is cheap and safe to call every frame.
+//	On the web the background FileStreamingThread is not started, so the per-stream
+//	decode that refills FALSoundBuffer::AudioStreamData is driven from the audio
+//	update once per frame. This mirrors one iteration of the streaming-thread loop
+//	below. ReadChunks() is a no-op for any stream whose ChunksRequested is 0, so this
+//	is cheap to call every frame.
 //
 void FALAudioStreamManager::Tick()
 {

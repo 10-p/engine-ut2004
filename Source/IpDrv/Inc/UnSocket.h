@@ -58,10 +58,8 @@
 		#define WSAGetLastHostError()	h_errno
 	#endif
 
-	// Cast the INT length arg to the exact type recvfrom/getsockopt expect (socklen_t*). Using
-	// (DWORD*) happened to match on 64-bit (x86_64/arm64) but is a pointer-type mismatch on
-	// 32-bit ARM (armeabi-v7a). socklen_t* is correct on every ABI and emits the same pointer,
-	// so x86_64/arm64/web are unaffected.
+	// Cast the INT length arg to the exact type recvfrom/getsockopt expect (socklen_t*): (DWORD*) is a
+	// pointer-type mismatch on 32-bit ARM (armeabi-v7a). socklen_t* is correct on every ABI.
 	#define GCC_OPT_INT_CAST	(socklen_t*)
 #endif
 

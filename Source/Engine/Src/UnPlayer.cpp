@@ -36,7 +36,7 @@ void UPlayer::Destroy()
 	unguard;
 }
 
-// ufront port (from engine-uc2): TELEPORT <x> <y> <z> / WHEREAMI, cheats (UnCheats.cpp)
+// TELEPORT <x> <y> <z> / WHEREAMI, cheats (UnCheats.cpp)
 ENGINE_API UBOOL UfrontCheatExec( UEngine* Engine, APlayerController* PC, const TCHAR* Cmd, FOutputDevice& Ar );
 
 UBOOL UPlayer::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
@@ -44,7 +44,7 @@ UBOOL UPlayer::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 	guard(UPlayer::Exec);
 	if ( !Actor )
 		return 0;
-	// ufront: before the scripts, so that TELEPORT with coordinates is ours (CheatManager.Teleport has none and keeps
+	// Before the scripts, so that TELEPORT with coordinates is ours (CheatManager.Teleport has none and keeps
 	// TELEPORT alone)
 	if( UfrontCheatExec( Actor->GetLevel()->Engine, Actor, Cmd, Ar ) )
 		return 1;

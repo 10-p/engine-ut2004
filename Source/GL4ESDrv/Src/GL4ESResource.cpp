@@ -595,12 +595,11 @@ void FGL4ESTexture::Cache(FBaseTexture* SourceTexture)
 		// GL4ES treats cube maps as mip-needing and forces a mipmap MIN_FILTER on them, but
 		// env-map cubes here are uploaded base-level-only (and the driver-side GL_LINEAR set at
 		// creation is swallowed by GL4ES's sampler recompute). A mipmap filter on a cube with no
-		// mip chain is mipmap-INCOMPLETE -> textureCube() returns black -> a base*cube modulate
-		// paints the surface black (seen with a TexRotator-wrapped specular cubemap). Generate the
-		// chain from the decompressed base faces so the cube is complete for the filter GL4ES uses.
-		// Guard on the entry point itself, not SUPPORTS_GL_EXT_framebuffer_object: that flag is
-		// force-cleared when render-to-texture (FBOs) is disabled, but glGenerateMipmap is core
-		// GLES2 and independent of FBOs, and the entry point is still loaded.
+		// mip chain is mipmap-incomplete -> textureCube() returns black -> a base*cube modulate
+		// paints the surface black. Generate the chain from the decompressed base faces so the
+		// cube is complete for the filter GL4ES uses. Guard on the entry point itself, not
+		// SUPPORTS_GL_EXT_framebuffer_object: that flag is cleared when render-to-texture (FBOs)
+		// is disabled, but glGenerateMipmap is core GLES2 and independent of FBOs.
 		if( RenDev->glGenerateMipmapEXT )
 			RenDev->glGenerateMipmapEXT( GL_TEXTURE_CUBE_MAP );
 

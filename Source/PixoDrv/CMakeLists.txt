@@ -1,21 +1,17 @@
 project(PixoDrv CXX)
 
-# ufront 2.12 Part B: the Pixomatic software-rasterizer render device (UPixoRenderDevice), selected by the
-# -SOFTWARERENDERER launch switch. SINGLE-SOURCE: this in-tree driver builds on BOTH backends --
-#   * (ufront 2.34) the SDL 1.2 video-surface present is gone with SDL 1.2 itself.
-#   * gl4es  (SDL2):       PixoRenderDevice.cpp's SDL2 path uploads the software framebuffer to a GL texture
-#                          and presents it through GL4ES (SDL2 GL window).
-# The DRIVER SOURCE is in-tree + open (engine render-device code). The CLOSED Pixomatic core library + its
-# headers are VENDORED in-tree at <repo>/Pixomatic/{Inc,Lib} (a prebuilt lib with no source, tracked like
-# metoolkit/ and DirectX*/ -- see .gitignore), so the -full / legacy-full presets compile out of the box.
-# pixomatic_linux.a is byte-identical to the original Epic v3186 drop (Pixomatic shipped only through 3186).
-# For a source release that must NOT bundle the proprietary lib, strip <repo>/Pixomatic and point PIXOMATIC_DIR
-# at an external copy: -DPIXOMATIC_DIR=/path/to/drop (expects <PIXOMATIC_DIR>/Pixomatic/{Inc,Lib}).
+# PixoDrv: the Pixomatic software-rasterizer render device (UPixoRenderDevice), selected by the
+# -SOFTWARERENDERER launch switch. PixoRenderDevice.cpp uploads the software framebuffer to a GL texture
+# and presents it through GL4ES on the SDL2 GL window.
+# The driver source is open engine code; the closed Pixomatic core library and its headers are vendored at
+# Thirdparty/Pixomatic/{Inc,Lib,Bin} (a prebuilt with no source, tracked on purpose; see .gitignore).
+# pixomatic_linux.a is byte-identical to Epic's v3186 drop (Pixomatic shipped only through 3186). For a
+# source release that must not bundle the proprietary library, remove Thirdparty/Pixomatic and point
+# PIXOMATIC_DIR at an external copy: -DPIXOMATIC_DIR=/path/to/drop (expects <PIXOMATIC_DIR>/Pixomatic/{Inc,Lib}).
 set(PIXOMATIC_DIR "${CMAKE_SOURCE_DIR}/Thirdparty" CACHE PATH "Root holding Pixomatic/{Inc,Lib} (default: in-tree vendored copy)")
 set(PIXOMATIC_INC "${PIXOMATIC_DIR}/Pixomatic/Inc")
-# ufront 2.34 — the drop ships BOTH a Linux .a and the original Windows pixomatic.lib. The Windows one is
-# plain C with stdcall-decorated symbols (`_PixoFoo@40`), not MSVC-mangled C++, so MinGW can link it
-# directly — unlike Karma's metoolkit, which is C++ and therefore unusable off MSVC (2.34 section 2.1).
+# The drop ships both a Linux .a and the original Windows pixomatic.lib (the import library of
+# pixomatic.dll, plain C with stdcall-decorated symbols, `_PixoFoo@40`), which MinGW links directly.
 if(MINGW)
   set(PIXOMATIC_LIB "${PIXOMATIC_DIR}/Pixomatic/Lib/pixomatic.lib")
 else()
@@ -33,7 +29,7 @@ set(SRC_FILES
   "Src/PixoMaterialState.cpp"
   "Src/PixoResource.cpp"
   "Src/utils_surface.c"
-  "Src/PixoCodeExec.c"   # ufront 2.12: RWX JIT code-buffer allocator override (overrides the closed lib's)
+  "Src/PixoCodeExec.c"   # RWX JIT code-buffer allocator (overrides the closed lib's)
 )
 
 add_library(${PROJECT_NAME} ${LIB_TYPE} ${SRC_FILES})
@@ -41,11 +37,10 @@ add_library(${PROJECT_NAME} ${LIB_TYPE} ${SRC_FILES})
 # GPackage=PixoDrv per the makefile; __LINUX_X86__ (already global) selects the SDL Linux path in PixoDrv.h.
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Src ${PIXOMATIC_INC})
 target_compile_definitions(${PROJECT_NAME} PRIVATE GPackage=PixoDrv)
-# ★ ufront 2.58: the owner-approved containment for any PixoDrv defect that only exists at -O2 and is
-# not local — pin this directory (and only this directory) to -O0 while the engine keeps its -O2.
-# Same last-wins mechanism as the Karma pin in the top-level CMakeLists. OFF by default: the stdcall
-# blitter bug was root-caused and fixed at -O2 (utils_surface.h), so the option exists for measuring
-# ("is this an optimiser-only fault?") and as the fallback the owner asked for, not as the default.
+# UT_PIXODRV_O0: pin this directory (and only this directory) to -O0 while the engine keeps -O2, a
+# containment and measurement aid for a PixoDrv defect that only exists at -O2 ("is this an
+# optimiser-only fault?"). The same last-wins mechanism as the Karma pin in the top-level CMakeLists.
+# Off by default.
 option(UT_PIXODRV_O0 "Compile Source/PixoDrv at -O0 (measurement aid / fallback containment; the engine stays -O2)" OFF)
 if(UT_PIXODRV_O0)
   target_compile_options(${PROJECT_NAME} PRIVATE -O0)

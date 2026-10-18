@@ -80,8 +80,8 @@ UObject::UObject( ENativeConstructor, UClass* InClass, const TCHAR* InName, cons
 	*(const TCHAR  **)&Outer        = InPackageName;
 
 #if SERIAL_POINTER_INDEX
-	// ufront: FName is 4 bytes, the stashed name a pointer: it waits in StateFrame (pointer-sized, NULL until
-	// Register(), which clears it again) instead of a slot of the old side table.
+	// FName is 4 bytes and the stashed name a pointer: it waits in StateFrame (pointer-sized, NULL until
+	// Register(), which clears it again).
 	*(const TCHAR  **)&StateFrame   = InName;
 #else
 	check(sizeof(Name        )>=sizeof(InName       ));
@@ -115,7 +115,7 @@ UObject::UObject( EStaticConstructor, const TCHAR* InName, const TCHAR* InPackag
 	*(const TCHAR  **)&Outer        = InPackageName;
 
 #if SERIAL_POINTER_INDEX
-	// ufront: see the native constructor above.
+	// See the native constructor above.
 	*(const TCHAR  **)&StateFrame   = InName;
 #else
 	check(sizeof(Name        )>=sizeof(InName       ));
@@ -3568,9 +3568,8 @@ ULinkerLoad* UObject::GetPackageLinker
 				if( (LoadFlags & LOAD_AllowDll) && InOuter->IsA(UPackage::StaticClass()) && ((UPackage*)InOuter)->DllHandle )
 					return NULL;
 #if defined(__ANDROID__)
-				// WebRTCDrv is not in the Android build (it's if(EMSCRIPTEN)-only); this is the
-				// generic graceful missing-package guard, so keep the log platform-accurate (no
-				// misleading "[WebRTC]" tag). Web keeps its original string (byte-identical).
+				// The generic missing-package guard: WebRTCDrv is not in the Android build, so the
+				// line carries no "[WebRTC]" tag.
 				debugf( NAME_Warning, TEXT("Package not found: %s (returning NULL, not throwing)"), InOuter->GetName() );
 				return NULL;
 #elif defined(__EMSCRIPTEN__)
@@ -3659,19 +3658,17 @@ ULinkerLoad* UObject::GetPackageLinker
 
 		// Create new linker.
 #if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
-		const UBOOL FreshLinker = !Result;	// ufront (2.79o): only a linker made HERE may be dropped below
+		const UBOOL FreshLinker = !Result;	// only a linker made here may be dropped below
 #endif
 		if( !Result )
 		{
 			Result = new ULinkerLoad( InOuter, NewFilename, LoadFlags );
 #if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
-			// The ULinkerLoad constructor fails SOFT on Emscripten (Asyncify can't unwind
-			// a throw out of its async file I/O): a corrupt / incompatible / unopenable
-			// package leaves Success != 1 and emits a clear message at the failure point.
-			// Drop the half-built linker and return NULL — a failed load, not an abort.
-			// IMPORTANT: only a FRESHLY-created linker (new ULinkerLoad returns fully
-			// constructed). A found-existing Result may legitimately be mid-construction
-			// (Success == sentinel) during nested/circular imports — must not touch it.
+			// The ULinkerLoad constructor fails soft here: a corrupt / incompatible / unopenable
+			// package leaves Success != 1 and logs a message at the failure point. Drop the
+			// half-built linker and return NULL (a failed load, not an abort). Only a freshly
+			// created linker: a found-existing Result may legitimately be mid-construction
+			// (Success == sentinel) during nested or circular imports.
 			if( Result && Result->Success != 1 )
 			{
 				GObjLoaders.RemoveItem( Result );
@@ -3685,8 +3682,8 @@ ULinkerLoad* UObject::GetPackageLinker
 #if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
 		{
 			debugf( NAME_Warning, TEXT("[PACKAGE-LOAD] '%s' is an incompatible version of package '%s' (GUID mismatch)"), NewFilename, InOuter->GetName() );
-			// ufront (2.79o): drop the linker only if it was made HERE. One that was already there belongs to a
-			// package in USE (a server naming a mod the menus have loaded in another version): taking it out of
+			// Drop the linker only if it was made here: one that was already there belongs to a package in
+			// use (a server naming a mod the menus have loaded in another version), and taking it out of
 			// GObjLoaders would orphan every object loaded through it. Natively the throw leaves it alone too.
 			if( FreshLinker )
 				GObjLoaders.RemoveItem( Result );
@@ -3956,10 +3953,8 @@ UObject* UObject::LoadPackage( UObject* InOuter, const TCHAR* Filename, DWORD Lo
         // gam ---
         if( !Linker )
         {
-            // Balance the BeginLoad() above. Under Emscripten GetPackageLinker
-            // returns NULL (instead of throwing) when a package/file is missing,
-            // so this path is now reachable on a normal failed load; returning
-            // without EndLoad() left GObjBeginLoadCount stuck at 1, tripping
+            // Balance the BeginLoad() above: GetPackageLinker returns NULL instead of throwing on the
+            // fail-soft builds, and without EndLoad() GObjBeginLoadCount would stay at 1 and trip
             // check(GObjBeginLoadCount==0) in StaticTick() on the next frame.
             EndLoad();
             return( NULL );
@@ -4047,10 +4042,10 @@ void UObject::EndLoad()
 				//warning: Array may expand during iteration.
 				guard(PreLoadObjects);
 				debugfSlow( NAME_DevLoad, TEXT("Loading objects...") );
-				// ufront 2.37b: from here until the loop ends, ObjLoaded holds objects that EXIST in the
-				// object table and have not been serialized. GObjBeginLoadCount is already 0 by now, so it
-				// cannot be the signal -- this is. Saved/restored rather than assigned, because EndLoad
-				// loops (`if(GObjLoaded.Num()) continue;`) and can re-enter.
+				// From here until the loop ends, ObjLoaded holds objects that exist in the object table and
+				// have not been serialized (GObjBeginLoadCount is already 0, so it cannot be the signal).
+				// Saved and restored rather than assigned: EndLoad loops (`if(GObjLoaded.Num()) continue;`)
+				// and can re-enter.
 				const UBOOL WasPreloading = GObjPreloading;
 				GObjPreloading = 1;
 #if __PSX2_EE__ // add the cool endLoad printout

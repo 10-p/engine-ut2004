@@ -1013,8 +1013,7 @@ UBOOL FUdpLink::BindPort( INT InPort )
 {
 	guard(FUdpLink::BindPort);
 #ifdef __EMSCRIPTEN__
-	// BSD sockets don't exist on Emscripten. All networking goes through
-	// WebRTC data channels. Return 0 so callers handle gracefully.
+	// BSD sockets don't exist on the web. Return 0 so callers handle it.
 	debugf( NAME_DevNet, TEXT("[WebRTC] FUdpLink::BindPort(%d): skipped on Emscripten"), InPort );
 	return 0;
 #endif

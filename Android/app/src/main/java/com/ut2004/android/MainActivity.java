@@ -29,13 +29,13 @@ import android.widget.Toast;
 import java.io.File;
 
 /**
- * Launcher (Stage 2.11). Gates All-Files-Access (the ~11 GB game tree is read in place from external
+ * Launcher. Gates All-Files-Access (the ~11 GB game tree is read in place from external
  * storage), then -- instead of auto-launching the game -- shows a launcher screen that lets the
  * player pick which storage the game runs from and manage a fast local copy.
  *
  * The ~11 GB tree normally lives on external storage (/sdcard/UT2004 or a physical SD card), which
- * goes through Android's FUSE/sdcardfs layer and is punishingly slow (the Retroid takes ~3 min to
- * reach the menu). The only fast, non-FUSE storage is app-private /data ({@code getFilesDir()}), so
+ * goes through Android's FUSE/sdcardfs layer and is slow (minutes to the menu on some devices). The
+ * only fast, non-FUSE storage is app-private /data ({@code getFilesDir()}), so
  * this screen can copy the game there and boot from it. The storage choice is conveyed to the
  * separate ":game" process via an Intent extra ({@link GameActivity#EXTRA_STORAGE_MODE}); default-mode
  * SharedPreferences would not be multi-process safe.
@@ -95,14 +95,14 @@ public class MainActivity extends Activity {
         }
     }
 
-    // ---- storage-permission gate (unchanged from 2.10 arm-perf) ---------------------------------
+    // ---- storage-permission gate ----------------------------------------------------------------
 
     private boolean hasAllFilesAccess() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             return Environment.isExternalStorageManager();
         }
-        // Android <= 10 (API <= 29, e.g. the Retroid on Android 9): legacy storage model -- the
-        // engine reads the game tree (incl. a physical SD card) via runtime READ_EXTERNAL_STORAGE.
+        // Android <= 10 (API <= 29): legacy storage model -- the engine reads the game tree (incl. a
+        // physical SD card) via runtime READ_EXTERNAL_STORAGE.
         return checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE)
                 == android.content.pm.PackageManager.PERMISSION_GRANTED;
     }

@@ -250,11 +250,8 @@ void FStats::Render(class UViewport* Viewport, class UEngine* Engine)
 	if(Engine->bShowFrameRate)
 	{
 		FLOAT FrameTime		= DWORDOldStats(GEngineStats.STATS_Frame_TotalCycles) * GSecondsPerCycle;
-		// ★ ufront 2.53 — DIVIDE ONLY WHEN THERE IS SOMETHING TO DIVIDE BY. `1.f / 0.f` is +inf and
-		// `(INT)+inf` is undefined behaviour, which is what printed "~2^32 cur FPS" for the whole life
-		// of the wasm port (appCycles() returned a literal 0, so FrameTime was always 0 — fixed in
-		// Core, see UnGnuG.h). The root cause is gone, but a zero-length frame must degrade to "0 FPS"
-		// rather than to garbage, so the reported symptom cannot come back by another route.
+		// Divide only when there is something to divide by: `1.f / 0.f` is +inf and `(INT)+inf` is
+		// undefined behaviour. A zero-length frame degrades to "0 FPS".
 		FPSAvg				= FPSAvg ? FPSAvg * 0.98f + FrameTime * 0.02f : FrameTime;
 		INT	AvgFrameRate	= FPSAvg > 0.f ? appRound(1.f / FPSAvg) : 0,
 			FrameRate		= FrameTime > 0.f ? appRound(1.f / FrameTime) : 0,

@@ -110,7 +110,7 @@ public:
 
 #if (defined __x86_64__) || (defined __aarch64__) || (defined __LP64__)
     // 64-bit if x86_64 (Unix/_WIN64-mapped above), arm64 (__aarch64__), or any LP64 target.
-    // wasm32 (web) is ILP32 -> none defined -> stays PLATFORM_32BITS (byte-identical).
+    // wasm32 (web) is ILP32 and stays PLATFORM_32BITS.
     #define PLATFORM_64BITS 1
 #else
     #define PLATFORM_32BITS 1
@@ -151,9 +151,9 @@ public:
 
 
 // OS specific include.
-// ufront 2.33: the header follows the SOURCE. UnUnix.cpp is the platform layer for every non-MSVC target
-// — Windows/MinGW included — so its prototypes (appGetLocalIP, appUnixPath, …) have to be visible there
-// too. Gating on __UNIX__ alone left UnGUID.cpp calling an undeclared appGetLocalIP.
+// OS specific include. The header follows the source: UnUnix.cpp is the platform layer for every
+// non-MSVC target, Windows/MinGW included, so its prototypes (appGetLocalIP, appUnixPath, ...) are
+// visible there too.
 #if __UNIX__ || defined(__MINGW32__)
 	#include "UnUnix.h"
 #ifndef __MWERKS__
@@ -163,13 +163,10 @@ public:
 
 // SSE or not?
 //
-// ★ UT_MSVC_NO_MMX — "this compiler has no MMX intrinsics", which the engine has always spelled
-// `_WIN64` and which is NOT the same question. MSVC's x64 compiler dropped `__m64` and the MMX
-// intrinsics, so Epic wrote second copies of three inner loops that avoid them and read a packed
-// `__m128i` back through `m128i_u32` — an MSVC extension. GCC keeps MMX on x86-64 and its
-// `__m128i` has no members at all, so a GCC x86_64 Windows build (MinGW, which defines `_WIN64`)
-// took the MSVC branch and failed with "request for member 'm128i_u32' ... non-class type".
-// ⚠ Nothing but MSVC x64 changes: every existing target already evaluates this to 0.
+// UT_MSVC_NO_MMX: this compiler has no MMX intrinsics (MSVC x64, which dropped `__m64`). Epic wrote
+// second copies of three inner loops for it that read a packed `__m128i` back through `m128i_u32`, an
+// MSVC extension. GCC keeps MMX on x86-64 and its `__m128i` has no members, so a GCC build (MinGW, which
+// defines `_WIN64` too) keeps the MMX loops.
 #if defined(_WIN64) && defined(_MSC_VER)
   #define UT_MSVC_NO_MMX 1
 #else
@@ -255,9 +252,8 @@ enum ERunningCPU
 		typedef ANSICHAR  TCHAR;
 		typedef ANSICHARU TCHARU;
 	#elif defined(_WIN32)
-		// ufront 2.33 (Windows/MinGW): MinGW's <tchar.h>, reached through the Win32 headers, sets
-		// _TCHAR_DEFINED and supplies TCHAR (== char here, since we build with NO_UNICODE_OS_SUPPORT) —
-		// but it knows nothing about UE's TCHARU, so the branch above skipped BOTH.
+		// MinGW's <tchar.h>, reached through the Win32 headers, sets _TCHAR_DEFINED and supplies TCHAR
+		// (== char here, NO_UNICODE_OS_SUPPORT), but not UE's TCHARU, which the branch above skipped.
 		typedef ANSICHARU TCHARU;
 	#endif
 	#undef TEXT
@@ -562,10 +558,9 @@ public:
 	//   Year: Full 4+ digits.
 	virtual UBOOL GetFileLastModTime( const TCHAR* FakeFilename, DWORD &Hours, DWORD &Minutes, DWORD &Secs, DWORD &Day, DWORD &Month, DWORD &Year ) { return 0; }
 
-	// ufront 2.37: where user files (log, User.ini, saves, cache) actually land, already resolved --
-	// and with no side effects, unlike CalcHomeDir, which mkdirs. A manager with no home-dir redirect
-	// writes next to the game, so the base dir is the honest answer. Deliberately LAST: appending a
-	// virtual leaves every existing vtable slot where it was.
+	// Where user files (log, User.ini, saves, cache) land, already resolved and with no side effects
+	// (unlike CalcHomeDir, which mkdirs). A manager with no home-dir redirect writes next to the game.
+	// Last in the class, so every earlier vtable slot stays where it was.
 	virtual const TCHAR *GetUserDir(void) { return(appBaseDir()); }
 };
 

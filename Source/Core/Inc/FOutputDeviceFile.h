@@ -7,7 +7,7 @@
 =============================================================================*/
 
 #if defined(__ANDROID__)
-// ufront (Android): route GLog straight to logcat (tag "UT2004"). See the echo block below.
+// GLog goes straight to logcat (tag "UT2004"); see the echo block below.
 #include <android/log.h>
 #endif
 
@@ -51,15 +51,11 @@ public:
 					// Make log filename.
 					if( !Filename[0] )
 					{
-                        // ufront 2.33: the base-dir prefix belongs to the WINDOWS FILE MANAGER, not to
-                        // Windows-the-platform. This build is a hybrid — a Windows binary using
-                        // FFileManagerUnix — and that manager resolves relative paths itself, including
-                        // the ~/.ut2004 home-dir redirect (only when -usehomedir asks for it, since
-                        // ufront 2.37). Prefixing an already
-                        // absolute "Z:\path\System/" then produced the nested absurdity
-                        //   ~/.ut2004/System/Z:/tmp/.../System/UT2004.log
-                        // which is why the log looked missing. Behave like Linux: leave it empty and let
-                        // the file manager decide.
+                        // The base-dir prefix belongs to the Windows file manager, not to the
+                        // platform: this build is a Windows binary using FFileManagerUnix, which
+                        // resolves relative paths itself (including the ~/.ut2004 redirect under
+                        // -usehomedir), so prefixing an absolute "Z:\path\System/" would nest it.
+                        // Leave it empty, as on Linux.
                         #if WIN32 && defined(_MSC_VER)
 						appStrcpy( Filename, appBaseDir() );
                         #endif
@@ -192,33 +188,24 @@ public:
 #endif
 #endif
 				}
-				// ufront (dual-sink logging): ALSO echo every non-suppressed line to stdout, in ADDITION to
-				// the log file above -- terminal on native, Module.print -> console.log on web. A single sink
-				// (web console-only; native file-only, and its writer did not always open) made a fully-running
-				// engine look "silent"/hung -- the ut2004 native misdiagnosis. Convert TCHAR->ANSI with explicit
-				// buffers (appToAnsi) so this is correct regardless of TCHAR WIDTH: web is ANSI
-				// (NO_UNICODE_OS_SUPPORT => TCHAR=char) but native is UNICODE (2-byte TCHAR), and a raw
-				// printf("%ls") would misread the 2-byte string on native (Linux wchar_t is 4-byte) and print
-				// nothing -- the exact reason native GLog was invisible. Same "Event: Data" text + 1024 cap as the
-				// file sink above, so the two are byte-comparable (the e2e log-parity check asserts file==console).
-				// fflush so a piped/redirected stdout (fully buffered) never loses the line. Mirrors ut99 (2.8) /
-				// unreal1 (2.6e); NOT #ifdef'd (standard UE dev behaviour).
+				// Also echo every non-suppressed line to stdout, besides the log file above: the terminal
+				// natively, Module.print -> console.log on the web. TCHAR->ANSI through appToAnsi with explicit
+				// buffers, correct for either TCHAR width (the web is ANSI, native is UNICODE with a 2-byte
+				// TCHAR that printf("%ls") would misread against Linux's 4-byte wchar_t). The same
+				// "Event: Data" text and 1024 cap as the file sink, so the two compare byte for byte; fflush so
+				// a piped stdout never loses the line.
 				if( Event != NAME_Title )
 				{
 					ANSICHAR EchoEvent[256], EchoData[1024];
 					appToAnsi( FName::SafeString(Event), EchoEvent, ARRAY_COUNT(EchoEvent) );
 					appToAnsi( Data, EchoData, ARRAY_COUNT(EchoData) );
 #if defined(__ANDROID__)
-					// Android: write GLog straight to logcat (tag "UT2004"), one clean entry per
-					// line. This bypasses the stdout->pipe->logcat hop (SDLLaunch.cpp) which is
-					// subject to stdio buffering + logd throttling of the boot burst, and avoids
-					// double-logging (GLog no longer prints to stdout, so it doesn't also traverse
-					// that pipe). Mirrors the web Module.print->console.log path. The pipe stays for
-					// raw printf ([ENGINE-DBG]/[WebRTC]) + stderr/crash output (FOutputDeviceAnsiError).
-					// Use appToAnsi's RETURN value: its ANSI-build (#else) branch returns the input
-					// unchanged and does NOT fill EchoEvent/EchoData (those are only written in the
-					// UNICODE build), so the buffers above are garbage on Android — the return is the
-					// correct string on both builds. Data is the %s ARGUMENT so '%' in text is safe.
+					// Android: GLog goes straight to logcat (tag "UT2004"), one entry per line,
+					// instead of the stdout pipe (SDLLaunch.cpp), which is subject to stdio
+					// buffering and logd throttling; the pipe stays for raw printf and stderr. Use
+					// appToAnsi's return value: its ANSI-build branch returns the input unchanged
+					// and does not fill EchoEvent/EchoData. Data is the %s argument, so '%' in the
+					// text is safe.
 					__android_log_print( ANDROID_LOG_INFO, "UT2004", "%s: %s",
 						appToAnsi( FName::SafeString(Event), EchoEvent, ARRAY_COUNT(EchoEvent) ),
 						appToAnsi( Data, EchoData, ARRAY_COUNT(EchoData) ) );
@@ -228,9 +215,8 @@ public:
 						appToAnsi( Data, EchoData, ARRAY_COUNT(EchoData) ) );
 					fflush( stdout );
 #endif
-					// Flush the file sink per line too, so the log FILE reflects content LIVE (this writer
-					// buffers, so a mid-run reader — the e2e log-parity check, or a crash post-mortem — would
-					// otherwise see an empty file until close). Keeps the two sinks in step.
+					// Flush the file sink per line too, so the log file is current for a reader mid-run
+					// (or after a crash).
 					if( LogAr )
 						LogAr->Flush();
 				}

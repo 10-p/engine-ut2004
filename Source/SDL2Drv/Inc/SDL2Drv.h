@@ -1,6 +1,5 @@
 /*=============================================================================
-    SDL2Drv.h: SDL2 cross-platform viewport/input driver.
-    Replaces legacy SDL 1.2 SDLDrv for the UT2004 web port.
+    SDL2Drv.h: SDL2 viewport and input driver.
 =============================================================================*/
 
 #ifndef _INC_SDL2DRV
@@ -18,8 +17,8 @@
     Dependencies.
 ----------------------------------------------------------------------------*/
 
-// When included from SDLLaunch (registration only), avoid pulling in the
-// real SDL headers so SDL1 and SDL2 drivers can coexist in one binary.
+// SDL2DRV_REGISTRATION_ONLY (SDLLaunch's static registration): stand-ins for
+// the SDL types, without the SDL headers.
 #ifdef SDL2DRV_REGISTRATION_ONLY
     struct SDL_Window;
     typedef void* SDL_GLContext;

@@ -14,9 +14,8 @@
 -----------------------------------------------------------------------------*/
 
 // !!! FIXME: This should get rid of all these win32 vs. SDL ifdefs. --ryan.
-// ufront 2.33 — that FIXME, scoped to what we can verify: the switch is not the platform, it is WHO OWNS
-// THE GL CONTEXT. Every build this repo produces gets it from SDL (SDLDrv/SDL2Drv), Windows included;
-// only Epic's original MSVC build created its own through WGL.
+// The switch is who owns the GL context: SDL2Drv on every build but an MSVC one, which creates its own
+// through WGL (UT_OPENGLDRV_WGL).
 #ifndef UT_OPENGLDRV_WGL
 #  define USE_SDL 1
 #endif
@@ -24,7 +23,7 @@
 #if (defined UT_OPENGLDRV_WGL)
 #   define GL_DLL (TEXT("OpenGL32.dll"))
 #elif defined(_WIN32)
-#   define GL_DLL (TEXT("OpenGL32.dll"))	// ufront 2.33: SDL owns the context, but keep the name honest
+#   define GL_DLL (TEXT("OpenGL32.dll"))	// SDL owns the context; the entry points still come from OpenGL32
 #elif ((__linux__) || (__FreeBSD__))
 #   define GL_DLL (TEXT("libGL.so.1"))
 #elif MACOSX
@@ -100,20 +99,15 @@ void UOpenGLRenderDevice::StaticConstructor()
 	new(GetClass(),TEXT("LevelOfAnisotropy"),	RF_Public)UFloatProperty( CPP_PROPERTY(LevelOfAnisotropy   ), TEXT("Options"), CPF_Config );
 	new(GetClass(),TEXT("UseRenderTargets"),	RF_Public)UBoolProperty	( CPP_PROPERTY(UseRenderTargets    ), TEXT("Options"), CPF_Config );
 	new(GetClass(),TEXT("UsePixelShaders"),		RF_Public)UBoolProperty ( CPP_PROPERTY(UsePixelShaders     ), TEXT("Options"), CPF_Config );
-	// ufront 2.37b: an ini option rather than a switch, because it belongs to the DRIVER and because a
-	// user should not have to remember a command line to keep the game out of their desktop's colours.
-	// ★ ASSIGNED below, not merely registered -- that is 2.35's lesson: ~30 client options were declared
-	// CPF_Config and given no value, so every one of them silently fell to a zero-initialised default.
-	// Here zero happens to be the value we want, which is exactly the case where forgetting is invisible.
+	// UseHardwareGamma: an ini option of the driver, assigned below (off).
 	new(GetClass(),TEXT("UseHardwareGamma"),	RF_Public)UBoolProperty ( CPP_PROPERTY(UseHardwareGamma    ), TEXT("Options"), CPF_Config );
 
 	GIsOpenGL						= 1;
 	GIsPixomatic					= 0;
 
-	// OFF by default. UpdateGamma reprograms the DISPLAY's ramp, not the game's, so leaving this on
-	// meant running the game recoloured the whole desktop -- and a process that died before
-	// RestoreGamma left it that way with nothing to put it back. Set UseHardwareGamma=True in
-	// [OpenGLDrv.OpenGLRenderDevice] to get the in-game Brightness/Gamma/Contrast sliders working.
+	// Off by default: UpdateGamma reprograms the display's ramp, not the game's, so it recolours the
+	// whole desktop, and a process that dies before RestoreGamma leaves it that way. Set
+	// UseHardwareGamma=True in [OpenGLDrv.OpenGLRenderDevice] for the in-game Brightness/Gamma/Contrast.
 	UseHardwareGamma				= 0;
 
 	SupportsCubemaps				= 1;
@@ -322,12 +316,8 @@ UBOOL UOpenGLRenderDevice::Init()
 	// Init global GL.
 	if( NumDevices==0 )
 	{
-		// Find DLL's. ⚠ Left on appGetDllHandle deliberately: on Windows that returns the "it is in the
-		// exe" sentinel and the GL entry points resolve out of the exe's own import thunks, which has
-		// worked since 2.33. Moving it to appGetSystemDllHandle (a real LoadLibrary of OpenGL32.dll) is
-		// arguably more correct and was tried in 2.37 -- but it is a change to a working renderer for no
-		// reported symptom, so it stays as it is. ALAudio is the one that genuinely needed the new
-		// entry point, because nothing statically links OpenAL.
+		// Find DLL's. appGetDllHandle on Windows returns the "it is in the exe" sentinel, and the GL
+		// entry points resolve from the exe's own import thunks.
 		hModuleGLMain = (HMODULE) appGetDllHandle( GL_DLL );
 		if( !hModuleGLMain )
 		{
@@ -680,9 +670,7 @@ UBOOL UOpenGLRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Fu
 		glGetFloatv( GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &MaxAnisotropy );
 		LevelOfAnisotropy = Max<FLOAT>( 1.0f, Min<FLOAT>( MaxAnisotropy, LevelOfAnisotropy ) );
 		debugf( TEXT("OpenGL: Level of anisotropy is %f (max %f)."), (float) LevelOfAnisotropy, (float) MaxAnisotropy );
-		// ufront 2.37b: say which path won. An option whose whole point is "the game did NOT touch your
-		// desktop" is invisible when it works, and an invisible setting is how 2.35's client defaults
-		// went unnoticed for a decade.
+		// Say which gamma path won: the option is invisible when it works.
 		debugf( TEXT("OpenGL: UseHardwareGamma=%s (%s) -- the display's gamma ramp is %s"),
 			UseHardwareGamma ? TEXT("True") : TEXT("False"),
 			ParseParam(appCmdLine(),TEXT("NOGAMMA")) ? TEXT("-NOGAMMA forces off") : TEXT("[OpenGLDrv.OpenGLRenderDevice]"),
@@ -1160,25 +1148,13 @@ void UOpenGLRenderDevice::Flush(UViewport* Viewport)
 
 
 //
-// ufront 2.37 — hardware gamma is OPT-IN now, via the driver's own UseHardwareGamma ini option.
+// Hardware gamma is opt-in, through the driver's UseHardwareGamma ini option (off by default).
 //
-// This code does not set the GAME's gamma, it sets the DISPLAY's: SDL_SetWindowGammaRamp and
-// SetDeviceGammaRamp both reprogram the monitor's ramp for the whole desktop. Two things follow, and the
-// owner hit both on Windows:
-//   * the game's Brightness/Contrast/Gamma defaults are not the desktop's, so merely running the game
-//     changes how everything else on the machine looks;
-//   * ★ if the process dies without running RestoreGamma -- a crash, a kill, a driver reset -- the
-//     desktop is LEFT that way, and nothing puts it back. That is a game leaving the OS in a bad state.
-//
-// So the default is to leave the display alone; set UseHardwareGamma=True in
-// [OpenGLDrv.OpenGLRenderDevice] to get the in-game sliders back. ⚠ It is deliberately NOT a new command
-// line switch (2.37b, owner): it is a property of this render device, it belongs in the device's ini
-// section next to UseVSync and UseTrilinear, and one more flag nobody can remember is not an option.
-// The stock -NOGAMMA switch is still honoured as a force-off, since it costs one clause and some old
-// script or shortcut may still pass it.
-//
-// When it IS enabled, RestoreGamma puts back the ramp that was there at startup instead of forcing a
-// LINEAR one -- the old code overwrote a calibrated display profile even on a clean exit.
+// This code sets the display's gamma, not the game's: SDL_SetWindowGammaRamp and SetDeviceGammaRamp both
+// reprogram the monitor's ramp for the whole desktop, so running the game would change how everything
+// else looks, and a process that dies without RestoreGamma would leave the desktop that way. The stock
+// -NOGAMMA switch still forces it off. When it is enabled, RestoreGamma puts back the ramp found at
+// startup instead of a linear one, so a calibrated display profile survives.
 //
 
 // The desktop's ramp as it was before we touched anything, captured on first use.
@@ -1238,9 +1214,8 @@ void UOpenGLRenderDevice::RestoreGamma()
 {
 	guard(UOpenGLRenderDevice::RestoreGamma);
 
-	// Nothing was changed unless gamma was opted into AND actually applied, so there is nothing to undo.
-	// ⚠ Do not "restore" unconditionally: writing a linear ramp to a display we never touched is itself
-	// a change, and it is the one that wipes a calibrated profile.
+	// Nothing was changed unless gamma was opted into and applied, so there is nothing to undo. Do not
+	// restore unconditionally: writing a linear ramp to an untouched display wipes a calibrated profile.
 	if( !UseHardwareGamma || !GOriginalGammaSaved )
 		return;
 

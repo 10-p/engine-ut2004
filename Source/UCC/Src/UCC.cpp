@@ -48,8 +48,8 @@ Revision history:
 #include "UWeb.h"
 #include "UWebNative.h"
 #include "OnslaughtPrivate.h"
-#ifndef UCC_NO_EDITOR   // ufront 2.12: native ucc excludes the Editor module (no Editor CMake target is built
-void autoInitializeRegistrantsEditor(INT &Lookup);   // for native — D-10; make/editor commandlets unavailable)
+#ifndef UCC_NO_EDITOR   // the native ucc has no Editor module (no Editor CMake target), so the
+void autoInitializeRegistrantsEditor(INT &Lookup);   // make/editor commandlets are unavailable
 #endif
 #endif
 
@@ -243,7 +243,7 @@ int main( int argc, char* argv[] )
         AUTO_INITIALIZE_REGISTRANTS_UWEB;
         RegisterNamesOnslaught();
         AUTO_INITIALIZE_REGISTRANTS_ONSLAUGHT;
-#ifndef UCC_NO_EDITOR   // ufront 2.12: no Editor module in the native static build (see UCC/CMakeLists.txt)
+#ifndef UCC_NO_EDITOR   // no Editor module in the native static build (see UCC/CMakeLists.txt)
         autoInitializeRegistrantsEditor(Lookup);
 #endif
 
