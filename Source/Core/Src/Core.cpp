@@ -93,9 +93,8 @@ class CORE_API FThrowOut : public FOutputDevice
 public:
 	void Serialize( const TCHAR* V, EName Event )
 	{
-#ifdef __EMSCRIPTEN__
-		printf("[ENGINE-ERROR] %s\n", V);
-#endif
+		// Print the error before the throw: if nothing catches it, this line is the only trace of it.
+		printf("[ENGINE-ERROR] %s\n", appToAnsi(V));
 		throw( V );
 	}
 } ThrowOut;
