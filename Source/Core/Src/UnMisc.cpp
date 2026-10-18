@@ -1676,26 +1676,17 @@ CORE_API UBOOL appLoadFileToString( FString& Result, const TCHAR* Filename, FFil
 	if( Size>=2 && !(Size&1) && (BYTE)Ch(0)==0xff && (BYTE)Ch(1)==0xfe )
 	{
 		// Unicode Intel byte order.
-#if defined(__ANDROID__)
 		// The source is UTF-16 (2 bytes per code unit) whatever the TCHAR width, so the element count is
-		// Size/2. The stock `Size/sizeof(TCHAR)` is right only when sizeof(TCHAR)==2 (the UNICODE build); on
-		// an ANSI build (TCHAR=char) it yields `Size`, and the loop below reads about twice past the Size+2
-		// buffer.
+		// Size/2. (The stock `Size/sizeof(TCHAR)` is the same on a UNICODE build, and `Size` on an ANSI one,
+		// where the loop below would read about twice past the Size+2 buffer.)
 		ResultArray.Add( Size/2 );
-#else
-		ResultArray.Add( Size/sizeof(TCHAR) );
-#endif
 		for( INT i=0; i<ResultArray.Num()-1; i++ )
 			ResultArray( i ) = FromUnicode( (_WORD)(ANSICHARU)Ch(i*2+2) + (_WORD)(ANSICHARU)Ch(i*2+3)*256 );
 	}
 	else if( Size>=2 && !(Size&1) && (BYTE)Ch(0)==0xfe && (BYTE)Ch(1)==0xff )
 	{
 		// Unicode non-Intel byte order.
-#if defined(__ANDROID__)
 		ResultArray.Add( Size/2 ); // UTF-16 source: Size/2 code units (see the Intel-order note above).
-#else
-		ResultArray.Add( Size/sizeof(TCHAR) );
-#endif
 		for( INT i=0; i<ResultArray.Num()-1; i++ )
 			ResultArray( i ) = FromUnicode( (_WORD)(ANSICHARU)Ch(i*2+3) + (_WORD)(ANSICHARU)Ch(i*2+2)*256 );
 	}
