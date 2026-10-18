@@ -67,7 +67,8 @@ typedef ALenum (*EAXGet)(const GUID*, ALuint, ALuint, ALvoid*, ALuint);
 #define NUM_VOICE_BUFFERS 10
 
 #ifdef _WIN64
-#define AL_DLL TEXT("OpenAL64.dll")
+// OpenAL32.dll on both widths: the name cmake/OpenALMingw.cmake stages OpenAL Soft under, beside the exe.
+#define AL_DLL TEXT("OpenAL32.dll")
 #ifdef DEBUG
 //#define AL_DEFAULT_DLL TEXT("DefOpenAL64D.dll")
 //#define AL_DEFAULT_DLL TEXT("MiniAL64.dll")
@@ -88,8 +89,9 @@ typedef ALenum (*EAXGet)(const GUID*, ALuint, ALuint, ALvoid*, ALuint);
 #define AL_DLL TEXT("./openal.dylib")
 #define AL_DEFAULT_DLL TEXT("./openal.dylib")
 #else
+// AL_DLL is the OpenAL Soft built with the engine (beside the binary); the fallback is the system's.
 #define AL_DLL TEXT("libopenal.so")
-#define AL_DEFAULT_DLL TEXT("libopenal.so")
+#define AL_DEFAULT_DLL TEXT("libopenal.so.1")
 #endif
 
 class UALAudioSubsystem;
