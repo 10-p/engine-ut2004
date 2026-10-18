@@ -125,9 +125,7 @@ class USDL2Viewport : public UViewport
     void OpenWindow( PTRINT ParentWindow, UBOOL Temporary, INT NewX, INT NewY, INT OpenX, INT OpenY );
     void CloseWindow();
     void UpdateInput( UBOOL Reset, FLOAT DeltaSeconds );
-#if !defined(__ANDROID__)
     void ClosePad();
-#endif
     void* GetWindow();
     void SetMouseCapture( UBOOL Capture, UBOOL Clip, UBOOL FocusOnly );
 
