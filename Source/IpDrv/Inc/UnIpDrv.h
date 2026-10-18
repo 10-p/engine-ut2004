@@ -149,19 +149,9 @@ public:
 	}
 	UBOOL Resolved()
 	{
-#if __UNIX__
-		if( ThreadId==0 )
-		{
-#if defined(__ANDROID__)
-			// The resolve thread is created PTHREAD_CREATE_DETACHED (see the ctor below), so it
-			// self-reaps; pthread_join on a detached thread is invalid, and bionic aborts the process
-			// ("invalid pthread_t passed to pthread_join"). ThreadId==0 (set by the thread just
-			// before pthread_exit) is the completion signal.
-#else
-			pthread_join(ResolveThread, NULL);
-#endif
-		}
-#endif
+		// ThreadId==0 (set by the thread just before it exits) is the completion signal. The POSIX
+		// resolve thread is created PTHREAD_CREATE_DETACHED (the constructor above) and reaps itself:
+		// pthread_join on a detached thread is invalid (bionic aborts the process on it).
 		return ThreadId==0;
 	}
 	const TCHAR* GetError()
