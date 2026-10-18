@@ -1,24 +1,35 @@
 ## What?
 
 Unreal Tournament 2004 (Unreal Engine 2.5) source with modifications to make it run on modern systems and in the browser.
-Requires assets from a retail UT2004 install. Design notes, every preset and the Karma physics story: [BUILD.md](BUILD.md).
+Requires assets from a retail UT2004 install. Every preset, option and driver: [BUILD.md](BUILD.md).
 
-## Changes from original source
+## Changes from the original source
 
-* SDL2 windowing/client driver, one native binary with desktop GL, GL4ES and Pixomatic (software) renderers.
-* Karma physics from the recovered, portable sources ([10-p/metoolkit-karma-decomp](https://github.com/10-p/metoolkit-karma-decomp)).
-* OpenAL Soft audio.
-* GCC/MinGW support; 32-bit by default, 64-bit (x86_64) Linux and Windows builds too.
-* A WebAssembly build with a WebRTC net driver (WebRTCDrv) for the browser.
+* WebAssembly build: the whole engine runs on a browser worker, with WasmFS file access through the host page, WebGL through GL4ES and an `ue_exec_command` console export.
+* SDL2 client driver (`SDL2Drv`): the one viewport on every target (window, GL context, keyboard, mouse, pads, Android touch).
+* GL4ES renderer (`GL4ESDrv`): OpenGLDrv over gl4es, on OpenGL ES 2 / WebGL 1, or WebGL 2 with `WebGLVersion=2`.
+* OpenGL renderer: the stock `OpenGLDrv` on SDL2, in the same binary as the other renderers.
+* Software renderer: Pixomatic (`PixoDrv`) on 32-bit x86 Linux and Windows, presented through GL.
+* Null renderer: `Engine.NullRenderDevice` selectable on every build with `-NULLRENDERER`.
+* WebRTC net driver (`WebRTCDrv`): browser-to-browser multiplayer over WebRTC data channels, with LAN-style discovery in the server browser.
+* Proxy net driver (`ProxyNetDrv`): a browser client joins a native server through a WebSocket-to-UDP game proxy.
+* OpenAL Soft audio on every target, including the web (AudioWorklet) and optional HRTF.
+* Karma physics from the recovered, portable sources ([10-p/metoolkit-karma-decomp](https://github.com/10-p/metoolkit-karma-decomp)) on every target.
+* 64-bit and ARM support: x86-64, arm64 and armv7 builds.
+* Windows build: MinGW-w64 cross builds, 32-bit (with Pixomatic) and 64-bit.
+* Android build: a Gradle/NDK project with touch controls, reading the game folder in place.
+* GCC/Clang portability: builds with current GCC, Clang (Emscripten, NDK) and MinGW.
+* Save games: the stock `SAVEGAME`/`LOADGAME`, saved in the game folder's `Save` directory (on the web, persisted by the host).
+* Languages: the stock `[Engine.Engine] Language` key, also settable from the command line with `-ini:`.
 
 ## Building
 
-Builds are 32-bit by default and use the CMake presets at the **repo root** (not `Source/`).
-The first configure of each preset needs network access: SDL2, OpenAL Soft, GL4ES and Karma are fetched.
+The CMake presets are at the **repository root**. Builds are 32-bit by default. The first configure of each preset
+needs network access: SDL2, OpenAL Soft, GL4ES and Karma are fetched.
 
 ### Linux x86
 1. Install git, cmake (>= 3.21), make, python3, gcc and g++ with 32-bit (multilib) support, and 32-bit X11/GL/audio development libraries (SDL2 is built from source and silently drops any backend whose library is missing).
-   * Debian/Ubuntu: see the package list in [BUILD.md](BUILD.md#1-prerequisites).
+   * Debian/Ubuntu: see the package list in [BUILD.md](BUILD.md#prerequisites).
    * Arch/Manjaro: enable `[multilib]`, then
      ```
      sudo pacman -S git cmake make python gcc lib32-glibc lib32-gcc-libs lib32-mesa lib32-libx11 lib32-libxext lib32-libxrandr lib32-libxcursor lib32-libxi lib32-libxinerama lib32-libxss lib32-libxkbcommon lib32-alsa-lib lib32-libpulse
@@ -27,7 +38,7 @@ The first configure of each preset needs network access: SDL2, OpenAL Soft, GL4E
    ```
    cmake --preset native && cmake --build --preset native -j$(nproc)
    ```
-   It uses your default `gcc`/`g++` (verified with 16.2 on Arch and 15.2 on Ubuntu 26.04; CI builds with 13). To pick another, add `-DCMAKE_C_COMPILER=... -DCMAKE_CXX_COMPILER=...` to the first command.
+   It uses your default `gcc`/`g++`; to pick another, add `-DCMAKE_C_COMPILER=... -DCMAKE_CXX_COMPILER=...` to the first command.
 3. The result is `build-native/Source/SDLLaunch/ut2004-pixo.bin` plus `libopenal.so`, which must stay next to it.
 
 **64-bit (x86_64):** use the `native64` preset instead of `native`, with the regular 64-bit libraries in place of the i386/lib32 ones. The result is `build-native64/Source/SDLLaunch/ut2004.bin`; it has no software renderer (Pixomatic is 32-bit only).
@@ -53,7 +64,7 @@ The first configure of each preset needs network access: SDL2, OpenAL Soft, GL4E
    ```
    cmake --preset wasm-perf -DUE_ASSETS_DIR=<UT2004 folder> && cmake --build --preset wasm-perf -j$(nproc)
    ```
-3. The result is `build-wasm-perf/Source/SDLLaunch/` (`SDLLaunch.{js,wasm,data}` + `meta.json`). It is not playable on its own: the frontend repo serves it.
+3. The result is `build-wasm-perf/Source/SDLLaunch/` (`SDLLaunch.{js,wasm,data}` + `meta.json`). It is not playable on its own: the frontend repository serves it.
 
 ## Running
 
@@ -61,8 +72,20 @@ The first configure of each preset needs network access: SDL2, OpenAL Soft, GL4E
 2. Copy the files you built (see each platform above) to `UT2004/System`.
 3. Run `System/ut2004-pixo.bin` (Linux) or `System/ut2004-pixo.exe` (Windows). Pick a renderer with `-OPENGLRENDERER`, `-GL4ESRENDERER` or `-SOFTWARERENDERER`.
 
-Use real copies of the game folders, not symlinks: the engine does not find packages through them (`Can't find file for package ...`).
+The engine reads the game's folders through the paths in the ini of the `System` folder it runs from; the web link reads two files through `UE_ASSETS_DIR`.
 Headless check: `-SOFTWARERENDERER` under `Xvfb` (also under wine); `System/UT2004.log` should reach `UT2K4MainMenu`.
+
+## Credits
+
+* Epic Games — the Unreal Tournament 2004 v3369 source, with its Linux port by Loki Software (Daniel Vogel) and Ryan C. Gordon, which the native and web builds stand on.
+* RAD Game Tools — Pixomatic (the software renderer; closed library shipped with the game).
+* MathEngine — Karma, recovered as portable source in [10-p/metoolkit-karma-decomp](https://github.com/10-p/metoolkit-karma-decomp).
+* ptitSeb — [gl4es](https://github.com/ptitSeb/gl4es) (fork [10-p/gl4es](https://github.com/10-p/gl4es)), on Ryan Hileman's glshim.
+* [OpenAL Soft](https://github.com/kcat/openal-soft) (Chris Robinson, kcat; LGPL), [SDL2](https://www.libsdl.org/), Xiph.Org (Ogg, Vorbis), Speex (Jean-Marc Valin), zlib (Jean-loup Gailly, Mark Adler), [Emscripten](https://emscripten.org/).
+* [fgsfdsfgs/UE1](https://github.com/fgsfdsfgs/UE1) (fgsfds) — the CMake pattern and the SDL key map this port adapted.
+* [Andiweli/UT99-Android](https://github.com/Andiweli/UT99-Android) — the Android bridge and touch overlay this port adapted.
+* [alexstrout/foxWSFix-UT99](https://github.com/alexstrout/foxWSFix-UT99) — reference for the weapon field-of-view behaviour.
+* [OldUnreal](https://www.oldunreal.com/) — the 3374 server build used to verify networking.
 
 ## Note
 

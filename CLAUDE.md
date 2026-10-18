@@ -1,187 +1,62 @@
 # engine-ut2004 — agent guide
 
-**What this is:** the **private** engine repo for the UT2004 (Unreal Engine 2.5) web port. It holds
-engine source only and produces a WASM artifact (+ native binaries). It is **not** the product on
-its own — the public monorepo `ufront` (`10-p/unreal-frontend-arch-private`) consumes this engine's WASM artifact,
-owns the host page / UI / build assembly, and (from Phase 1) owns the browser glue behind a thin
-ABI shim.
+The engine repository of the Unreal Tournament 2004 (Unreal Engine 2.5) port: engine source only. It builds the
+native binaries (Linux, Windows, Android) and the WebAssembly artifact that the frontend repository
+(`10-p/unreal-frontend-arch-private`) serves. Game assets are never in git.
 
-## Map of the world
-| Thing | Where | Role |
-|-------|------|------|
-| This engine repo (private) | `10-p/engine-ut2004` | engine source → WASM/native artifacts |
-| Public monorepo | `10-p/unreal-frontend-arch-private` | consumes the artifact; host/UI/glue/build; **migration state lives here** |
-| Game assets (never in git) | any local folder | canonical ~5.8 GB; `$UE_ASSETS_DIR` |
-| Old monolith (rollback only) | `ut2004-exps` | the pre-split repo; do not develop here |
+- The baseline is the Epic drop in `~/WorkUnreal/epic-sources/` (`ut2004-v3369`; Pixomatic's driver from
+  `ue2-pixomatic`), see its README.
+- Features are listed in the frontend's docs/14-change-inventory.md; a new feature adds its line there.
+- Building, presets, options and the layout: `BUILD.md`. What changed from the original source: `README.md`.
 
-> **Migration plan & durable state are in the monorepo**, not here:
-> `docs/migration/STATE.md` (read it first if you are continuing the migration),
-> `ROADMAP.md`, `steps/*.md`. This repo was created by **step 0.1**.
+## Build
 
-## Status (Phase 1, important)
-The heavy browser glue is **extracted** to the public monorepo (`@ufront/glue`) and injected at runtime;
-the WASM build bakes only the thin `webrtc_*` shim (`vendor/glue/webrtc-shim.js`) — steps 1.3/1.4. As of
-**step 1.6a** the host page is **un-baked**: the link drops `--shell-file` and uses `SUFFIX .js`, so the
-build emits a **bare loader** (`SDLLaunch.{js,wasm,data}`, `loaderStyle=global-module`, **no
-`SDLLaunch.html`**); the host page lives in `ufront/packages/frontend/index.html`. The `web/` directory
-(`shell.html`, `fetchfs`/`webrtc-net`/`idb-*`, and their Node tests) is **gone** — the ufront 1.9 cleanup
-has happened.
-
-## Build (full details: `BUILD.md`)
 ```bash
-cmake --preset native && cmake --build --preset native -j"$(nproc)"        # native twin
-source <emsdk>/emsdk_env.sh
-cmake --preset wasm   && cmake --build --preset wasm   -j"$(nproc)"        # the web build
+source /path/to/emsdk/emsdk_env.sh                           # the web presets read $EMSDK
+cmake --preset native && cmake --build --preset native -j"$(nproc)"
+cmake --preset wasm-perf -DUE_ASSETS_DIR=<UT2004 folder> && cmake --build --preset wasm-perf -j"$(nproc)"
 ```
-- **Green checkpoint for this repo:** both `native` and `wasm` build cleanly, producing
-  `build-native/Source/SDLLaunch/ut2004-pixo.bin` and
-  `build-wasm/Source/SDLLaunch/SDLLaunch.{js,wasm,data}`.
-- **`cmake --list-presets` is the authority.** There is no `gl4es` preset and no `legacy` preset —
-  both were retired with SDL 1.2 in ufront 2.34. The main ones are `native`, `native64`,
-  `wasm`, `wasm-debug`, `wasm-perf` and `windows`; `BUILD.md` § *Build matrix* lists the rest (controls,
-  64-bit, deprecated aliases).
-- **`wasm` is `-O2 -g`** (the dev default — named stacks and assertions at a playable speed);
-  `wasm-debug` is the `-O0` last resort; `wasm-perf` is `-O3 -g0` shipping.
-- Prerequisites for a from-scratch host (the system GCC, 13 and 16 tested, the i386
-  sysroot, emsdk 5.0.7) are in `README.md` — a default install cannot build the 32-bit native presets.
-- Assets path is `UE_ASSETS_DIR` (pass `-DUE_ASSETS_DIR=`); only 2 files come from it.
-  **If it is a mount it may not survive a reboot** — `ls $UE_ASSETS_DIR` before
-  blaming the engine.
-- GL4ES is fetched from our **fork by default** (`10-p/gl4es@fix/cubemap-bind-active-unit`). First
-  configure of a fresh build dir needs network (FetchContent clone of GL4ES + SDL2/OpenAL ports).
 
-## Karma — and it lives in ANOTHER repository now
-Karma (MathEngine `metoolkit`) is UT2004's physics: Onslaught vehicles and ragdolls. It shipped as
-**binary-only 32-bit x86 archives**, so the web and Android builds were always `NO_KARMA`.
+- `cmake --list-presets` is the authority; `BUILD.md` describes each one.
+- `UE_ASSETS_DIR` is required by the web presets: the link embeds `System/Build.ini` and `System/Packages.md5` from
+  it. If it is a mount, check `ls $UE_ASSETS_DIR` before suspecting the engine.
+- The first configure of a build directory fetches GL4ES (`10-p/gl4es`), SDL2, OpenAL Soft (`10-p/openal-soft-web`)
+  and the recovered Karma (`10-p/metoolkit-karma-decomp`). `FETCHCONTENT_SOURCE_DIR_<NAME>` points one at a local
+  checkout (offline builds, unpushed changes).
 
-**The SDK and its source-level recovery are
-[`10-p/metoolkit-karma-decomp`](https://github.com/10-p/metoolkit-karma-decomp)** (ufront 2.44).
-That repository holds the v3369 `metoolkit/` drop, the 145 recovered objects as
-`metoolkit_decomp/`, the toolchain that produces them, and the gates that judge them. This
-repository holds **only the engine-side bridge**: `Source/Engine/Src/K*.cpp`, `KarmaSupport.cpp`,
-and the CMake that links it. Nothing of the recovery is vendored here —
-the top-level `CMakeLists.txt` FetchContents it at `main`, unpinned.
+## Facts that constrain changes
 
-## ✅ Karma is COMPLETE FOR UT2004 (2026-09-02)
+- **One native stack.** SDL2Drv is the only viewport; OpenGLDrv, GL4ESDrv and Pixomatic (32-bit x86) link into one
+  binary and `-OPENGLRENDERER` / `-GL4ESRENDERER` / `-SOFTWARERENDERER` / `-NULLRENDERER` picks one at startup.
+  Drivers are chosen by the ini (`ViewportManager`, `RenderDevice`, `AudioDevice`, `NetworkDevice`).
+- **Karma has three arms.** `USE_KARMA_DECOMP=ON` (the default, every target) links the recovered sources;
+  `BUILD_KARMA_REF=ON` links MathEngine's prebuilt archives, 32-bit x86 Linux only (`legacy-karma`, the A/B
+  reference in CI); `USE_KARMA_DECOMP=OFF` builds `NO_KARMA` (the `*-nokarma` presets). The Windows legacy-Karma arm
+  is refused at configure: GNU ld drops the archives' cross-object COMDAT relocations and the collision code would
+  run with a shifted stack. The recovered sources live in `10-p/metoolkit-karma-decomp`; a fix to them goes into
+  that repository's generator, never into this one.
+- **The web networking is two detached packages.** `WebRTCDrv` (peer to peer) and `ProxyNetDrv` (client-only,
+  joins a native server through the WSS-to-UDP game proxy; `-DUE_WITH_PROXYNET=OFF` removes it) share no files.
+  `vendor/glue/` is the engine-to-host ABI (`ue_abi.h`, version 2) and its shims, written by the frontend's
+  `unreal-frontend-arch-private/packages/glue/bin/vendor-engine.mjs`: re-vendor, never edit by hand.
+- **The frontend matches some log lines** (its E2E specs and `targets/ut2004/target.json`): the WebGL antialias
+  line, `PendingLevel: server sends N file(s): ...`, the render-device and audio fallback lines among them. Grep
+  `packages/e2e` and `targets/` there before changing a log line, and change both sides together.
+- **A key-less install generates its own CD key** (`Engine/Src/UnCDKey.cpp`). The key alphabet and append string
+  are proprietary: never copy them into the frontend (public), a log, a doc or a commit message.
+- **Engine differences are data, not code**, on the frontend side: an engine never needs a frontend code branch.
+- Build trees (`build-*/`) and game content stay out of git; the prebuilt blobs under `Thirdparty/` are tracked on
+  purpose (no blanket `*.a`/`*.lib`/`*.dll` ignore).
 
-Every code path this game exercises is recovered, repaired and measured, and every target it ships
-on plays on the rebuilt physics: web (55/55), Linux 32 and 64, **Windows x64**, Android arm64 and
-armv7. Decided by measuring which code the game ENTERS (660 functions, 111 of 147 objects) and
-closing that set — the entered set has zero open defects.
+## Rules for changes
 
-⚠ **It is a UT2004 physics backend, not a validated general-purpose Karma SDK.** 36 recovered
-objects the game never enters have never executed, `MdtLOD` carries two 64-bit defects that
-`maxMatrixSize = 0x7ffffffc` makes unreachable here, and the convex hull is a replacement rather
-than a recovery. Full list: that repository's `decomp/STATUS-EXEC.md`. Don't read those as "Karma is
-unfinished", and don't read "Karma is done" as covering them.
-
-**Before changing anything about the recovered physics, work in that repository, not this one**
-— read its `CLAUDE.md`, then `decomp/docs/STATE.md` and `decomp/proven.txt` (the evidence ledger:
-a non-comment line in it releases an object, and nothing is released without evidence).
-
-**THREE states again as of 2026-09-12.** `BUILD_KARMA_REF` — MathEngine's prebuilt archives, linked
-as an alternative implementation — was removed on 2026-09-02 and **restored** on 2026-09-12 at the
-owner's request, because a shipped build should keep proving the recovery against the real thing on
-every push. It brings back its mutual-exclusion `FATAL_ERROR`, the `-legacykarma` binary suffix and
-`KarmaGlibcCompat.c`, and it is now the **A/B arm in CI**, where it replaced `native-nokarma`.
-
-| | what links | presets |
-|---|---|---|
-| `USE_KARMA_DECOMP=ON` (**default**) | `metoolkit_decomp::all`, the recovered sources | every preset that can take it |
-| `BUILD_KARMA_REF=ON` | MathEngine's shipped archives | `legacy-karma`, `windows-legacykarma` — **32-bit x86 only** |
-| `USE_KARMA_DECOMP=OFF` | nothing; `NO_KARMA=1` | `native-nokarma`, `wasm-nokarma`, `windows-nokarma` |
-
-⚠ **WINDOWS WAS TRIED AND IS NOW REFUSED — do not re-derive it.** The removal commit's reason (the
-Windows archives are "32-bit Linux ELF") is false: they are MS COFF, MinGW links them, and the exe
-boots and simulates Karma. But **GNU ld drops their cross-object COMDAT relocations** and emits
-`call` with displacement 0 at **42 sites** in the collision core, each a silent 4-byte stack shift —
-identical with `--exclude-libs` and `--export-all-symbols` removed, so it is not a flag problem. The
-engine `FATAL_ERROR`s on that configuration precisely because it would otherwise *look* fine.
-`BUILD.md` has the full account, including what was cleared first (the stack probe, the `McdContact`
-layout) and the baseline that refuted a wrong conclusion. The **Linux** legacy arm is the A/B
-reference: 40/40 frames, scoring `MATCH` against the recovered arm.
-
-It existed to be the A/B reference while the recovery was unproven, and the recovery is no longer
-unproven: it is the physics on wasm (55/55), Linux x86-64, **Windows x64**, Android arm64 and
-armv7, its 64-bit trace is byte-identical to the 32-bit control, and it plays a full i386 match
-against a metoolkit with every shipped member deleted. ★ The recovered-vs-MathEngine comparison it
-provided still exists and is **stronger** where it lives — `metoolkit-karma-decomp`'s
-`decomp/test/standalone/difftest_pair.sh` and `substitute_test.sh` link the SDK archives that
-repository vendors, per object, needing no engine at all.
-
-⚠ **A Karma build needs the network on first configure**, like GL4ES and SDL2. To build offline
-or to test an unpushed change to the recovered sources, point
-`FETCHCONTENT_SOURCE_DIR_METOOLKITKARMADECOMP` at a local checkout.
-
-## Conventions / load-bearing facts
-- **One native stack** (ufront 2.34). SDL 1.2 is retired; SDL2 + `OpenGLDrv` + `GL4ESDrv` + Pixomatic
-  all live in **one** binary and the render device is picked at startup with
-  `-GL4ESRENDERER` / `-OPENGLRENDERER` / `-SOFTWARERENDERER` / `-NULLRENDERER`. The old "hard backend
-  split, one binary per build dir" rule is gone with the presets that implemented it.
-- **Drivers are selected by `.ini`, not compiled in** (`ViewportManager`/`GameRenderDevice`/
-  `AudioDevice`/`NetworkDevice`). The web build's engine-specific additions are `WebRTCDrv` (P2P) and
-  — ufront 2.79, **experimental** — `ProxyNetDrv`: a client-only net driver that joins an ordinary NATIVE
-  server through a WSS<->UDP game proxy. It is modelled function-for-function on `IpDrv`'s `TcpNetDriver`
-  (same `open host:port`, same ini keys under `[ProxyNetDrv.ProxyNetDriver]`) with the socket calls swapped
-  for the OPTIONAL `proxynet` ABI module (`vendor/glue/ue_proxynet_abi.h` + `proxynet-shim.js`).
-  **The two are DETACHED on purpose** (ufrontend `docs/12` ADR-16): `ProxyNetDrv` shares nothing with
-  `WebRTCDrv` and must never edit its files; `vendor/glue/webrtc-shim.js` stays byte-identical across all
-  engine repos; `-DUE_WITH_PROXYNET=OFF` removes the package, its shim and its registration. It is selected
-  by `NetworkDevice=ProxyNetDrv.ProxyNetDriver` — the launcher only rewrites `NetworkDevice` when it is the
-  stock `IpDrv.TcpNetDriver`, so naming it simply works. The UE connection stays `USOCK_Pending` through the
-  whole handshake (only `HandleClientPlayer` opens it); the driver only ever CLOSES. Verified against a stock
-  OldUnreal 3374 server (2026-09-20): WELCOME, `files needed=0`, in the match.
-  **Redirect downloads (2.79f).** A native server names `IpDrv.HTTPDownload` in `DLMGR`, so that class keeps
-  its name — but a browser has no sockets (`-sWASMFS`: every socket syscall is `-ENOSYS`). On `__EMSCRIPTEN__`
-  `UHTTPDownload` therefore hands the URL to the GENERIC hook table `GWebHttp` (`IpDrv/Inc/WebHttp.h`:
-  open/poll/read/close) and polls it; the native state machine is untouched. **IpDrv imports nothing from
-  JavaScript**: `ProxyNetDrv` owns the `ue_proxynet_http_*` imports and registers the table at `InitConnect`,
-  and its `Open` turns away any connection that is not a `UProxyNetConnection`. **No hook (P2P mode, or
-  `UE_WITH_PROXYNET=OFF`) = an immediate `DownloadError`** and the next manager (`Engine.ChannelDownload`)
-  takes over — what a web build always did, minus the doomed `socket()` and, for a host NAME, the doomed
-  resolver thread. ⚠ Nothing may follow `DownloadDone()` in `WebTick`: it can start the next download, which
-  deletes the object. Verified through the real proxy (2026-09-20): DM-SakuraGarden's two `.uz2` files
-  fetched, decompressed and GUID-checked, level up 0.5 s after the first fetch began (in-band: 20.7 s).
-  **The in-game Internet browser (2.79o).** The same no-sockets problem, the same shape: on `__EMSCRIPTEN__`
-  `AMasterServerClient` asks the GENERIC table `GWebServerList` (`IpDrv/Inc/WebServerList.h`: Active/open/poll/
-  read/close) for the game proxy's list instead of a master; `ProxyNetDrv` fills it with the four
-  `ue_proxynet_list_*` imports and registers it WHEN THE PROGRAM STARTS (the browser wants its list before any
-  connection exists), and `Active()` (native: the ini's `NetworkDevice` is this driver) keeps it out of the way in
-  P2P mode — there every path is exactly as before. Every query type is answered from ONE fetch: the news query
-  (which is what unlocks the Internet tab), the list (honouring the browser's `gametype` term; a buddy query gets
-  nothing), the rest with an empty success. `StartQuery` only RECORDS the request and `Poll()` asks, at most four
-  times a second — never a sync import from inside a script call. Pings to a listed server are answered from the
-  row after the proxy's round trip, but ★ the stock browser does not ping at the web's netspeed (1000000:
-  `CalculateMaxConnections()` = `Min(MaxSimultaneousPings, 35)` = 0), so by default its rows show "?".
-  **`PendingLevel: server sends N file(s): <names>` (2.79g)** — ONE log line at WELCOME
-  (`Engine/Src/UnPenLev.cpp`), naming the files this client must be SENT. The per-package `USES` trail is
-  commented out and `DevNet` is suppressed, so without it nothing in the log says what a server pushes, and
-  the host page could not warn a player about a server's native libraries or anti-cheat package (ufrontend
-  matches it with target DATA; it warns, never blocks). General engine code, log only, and deliberately not
-  behind `__EMSCRIPTEN__`. It goes through `GLog->Log`, not `debugf`: a long list must not meet a format
-  buffer. ⚠ The host's patterns key on this exact wording — change both together.
-- **★ An install with no `cdkey` file GENERATES its own key (ufront 2.79h, `Engine/Src/UnCDKey.cpp`).** A
-  server knows a player by a hash of the key — it is the identity a ban lands on — and every key-less install
-  (every web player) hashed the same empty placeholder: ONE identity, so one ban hit them all. `GetRealCDKey`
-  now draws 63 bits of OS entropy (`getentropy` on the web, `/dev/urandom` natively), writes 14 symbols and
-  appends the check computed by **`CDKeyCheckFor` (`Inc/UnCDKey.h`) — the validator's own maths, lifted out
-  of `ValidateCDKey` so the two SHARE it**; the result goes through the real validator and is never written
-  if it fails, and the key is never logged. 63 bits, not 14 free symbols: the alphabet has 30, so 14 can
-  exceed the 64-bit number the validator parses them into. An install WITH a key file is untouched.
-  **The alphabet and append string are proprietary — never copy them into ufrontend (public) or into any
-  log, doc or commit message.** ufrontend persists the file with one `userFiles` line (`System/cdkey`).
-  Verified on a stock 3374 server: two fresh browser profiles → two ids, a reloaded profile keeps its own.
-- **Engine differences are DATA, not code** (the project-wide rule for the multi-engine future).
-
-## Do NOT
-- **Do NOT** recreate the in-tree content symlinks (`Maps`, `Textures`, `System/*.int`, … →
-  `../ut2004-assets`). They were native-runtime conveniences in the old repo and are intentionally
-  absent here; content is reached via `UE_ASSETS_DIR` (wasm) or a runtime dir (native).
-- **Do NOT** commit build trees (`build-*/`) or game assets — both are gitignored.
-- **Do NOT** add a blanket `*.a`/`*.lib`/`*.dll` ignore — vendored flex/DirectX/Pixomatic blobs are
-  intentionally tracked (see `.gitignore`).
-- **Do NOT** try to fix the recovered Karma sources here. They are not in this repository; the
-  change belongs in `10-p/metoolkit-karma-decomp`, where the generator and its gates live, and
-  every fix there goes into the GENERATOR rather than into generated output.
-- **Do NOT** make engine source changes for the relocation beyond the `UE_ASSETS_DIR`
-  parameterization — that would be re-architecture, not Phase 0. Stop and re-scope.
+- **Comments** say what the code does now, in one or two lines: no stage numbers or work ids, no story of a fix, no
+  dates, no owner quotes, no measurements, no cross-references to other files' comments, no ★/⚠ or capitals for
+  emphasis; a platform note sits inside its `#ifdef`. File headers say what the file is. Epic's and upstream
+  comments stay as they are.
+- **Docs** describe the current state in present tense, written from the code; every path, flag and preset they
+  name exists. Records kept as history say so in their first line.
+- **Names** follow behaviour; our CMake options take the `UE_` prefix. Ini sections and keys players save,
+  `WebRTCDrv`/`UWebRTCNetDriver`, exported ABI symbols and frontend-matched log lines keep their names.
+- **Commits** use Conventional Commit subjects naming the feature (`feat:`, `fix:`, `build:`, `refactor:`), never
+  a stage number or a date.
