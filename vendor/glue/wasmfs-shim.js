@@ -1,6 +1,6 @@
 // wasmfs-shim.js — the thin --js-library the engine bakes for the WasmFS FS backend (step 2.13.1).
 // ============================================================================
-// VENDORED from @ufront/glue, exactly like webrtc-shim.js and for the same reason: the engine bakes
+// VENDORED from @ufront/glue, exactly like net-shim.js and for the same reason: the engine bakes
 // only a forwarder, while all real logic lives in @ufront/glue ESM and is injected by the host at
 // runtime (Module.UE.fs.backend). There is NO manifest, download, cache, budget or eviction logic here.
 //
@@ -22,9 +22,9 @@
 mergeInto(LibraryManager.library, {
   $ueFs: function() {
     var ue = Module['UE'];
-    if (!ue || ue.abiVersion !== 1) {
+    if (!ue || ue.abiVersion !== 2) {
       throw new Error('[ue-abi] Module.UE.fs not injected or ABI mismatch (host=' +
-        (ue && ue.abiVersion) + ', shim expects 1) — the host must set Module.UE before main()');
+        (ue && ue.abiVersion) + ', shim expects 2) — the host must set Module.UE before main()');
     }
     if (!ue.fs || !ue.fs.backend) {
       throw new Error('[ue-abi] Module.UE.fs.backend missing — this engine is built -sWASMFS and ' +
@@ -82,7 +82,7 @@ mergeInto(LibraryManager.library, {
   $ueWorker: {
     // step 2.13.4: the WHOLE bootstrap message main posted, kept verbatim and forwarded verbatim. It used
     // to be destructured into named fields here, which meant every new channel needed an edit to a file
-    // vendored into four engine repos + a rebuild + a re-gate of all of them. The glue owns the shape now;
+    // vendored into every engine repo + a rebuild + a re-gate of all of them. The glue owns the shape now;
     // this file only has to deliver it.
     boot: null,
     table: null,

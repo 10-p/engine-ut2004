@@ -233,7 +233,7 @@ if(EMSCRIPTEN)
     # (wasmfs_create_jsimpl_backend + wasmfs_create_file + the shim's two registrars), so this block plus
     # the vendored shim is the whole per-engine cost.
     -sWASMFS
-    "-sEXPORTED_FUNCTIONS=['_main','_malloc','_free','_close','_ue_exec_command','_webrtc_deferred_open','_wasmfs_create_jsimpl_backend','_wasmfs_create_file','_ufront_wasmfs_register','_ufront_wasmfs_set_pending']"
+    "-sEXPORTED_FUNCTIONS=['_main','_malloc','_free','_close','_ue_exec_command','_wasmfs_create_jsimpl_backend','_wasmfs_create_file','_ufront_wasmfs_register','_ufront_wasmfs_set_pending']"
     # The worker-side bootstrap in wasmfs-shim.js hangs off a __postset, and a postset is only emitted
     # if its $symbol is referenced. Nothing references it (it is pure side effect), so without this it
     # would be dead-stripped silently.
@@ -266,8 +266,8 @@ if(EMSCRIPTEN)
     # loaderStyle=global-module, SUFFIX .js below); the host page (the frontend repository) pre-defines the
     # global `Module`, injects SDLLaunch.js, and injects the heavy glue. Only the thin shims in vendor/glue
     # are baked; the net shim's $ueNet rides in via each forwarder's __deps (the wasm imports the
-    # webrtc_* symbols), so no DEFAULT_LIBRARY_FUNCS_TO_INCLUDE force-include is needed.
-    "SHELL:--js-library ${CMAKE_SOURCE_DIR}/vendor/glue/webrtc-shim.js"
+    # ue_net_* symbols), so no DEFAULT_LIBRARY_FUNCS_TO_INCLUDE force-include is needed.
+    "SHELL:--js-library ${CMAKE_SOURCE_DIR}/vendor/glue/net-shim.js"
   )
   # Game assets live out of tree. UE_ASSETS_DIR (required) is the UT2004 folder holding System/: the web
   # link embeds System/Build.ini and System/Packages.md5 from it.
@@ -308,7 +308,7 @@ if(EMSCRIPTEN)
   # without this, editing a shim would leave a stale .js baked while the build reported success.
   set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY LINK_DEPENDS
     "${CMAKE_SOURCE_DIR}/vendor/glue/wasmfs-shim.js"
-    "${CMAKE_SOURCE_DIR}/vendor/glue/webrtc-shim.js")
+    "${CMAKE_SOURCE_DIR}/vendor/glue/net-shim.js")
   # ProxyNetDrv's own thin shim (the optional proxynet ABI module), a separate --js-library: the net shim
   # stays identical across every engine repo, and with UE_WITH_PROXYNET=OFF the wasm has no ue_proxynet_*
   # imports at all. Its $ueProxyNet rides in via each forwarder's __deps.

@@ -14,7 +14,7 @@ extern FString WebRTCDiscovery_RoomForHost( const TCHAR* Host );
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 // Engine pointer (set in SDLLaunch.cpp after InitEngine). Used to reach the
-// current GameInfo for the listen-server status push, and for deferred connect.
+// current GameInfo for the listen-server status push.
 extern UEngine* GEngineForExec;
 #endif
 
@@ -22,11 +22,7 @@ extern UEngine* GEngineForExec;
 	Declarations.
 -----------------------------------------------------------------------------*/
 
-// WebRTC connection state constants (matching JS-side values).
-#define WEBRTC_STATE_INVALID    0
-#define WEBRTC_STATE_CONNECTING 1
-#define WEBRTC_STATE_OPEN       2
-#define WEBRTC_STATE_CLOSED     3
+// The connection states (UE_NET_STATE_*) come from vendor/glue/ue_abi.h.
 
 // Maximum packet size for recv polling.
 #define WEBRTC_MAX_PACKET       576
@@ -102,11 +98,11 @@ UBOOL UWebRTCNetDriver::InitConnect( FNetworkNotify* InNotify, FURL& ConnectURL,
 		debugf( NAME_DevNet, TEXT("[WebRTC] InitConnect: detaching the previous client connection (one transport slot)") );
 		// Detached, not closed: marking it USOCK_Closed reads as "connection lost" and aborts the travel.
 		((UWebRTCConnection*)GClientDriver->GetServerConnection())->WebRTCConnId = -1;
-		// ...and its LowLevelDestroy must not call webrtc_destroy(): that transport is now this driver's.
+		// ...and its LowLevelDestroy must not call ue_net_destroy(): that transport is now this driver's.
 		GClientDriver->bDetached = 1;
 	}
 	GClientDriver = this;
-	webrtc_connect( TCHAR_TO_ANSI(*ServerPeerId) );
+	ue_net_connect( TCHAR_TO_ANSI(*ServerPeerId) );
 
 	// Create server connection in pending state.
 	ServerConnection = new UWebRTCConnection( 0, this, USOCK_Pending, 1, ConnectURL );
@@ -157,7 +153,7 @@ UBOOL UWebRTCNetDriver::InitListen( FNetworkNotify* InNotify, FURL& LocalURL, FS
 	// `room/serverName` — the transport slugs the name and builds `<prefix>-<room>_<slug>-srv`. The
 	// separator is a `/` because a server name may contain anything, including the `_` the peer id uses.
 	FString ListenKey = ServerName.Len() ? (RoomName + TEXT("/") + ServerName) : RoomName;
-	webrtc_init_listen( TCHAR_TO_ANSI(*ListenKey) );
+	ue_net_init_listen( TCHAR_TO_ANSI(*ListenKey) );
 	debugf( NAME_DevNet, TEXT("[WebRTC] InitListen: Listen server started, waiting for PeerJS peer open callback...") );
 
 	return 1;
@@ -300,14 +296,14 @@ void UWebRTCNetDriver::TickDispatch( FLOAT DeltaTime )
 	TArray<INT> Incoming = ParkedAccepts;
 	ParkedAccepts.Empty();
 	INT NewConnId;
-	while( (NewConnId = webrtc_accept_connection()) > 0 )
+	while( (NewConnId = ue_net_accept_connection()) > 0 )
 		Incoming.AddItem( NewConnId );
 
 	for( INT i=0; i<Incoming.Num(); i++ )
 	{
 		INT ConnId = Incoming(i);
 		// The client may have given up (or the page closed) while we were ignoring it.
-		if( webrtc_get_connection_state( ConnId ) == WEBRTC_STATE_CLOSED )
+		if( ue_net_get_connection_state( ConnId ) == UE_NET_STATE_CLOSED )
 			continue;
 		debugf( NAME_DevNet, TEXT("[WebRTC] TickDispatch: New connection available connId=%d, checking accept policy..."), ConnId );
 		EAcceptConnection AcceptResult = Notify->NotifyAcceptingConnection();
@@ -326,7 +322,7 @@ void UWebRTCNetDriver::TickDispatch( FLOAT DeltaTime )
 		else
 		{
 			debugf( NAME_DevNet, TEXT("[WebRTC] TickDispatch: REFUSED connection %d (policy=%d)"), ConnId, (INT)AcceptResult );
-			webrtc_close( ConnId );
+			ue_net_close( ConnId );
 		}
 	}
 
@@ -340,7 +336,7 @@ void UWebRTCNetDriver::TickDispatch( FLOAT DeltaTime )
 			INT Size;
 			INT PacketCount = 0;
 			INT TotalBytes = 0;
-			while( (Size = webrtc_recv( Conn->WebRTCConnId, Data, sizeof(Data) )) > 0 )
+			while( (Size = ue_net_recv( Conn->WebRTCConnId, Data, sizeof(Data) )) > 0 )
 			{
 				PacketCount++;
 				TotalBytes += Size;
@@ -356,8 +352,8 @@ void UWebRTCNetDriver::TickDispatch( FLOAT DeltaTime )
 				"client", Conn->WebRTCConnId, PacketCount, TotalBytes );
 
 			// Check for connection closure
-			INT JSState = webrtc_get_connection_state( Conn->WebRTCConnId );
-			if( JSState == WEBRTC_STATE_CLOSED && Conn->State != USOCK_Closed )
+			INT JSState = ue_net_get_connection_state( Conn->WebRTCConnId );
+			if( JSState == UE_NET_STATE_CLOSED && Conn->State != USOCK_Closed )
 			{
 				// printf, like its ACCEPTED/REJECTED siblings above: NAME_DevNet does not reach the
 				// browser console on this target.
@@ -377,9 +373,9 @@ void UWebRTCNetDriver::TickDispatch( FLOAT DeltaTime )
 		// USOCK_Pending through the whole download + join handshake, and only
 		// HandleClientPlayer (UnConn.cpp) promotes it when the owning PlayerController
 		// arrives; its gate (UnChan.cpp) requires USOCK_Pending. The transport pipe's
-		// state is webrtc_get_connection_state(); the UE2 State is the engine's.
-		INT JSState = webrtc_get_connection_state( GetServerConnection()->WebRTCConnId );
-		if( JSState == WEBRTC_STATE_CLOSED && GetServerConnection()->State != USOCK_Closed )
+		// state is ue_net_get_connection_state(); the UE2 State is the engine's.
+		INT JSState = ue_net_get_connection_state( GetServerConnection()->WebRTCConnId );
+		if( JSState == UE_NET_STATE_CLOSED && GetServerConnection()->State != USOCK_Closed )
 		{
 			// Pipe dead before joining, or the session layer gave up reconnecting
 			// (grace expired) — propagate the disconnect; the engine's
@@ -394,7 +390,7 @@ void UWebRTCNetDriver::TickDispatch( FLOAT DeltaTime )
 			INT Size;
 			INT PacketCount = 0;
 			INT TotalBytes = 0;
-			while( (Size = webrtc_recv( GetServerConnection()->WebRTCConnId, Data, sizeof(Data) )) > 0 )
+			while( (Size = ue_net_recv( GetServerConnection()->WebRTCConnId, Data, sizeof(Data) )) > 0 )
 			{
 				PacketCount++;
 				TotalBytes += Size;
@@ -441,7 +437,7 @@ void UWebRTCNetDriver::TickDispatch( FLOAT DeltaTime )
 			}
 			if( !SName.Len() )
 				SName = TEXT("UT2004 Server");
-			webrtc_set_listen_status( TCHAR_TO_ANSI(*SName), TCHAR_TO_ANSI(*MapName), Players, MaxPl, TCHAR_TO_ANSI(*GType) );
+			ue_net_set_listen_status( TCHAR_TO_ANSI(*SName), TCHAR_TO_ANSI(*MapName), Players, MaxPl, TCHAR_TO_ANSI(*GType) );
 		}
 	}
 
@@ -454,7 +450,7 @@ void UWebRTCNetDriver::TickDispatch( FLOAT DeltaTime )
 		emscripten_sleep(100);
 	}
 	else if( GetServerConnection() &&
-	         webrtc_get_connection_state( GetServerConnection()->WebRTCConnId ) != WEBRTC_STATE_OPEN )
+	         ue_net_get_connection_state( GetServerConnection()->WebRTCConnId ) != UE_NET_STATE_OPEN )
 	{
 		// Client waiting for the transport pipe. Gated on the pipe state, not the UE2 connection
 		// State: the connection stays USOCK_Pending through the download + join (until
@@ -477,15 +473,15 @@ void UWebRTCNetDriver::LowLevelDestroy()
 {
 	guard(UWebRTCNetDriver::LowLevelDestroy);
 	debugf( NAME_Exit, TEXT("[WebRTC] LowLevelDestroy: Shutting down, room='%s', clients=%d%s"), *RoomName, ClientConnections.Num(), bDetached ? TEXT(" (detached — transport left alone)") : TEXT("") );
-	// The parked pipes are about to be closed wholesale by webrtc_destroy(); just drop our list.
+	// The parked pipes are about to be closed wholesale by ue_net_destroy(); just drop our list.
 	ParkedAccepts.Empty();
 	if( GClientDriver==this )
 		GClientDriver = NULL;
-	// A departing driver must not destroy the arriving driver's transport. webrtc_destroy() is global, and
+	// A departing driver must not destroy the arriving driver's transport. ue_net_destroy() is global, and
 	// on a client the two drivers overlap: InitConnect for the pending level runs first and the old
 	// level's driver is destroyed later, inside LoadMap. On the host the old driver dies before InitListen.
 	if( !bDetached )
-		webrtc_destroy();
+		ue_net_destroy();
 	debugf( NAME_Exit, TEXT("[WebRTC] LowLevelDestroy: Complete") );
 	unguard;
 }
@@ -496,61 +492,6 @@ UWebRTCConnection* UWebRTCNetDriver::GetServerConnection()
 }
 
 IMPLEMENT_CLASS(UWebRTCNetDriver);
-
-#ifdef __EMSCRIPTEN__
-
-// Declared in SDLLaunch.cpp — engine pointer for deferred connect.
-extern UEngine* GEngineForExec;
-
-// C-callable function for deferred client connect from JS.
-// Called by shell.html setTimeout after the engine boots and game loop ticks.
-// Reads the room name from WebRTCNet.pendingConnect (set by JS), then
-// executes "open roomname?connect" via UEngine::Exec.
-extern "C" int EMSCRIPTEN_KEEPALIVE webrtc_deferred_open()
-{
-	guard(webrtc_deferred_open);
-
-	// Read the pending connect room from JS WITHOUT clearing it. Engine init on
-	// Emscripten is partly asynchronous (package file opens yield via Asyncify),
-	// so GEngineForExec may not be assigned yet when shell.html first polls. Keep
-	// the room name around so the next poll can retry — only clear it once the
-	// connect has actually been issued.
-	char roomBuf[128] = {0};
-	EM_ASM({
-		var room = '';
-		if (typeof WebRTCNet !== 'undefined' && WebRTCNet.pendingConnect) {
-			room = WebRTCNet.pendingConnect;
-		}
-		stringToUTF8(room, $0, $1);
-	}, roomBuf, sizeof(roomBuf));
-
-	if( roomBuf[0] == 0 )
-	{
-		// No room published yet (WebRTCNet not ready, or already connected). Retry.
-		return 0;
-	}
-
-	if( !GEngineForExec )
-	{
-		printf("[WebRTC] webrtc_deferred_open: engine not ready yet, will retry\n");
-		return 0;
-	}
-
-	FString Room = ANSI_TO_TCHAR(roomBuf);
-	FString Cmd = FString::Printf( TEXT("open %s?connect"), *Room );
-	printf("[WebRTC] webrtc_deferred_open: calling Engine->Exec('%s')\n", TCHAR_TO_ANSI(*Cmd));
-	GEngineForExec->Exec( *Cmd, *GLog );
-	printf("[WebRTC] webrtc_deferred_open: Exec returned\n");
-
-	// Connect issued — clear the pending room so JS stops polling.
-	EM_ASM({
-		if (typeof WebRTCNet !== 'undefined') WebRTCNet.pendingConnect = null;
-	});
-	return 1;
-
-	unguard;
-}
-#endif
 
 /*-----------------------------------------------------------------------------
 	The End.

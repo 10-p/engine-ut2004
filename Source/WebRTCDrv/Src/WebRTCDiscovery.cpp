@@ -15,19 +15,8 @@
 
 #ifdef __EMSCRIPTEN__
 
-// WebRTC discovery imports (the host's net glue, resolved at the wasm link).
-extern "C"
-{
-	void webrtc_discover_servers(const char* room);
-	int  webrtc_get_server_count();
-	int  webrtc_is_discovery_done();
-	int  webrtc_get_server_info(int index, char* name, int nameMax, char* joinKey, int joinKeyMax);
-	int  webrtc_get_server_map(int index, char* buf, int maxLen);
-	int  webrtc_get_server_gametype(int index, char* buf, int maxLen);
-	int  webrtc_get_server_players(int index);
-	int  webrtc_get_server_maxplayers(int index);
-	int  webrtc_get_server_ping(int index);
-}
+// The discovery imports (ue_net_discover_servers and the ue_net_get_server_* readers) are declared in
+// vendor/glue/ue_abi.h, included through WebRTCDrv.h.
 
 
 /*-----------------------------------------------------------------------------
@@ -105,13 +94,13 @@ FString WebRTCDiscovery_RoomForHost( const TCHAR* Host )
 // Kick a peer-list query + per-server status pings ("" = all rooms).
 void WebRTCDiscovery_Begin( const char* room )
 {
-	webrtc_discover_servers( room ? room : "" );
+	ue_net_discover_servers( room ? room : "" );
 }
 
 // Has the peer list + status handshakes settled?
 UBOOL WebRTCDiscovery_Ready()
 {
-	return webrtc_is_discovery_done() != 0;
+	return ue_net_is_discovery_done() != 0;
 }
 
 // Build one FServerResponseLine per discovered server (name/map/players/ping from the
@@ -119,21 +108,21 @@ UBOOL WebRTCDiscovery_Ready()
 // IP+Port dedupe keeps every row). Returns the count appended. The IpDrv hooks fire the delegates over these.
 INT WebRTCDiscovery_Drain( TArray<FServerResponseLine>& Out )
 {
-	const INT Count = webrtc_get_server_count();
+	const INT Count = ue_net_get_server_count();
 	debugf( NAME_DevNet, TEXT("[WebRTC-Discovery] %d server(s) discovered"), Count );
 	char nameBuf[256], joinBuf[256], mapBuf[128], gtBuf[128];
 	for( INT i = 0; i < Count; i++ )
 	{
-		if( !webrtc_get_server_info( i, nameBuf, sizeof(nameBuf), joinBuf, sizeof(joinBuf) ) )
+		if( !ue_net_get_server_info( i, nameBuf, sizeof(nameBuf), joinBuf, sizeof(joinBuf) ) )
 		{
 			debugf( NAME_DevNet, TEXT("[WebRTC-Discovery] WARNING: failed to get info for server %d"), i );
 			continue;
 		}
-		webrtc_get_server_map( i, mapBuf, sizeof(mapBuf) );
-		webrtc_get_server_gametype( i, gtBuf, sizeof(gtBuf) );
-		const INT Players = webrtc_get_server_players( i );
-		const INT MaxPlrs = webrtc_get_server_maxplayers( i );
-		const INT PingMs  = webrtc_get_server_ping( i );
+		ue_net_get_server_map( i, mapBuf, sizeof(mapBuf) );
+		ue_net_get_server_gametype( i, gtBuf, sizeof(gtBuf) );
+		const INT Players = ue_net_get_server_players( i );
+		const INT MaxPlrs = ue_net_get_server_maxplayers( i );
+		const INT PingMs  = ue_net_get_server_ping( i );
 
 		// Build the row IN PLACE in the array (AddZeroed = add + appMemzero the element):
 		// no extra copy/destruct of an appMemzero'd struct-with-FStrings, so the copy

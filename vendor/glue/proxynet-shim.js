@@ -1,8 +1,8 @@
 // proxynet-shim.js — the thin --js-library for the OPTIONAL "proxynet" ABI module (step 2.79).
 // ============================================================================
 // VENDORED from @ufront/glue at PROXYNET_ABI_VERSION 1, by the engines that ship a ProxyNetDrv — and ONLY by
-// those. It is a SEPARATE file from webrtc-shim.js on purpose: that shim stays byte-identical in every engine
-// repo, the v1 ABI is untouched (ABI_VERSION stays 1), and an engine that does not vendor this file has no
+// those. It is a SEPARATE file from net-shim.js on purpose: that shim stays byte-identical in every engine
+// repo, the main ABI does not move when this module does, and an engine that does not vendor this file has no
 // `ue_proxynet_*` imports at all (docs/02 §3e, docs/12 ADR-16).
 //
 // It defines the thirteen imports and FORWARDS each to the runtime-injected `Module.UE.proxynet.*`. No logic.
@@ -12,7 +12,7 @@
 // CLOSED, the rest -> 0). A page built without Proxy networking, or in P2P mode, therefore costs nothing and
 // breaks nothing. A module that IS present at the wrong version is a real mismatch, and that one throws.
 //
-// THREADING (-sPROXY_TO_PTHREAD), same split as webrtc-shim.js and for the same measured reason (2.13.6):
+// THREADING (-sPROXY_TO_PTHREAD), same split as net-shim.js and for the same measured reason:
 //   * ue_proxynet_send / ue_proxynet_recv are NOT proxied. They are the per-packet path; on the engine thread
 //     `Module.UE.proxynet` is the ring client @ufront/glue installs there (installWorkerProxyNet), so the call
 //     never leaves the thread.

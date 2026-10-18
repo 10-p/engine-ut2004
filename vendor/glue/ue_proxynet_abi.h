@@ -1,9 +1,9 @@
 /*
  * ue_proxynet_abi.h — the OPTIONAL "proxynet" ABI module (C face).  PROXYNET_ABI_VERSION 1.
  * ============================================================================
- * An OPTIONAL MODULE, versioned on its own. It is NOT part of the v1 thin-shim ABI (../ue_abi.h):
- * UE_ABI_VERSION stays 1, ../ue_abi.h and the vendored webrtc-shim.js are untouched, and an engine that
- * does not vendor this header neither knows nor cares that it exists (step 2.79, ADR-16).
+ * An OPTIONAL MODULE, versioned on its own. It is NOT part of the main thin-shim ABI (../ue_abi.h): a
+ * change here does not move UE_ABI_VERSION, ../ue_abi.h and the vendored net-shim.js know nothing of it,
+ * and an engine that does not vendor this header neither knows nor cares that it exists (ADR-16).
  *
  * What it is for: "Proxy networking" — a web client joining an ordinary NATIVE game server through a
  * WSS<->UDP game proxy. Experimental, and detachable by construction: the engine side is its own package

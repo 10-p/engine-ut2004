@@ -11,42 +11,14 @@
 #include "UnNet.h"
 
 /*-----------------------------------------------------------------------------
-	Extern "C" imports (the wasm <-> JS boundary), provided by the host's net
-	glue through the baked forwarder in vendor/glue. On native, inline stubs
-	return 0 / do nothing.
+	The wasm <-> JS boundary: the ue_net_* imports and the UE_NET_STATE_*
+	values of vendor/glue/ue_abi.h, provided by the host's net glue through
+	the baked forwarder (vendor/glue/net-shim.js). The package is built for
+	the web only.
 -----------------------------------------------------------------------------*/
 
 #ifdef __EMSCRIPTEN__
-extern "C"
-{
-	void webrtc_init_listen(const char* roomName);
-	void webrtc_connect(const char* peerId);
-	int  webrtc_send(int connId, const void* data, int len);
-	int  webrtc_recv(int connId, void* buffer, int maxLen);
-	int  webrtc_accept_connection();
-	void webrtc_close(int connId);
-	void webrtc_destroy();
-	int  webrtc_get_connection_state(int connId);
-	// Returns 1 if there's a pending deferred connect, writes room name to buffer
-	int  webrtc_check_pending_connect(char* buffer, int maxLen);
-	// Deferred client connect — reads room from JS, executes "open room?connect".
-	// Returns 1 if the connect was issued (engine ready), 0 if not ready (retry).
-	int  webrtc_deferred_open();
-	// Listen server: publish current status (name/map/players/max/gametype) for
-	// browser discovery; the JS status responder hands this to browsing clients.
-	void webrtc_set_listen_status(const char* name, const char* map, int players, int maxPlayers, const char* gametype);
-}
-#else
-inline void webrtc_init_listen(const char* roomName) {}
-inline void webrtc_connect(const char* peerId) {}
-inline int  webrtc_send(int connId, const void* data, int len) { return 0; }
-inline int  webrtc_recv(int connId, void* buffer, int maxLen) { return 0; }
-inline int  webrtc_accept_connection() { return 0; }
-inline void webrtc_close(int connId) {}
-inline void webrtc_destroy() {}
-inline int  webrtc_get_connection_state(int connId) { return 0; }
-inline int  webrtc_check_pending_connect(char* buffer, int maxLen) { return 0; }
-inline void webrtc_set_listen_status(const char* name, const char* map, int players, int maxPlayers, const char* gametype) {}
+#include "ue_abi.h"
 #endif
 
 /*-----------------------------------------------------------------------------

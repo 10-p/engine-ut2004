@@ -619,7 +619,7 @@ inline CMainLoop::~CMainLoop(void)
 }
 
 #ifdef __EMSCRIPTEN__
-// The engine behind ue_exec_command and the deferred WebRTC connect (webrtc_deferred_open in WebRTCNetDriver.cpp).
+// The engine behind ue_exec_command and the WebRTC listen-server status push (WebRTCNetDriver.cpp).
 UEngine* GEngineForExec = NULL;
 
 // ue_exec_command (vendor/glue/ue_abi.h): runs a console command and returns its captured output. TCHAR is
