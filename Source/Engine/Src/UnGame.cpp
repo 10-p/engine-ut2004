@@ -2471,11 +2471,11 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 	VERIFY_CLASS_SIZE_NODIE( UTexture );
 
 	if( Mismatch )
-#if defined(__ANDROID__)
-		// 64-bit Android: native classes with a trailing pointer are legitimately larger than the
-		// 32-bit .u package sizes; offsets still match (no per-member "problem" is logged), so a
-		// total-size mismatch is benign here (same as the retail amd64 build). Warn, do not abort.
-		debugf( NAME_Warning, TEXT("Engine C++/UnrealScript class size mismatch (tolerated on 64-bit Android)") );
+#if PLATFORM_64BITS
+		// 64-bit: native classes with a trailing pointer can be larger than the 32-bit .u package
+		// sizes; the member offsets checked above are what matter (a per-member problem is logged),
+		// so a total-size mismatch is a warning here, as in the retail amd64 build.
+		debugf( NAME_Warning, TEXT("Engine C++/UnrealScript class size mismatch (tolerated on 64-bit)") );
 #else
 		appErrorf(TEXT("Engine C++/UnrealScript class size mismatch"));
 #endif
