@@ -1,29 +1,29 @@
 // net-shim.js — the thin --js-library every engine bakes for the network imports.
 // ============================================================================
-// VENDORED from @ufront/glue at ABI_VERSION 2 (docs/02, docs/05 §2). It defines the 18 ue_net_* C-imports the
-// engine WASM calls and FORWARDS each to the runtime-injected Module.UE.net.* (the host sets Module.UE before
-// main()). There is NO logic here: the transport lives in @ufront/glue ESM (createWebRtc), injected at runtime.
+// Vendored from @ufront/glue at ABI_VERSION 2 (bin/vendor-engine.mjs). It defines the 18 ue_net_* C-imports the
+// engine WASM calls and forwards each to the runtime-injected Module.UE.net.* (the host sets Module.UE before
+// main()). There is no logic here: the transport lives in @ufront/glue ESM (createWebRtc), injected at runtime.
 //
 // $ueNet asserts Module.UE is injected at the right ABI version and returns the transport. It is pulled in via
 // each forwarder's __deps (the wasm imports the ue_net_* symbols).
 //
-// THREADING (-sPROXY_TO_PTHREAD): every forwarder is __proxy: 'sync' EXCEPT ue_net_send and ue_net_recv.
+// Threading (-sPROXY_TO_PTHREAD): every forwarder is __proxy: 'sync' except ue_net_send and ue_net_recv.
 //
 // The engine calls these from its pthread, but the P2P transport cannot follow it there: RTCPeerConnection is a
 // Window API and is not available in workers (W3C webrtc-extensions #77; browsers ship only a transferable
 // RTCDataChannel). Module.UE is injected on the main thread's Module and each pthread has its own Module scope, so
 // an unproxied call finds nothing and throws "[ue-abi] Module.UE.net not injected". __proxy: 'sync' runs the call
 // on the main thread and blocks the caller until it returns, which is the semantics the engine expects. Pthreads
-// share memory, so a proxied call reads packet bytes at dataPtr and fills bufferPtr in the SAME heap.
+// share memory, so a proxied call reads packet bytes at dataPtr and fills bufferPtr in the same heap.
 //
-// ue_net_send and ue_net_recv are the per-packet path and are NOT proxied. Proxied, every 512-byte datagram was a
-// synchronous cross-thread round trip; a file transfer saturates the send loop, the engine thread ended up parked
-// in those calls instead of draining its OWN incoming proxy queue, and the queue grew until main could no longer
-// enqueue an input event:
+// ue_net_send and ue_net_recv are the per-packet path and are not proxied. Proxied, every 512-byte datagram would
+// be a synchronous cross-thread round trip; a file transfer saturates the send loop, the engine thread would sit
+// parked in those calls instead of draining its own incoming proxy queue, and the queue would grow until main
+// could no longer enqueue an input event:
 //     Aborted(Assertion failed: false && "emscripten_proxy_async failed", .../html5/callback.c,42)
 // On the engine thread the host installs a Module.UE.net of its own (@ufront/glue src/webrtc/worker.js, from the
-// same bootstrap message that carries the FS channels) that reads and writes SHARED-MEMORY PACKET RINGS, so the
-// unproxied forwarder finds a net object HERE and never leaves the thread. The other 16 are per-tick or
+// same bootstrap message that carries the FS channels) that reads and writes shared-memory packet rings, so the
+// unproxied forwarder finds a net object on this thread and never leaves it. The other 16 are per-tick or
 // per-user-action, not per-packet.
 mergeInto(LibraryManager.library, {
   $ueNet: function() {
@@ -44,7 +44,7 @@ mergeInto(LibraryManager.library, {
   ue_net_connect__proxy: 'sync',
   ue_net_connect: function(peerIdPtr) { return ueNet().ue_net_connect(peerIdPtr); },
 
-  // --- the packet path: NOT proxied. Answered on the engine thread by the shared rings. ---
+  // --- the packet path: not proxied. Answered on the engine thread by the shared rings. ---
   ue_net_send__deps: ['$ueNet'],
   ue_net_send: function(connId, dataPtr, len) { return ueNet().ue_net_send(connId, dataPtr, len); },
 

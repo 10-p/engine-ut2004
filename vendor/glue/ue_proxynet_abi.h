@@ -1,21 +1,21 @@
 /*
- * ue_proxynet_abi.h — the OPTIONAL "proxynet" ABI module (C face).  PROXYNET_ABI_VERSION 1.
+ * ue_proxynet_abi.h — the optional "proxynet" ABI module (C face).  PROXYNET_ABI_VERSION 1.
  * ============================================================================
- * An OPTIONAL MODULE, versioned on its own. It is NOT part of the main thin-shim ABI (../ue_abi.h): a
+ * An optional module, versioned on its own. It is not part of the main thin-shim ABI (../ue_abi.h): a
  * change here does not move UE_ABI_VERSION, ../ue_abi.h and the vendored net-shim.js know nothing of it,
  * and an engine that does not vendor this header neither knows nor cares that it exists (ADR-16).
  *
- * What it is for: "Proxy networking" — a web client joining an ordinary NATIVE game server through a
+ * What it is for: "Proxy networking", a web client joining an ordinary native game server through a
  * WSS<->UDP game proxy. Experimental, and detachable by construction: the engine side is its own package
  * (ProxyNetDrv), the JS side its own library (packages/glue/src/proxynet/), and this module is the only
- * thing the two share. Remove all three and P2P networking is exactly what it was.
+ * thing the two share. Without all three, P2P networking is unchanged.
  *
- * ABSENT MODULE = ABSENT FEATURE, never a boot failure. The vendored proxynet-shim.js asserts
- * `Module.UE.proxynet.version === 1` on first USE; a host that injects no `Module.UE.proxynet` simply
+ * Absent module = absent feature, never a boot failure. The vendored proxynet-shim.js asserts
+ * `Module.UE.proxynet.version === 1` on first use; a host that injects no `Module.UE.proxynet`
  * makes ue_proxynet_connect() return -1.
  *
- * Same conventions as ../ue_abi.h: UE_IMPORT = the engine calls, JS provides. Keep every boundary
- * function on ONE line — the parity test (test/abi-proxynet-parity.test.cjs) keys off the markers.
+ * Same conventions as ../ue_abi.h: UE_IMPORT = the engine calls, JS provides. Every boundary
+ * function stays on one line: the parity test (test/abi-proxynet-parity.test.cjs) keys off the markers.
  * Pointers cross as wasm addresses; strings in are NUL-terminated UTF-8; (ptr,max) pairs are
  * caller-owned buffers the callee fills up to max. Everything is non-blocking and polled: no Asyncify.
  */
@@ -45,10 +45,10 @@ extern "C" {
 #define PROXYNET_HTTP_FAILED      3   /* refused / unreachable / over budget — fall back to the in-band download */
 
 /* ===================== ABI-PARITY: imports (C->JS) ========================= *
- * The datagram pipe. connect() returns a NEW connection id each time (>= 0), or -1 when the module is
- * absent or proxy networking is not configured — so, unlike the P2P transport's single client slot, an
- * old and a new connection coexist across a server map change exactly as two UDP sockets do.
- * send/recv are the hot path: NOT proxied to the main thread, served from the shared packet rings.
+ * The datagram pipe. connect() returns a new connection id each time (>= 0), or -1 when the module is
+ * absent or proxy networking is not configured, so, unlike the P2P transport's single client slot, an
+ * old and a new connection coexist across a server map change as two UDP sockets do.
+ * send/recv are the hot path: not proxied to the main thread, served from the shared packet rings.
  */
 UE_IMPORT int  ue_proxynet_connect(const char* host, int port);
 UE_IMPORT int  ue_proxynet_state(int connId);
@@ -62,7 +62,7 @@ UE_IMPORT int  ue_proxynet_http_open(int connId, const char* url);
 UE_IMPORT int  ue_proxynet_http_poll(int handle, int* status, int* received, int* total);
 UE_IMPORT int  ue_proxynet_http_read(int handle, void* buffer, int maxLen);
 UE_IMPORT void ue_proxynet_http_close(int handle);
-/* The IN-GAME server browser's list (2.79o): the chosen proxy's /servers, as ONE text blob (the web build has no
+/* The in-game server browser's list: the chosen proxy's /servers, as one text blob (the web build has no
  * sockets, so the engine cannot ask a master itself). open() returns a handle >= 0, or -1 when proxy networking is
  * dormant (P2P mode, or no proxy). poll() fills *status (PROXYNET_HTTP_PENDING / DONE / FAILED) and *count (rows).
  * read() returns the blob's size and copies it only when it fits in maxLen (call again with a bigger buffer);

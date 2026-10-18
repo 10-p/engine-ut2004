@@ -1,21 +1,18 @@
-// wasmfs-shim.js — the thin --js-library the engine bakes for the WasmFS FS backend (step 2.13.1).
+// wasmfs-shim.js — the thin --js-library the engine bakes for the WasmFS FS backend.
 // ============================================================================
-// VENDORED from @ufront/glue, exactly like net-shim.js and for the same reason: the engine bakes
-// only a forwarder, while all real logic lives in @ufront/glue ESM and is injected by the host at
-// runtime (Module.UE.fs.backend). There is NO manifest, download, cache, budget or eviction logic here.
+// Vendored from @ufront/glue, like net-shim.js and for the same reason: the engine bakes only a forwarder,
+// while all real logic lives in @ufront/glue ESM and is injected by the host at runtime (Module.UE.fs.backend).
+// There is no manifest, download, cache, budget or eviction logic here.
 //
-// WHY THIS EXISTS. Before 2.13, FetchFS intercepted file access by monkey-patching the *JS* FS.open,
-// which worked because the legacy Emscripten filesystem implements __syscall_openat in JS. WasmFS moves
-// the VFS into wasm, so a C open() no longer routes through JS FS.open and that interception is
-// SILENTLY BYPASSED (probed 2026-07-14: the patch installs but never fires). The replacement seam is a
-// WasmFS JSImpl backend: file operations are implemented in JS and called from wasm, which is both the
-// on-demand hook FetchFS needs and — because the bytes then live in JS typed arrays rather than in a
-// std::vector inside linear memory — the way to keep multi-GB residency out of the 2 GB wasm32 address
-// space (the engine itself measures a flat 256 MB, so linear memory is not where assets belong).
+// Under -sWASMFS the VFS lives in wasm, so a C open() does not route through the JS FS.open, and a JS-side
+// interception of FS.open would never fire. The seam is a WasmFS JSImpl backend: file operations are
+// implemented in JS and called from wasm, which is the on-demand hook FetchFS needs, and the bytes live in JS
+// typed arrays rather than in a std::vector inside linear memory, which keeps a multi-GB resident set out of
+// the 2 GB wasm32 address space.
 //
-// The host stands the backend up entirely from JS via EXPORTED_FUNCTIONS on wasmfs_create_jsimpl_backend
-// and wasmfs_create_file, so this file plus a few link flags is the ENTIRE per-engine cost of the FS
-// re-architecture — no C++ in any engine repo.
+// The host stands the backend up entirely from JS via EXPORTED_FUNCTIONS on wasmfs_create_jsimpl_backend and
+// wasmfs_create_file, so this file plus a few link flags is the whole per-engine cost: no C++ in any engine
+// repo.
 //
 // $ueFs asserts Module.UE is injected at the right ABI version and returns the backend implementation.
 
@@ -60,30 +57,28 @@ mergeInto(LibraryManager.library, {
   },
 
   // --------------------------------------------------------------------------------------------
-  // step 2.13.2 — THE WORKER SIDE.
+  // The worker side.
   //
   // Under -sPROXY_TO_PTHREAD the engine runs on a pthread, and WasmFS calls the JSImpl hooks THERE:
   // Emscripten's libwasmfs_jsimpl.js carries no __proxy, so a hook executes on whichever thread performs
-  // the FS op and looks up wasmFS$backends[backend] — a PER-THREAD object. The host registers the
-  // backend on MAIN (it must: allocFile binds file->path on the creating thread, and the wasm runtime is
-  // not even up in a pthread when this code runs), so without the block below the worker's table is
-  // empty and the first read dies with "Cannot read properties of undefined (reading 'getSize')".
+  // the FS op and looks up wasmFS$backends[backend], a per-thread object. The host registers the backend
+  // on main (allocFile binds file->path on the creating thread, and the wasm runtime is not up in a
+  // pthread when this code runs), so without the block below the worker's table would be empty and the
+  // first read would die with "Cannot read properties of undefined (reading 'getSize')".
   //
-  // The fix keeps this file a forwarder. On a pthread we:
-  //   1. take the channel main postMessages us (addEventListener coexists with Emscripten's onmessage),
-  //   2. replace wasmFS$backends with a PROXY that lazily builds the table for whatever backend pointer
-  //      is asked about — so main's pointer arrives as the lookup KEY and nothing is handshaken,
-  //   3. importScripts the real glue bundle (synchronously — which is what a sync FS hook needs) and let
-  //      it build the worker's backend.
+  // This file stays a forwarder. On a pthread it:
+  //   1. takes the channel main postMessages (addEventListener coexists with Emscripten's onmessage),
+  //   2. replaces wasmFS$backends with a Proxy that lazily builds the table for whatever backend pointer
+  //      is asked about, so main's pointer arrives as the lookup key and nothing is handshaken,
+  //   3. importScripts the glue bundle (synchronously, which is what a sync FS hook needs) and lets it
+  //      build the worker's backend.
   //
-  // ⚠ __postset only survives if the symbol is REFERENCED: an unused $symbol is dead-stripped silently,
+  // __postset survives only if the symbol is referenced: an unused $symbol is dead-stripped silently, with
   // no error and no bootstrap. It is force-included via -sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE in the link
-  // flags — do not remove that without removing this.
+  // flags, which must stay as long as this block does.
   $ueWorker: {
-    // step 2.13.4: the WHOLE bootstrap message main posted, kept verbatim and forwarded verbatim. It used
-    // to be destructured into named fields here, which meant every new channel needed an edit to a file
-    // vendored into every engine repo + a rebuild + a re-gate of all of them. The glue owns the shape now;
-    // this file only has to deliver it.
+    // The whole bootstrap message main posted, kept and forwarded verbatim: the glue owns its shape, so a
+    // new channel needs no edit to this file vendored into every engine repo.
     boot: null,
     table: null,
   },
@@ -98,11 +93,9 @@ mergeInto(LibraryManager.library, {
       if (e.data.ufrontChannel) {
         ueWorker.boot = e.data;
       }
-      // step 2.13.2 — ue_exec_command must run ON THIS THREAD. The frozen ABI is unchanged; what changes
-      // is routing: the host used to call Module._ue_exec_command directly, but under PROXY_TO_PTHREAD
-      // that executes engine code on the browser main thread, where there is no GL context and no engine
-      // state — it dies in glClearColor. Main posts the command instead and we run it here, between
-      // frames, on the thread that owns the engine.
+      // ue_exec_command runs on this thread: called on the browser main thread, engine code would find no
+      // GL context and no engine state (it dies in glClearColor). Main posts the command and it runs here,
+      // between frames, on the thread that owns the engine.
       if (typeof e.data.ufrontExec === 'string') {
         console.log('[ufront/worker] exec received: ' + e.data.ufrontExec +
           ' (export=' + (typeof Module['_ue_exec_command']) + ')');

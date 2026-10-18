@@ -1,24 +1,24 @@
-// proxynet-shim.js — the thin --js-library for the OPTIONAL "proxynet" ABI module (step 2.79).
+// proxynet-shim.js — the thin --js-library for the optional "proxynet" ABI module.
 // ============================================================================
-// VENDORED from @ufront/glue at PROXYNET_ABI_VERSION 1, by the engines that ship a ProxyNetDrv — and ONLY by
-// those. It is a SEPARATE file from net-shim.js on purpose: that shim stays byte-identical in every engine
-// repo, the main ABI does not move when this module does, and an engine that does not vendor this file has no
-// `ue_proxynet_*` imports at all (docs/02 §3e, docs/12 ADR-16).
+// Vendored from @ufront/glue at PROXYNET_ABI_VERSION 1, only by the engines that ship a ProxyNetDrv (their target
+// lists `proxynet` in publish.engine.abiModules). It is a separate file from net-shim.js: that shim stays
+// byte-identical in every engine repo, the main ABI does not move when this module does, and an engine that does
+// not vendor this file has no `ue_proxynet_*` imports at all (docs/12 ADR-16).
 //
-// It defines the thirteen imports and FORWARDS each to the runtime-injected `Module.UE.proxynet.*`. No logic.
+// It defines the thirteen imports and forwards each to the runtime-injected `Module.UE.proxynet.*`. No logic.
 //
-// ★ ABSENT MODULE = ABSENT FEATURE, NEVER A BOOT FAILURE. Unlike $ueNet, $ueProxyNet does not throw when the
-// host injected nothing: it returns null and every forwarder answers "not available" (connect -> -1, state ->
-// CLOSED, the rest -> 0). A page built without Proxy networking, or in P2P mode, therefore costs nothing and
-// breaks nothing. A module that IS present at the wrong version is a real mismatch, and that one throws.
+// Absent module = absent feature, never a boot failure. Unlike $ueNet, $ueProxyNet does not throw when the host
+// injected nothing: it returns null and every forwarder answers "not available" (connect -> -1, state -> CLOSED,
+// the rest -> 0), so a page without Proxy networking, or in P2P mode, costs nothing and breaks nothing. A module
+// that is present at the wrong version is a real mismatch, and that one throws.
 //
-// THREADING (-sPROXY_TO_PTHREAD), same split as net-shim.js and for the same measured reason:
-//   * ue_proxynet_send / ue_proxynet_recv are NOT proxied. They are the per-packet path; on the engine thread
+// Threading (-sPROXY_TO_PTHREAD), the same split as net-shim.js and for the same reason:
+//   * ue_proxynet_send / ue_proxynet_recv are not proxied. They are the per-packet path; on the engine thread
 //     `Module.UE.proxynet` is the ring client @ufront/glue installs there (installWorkerProxyNet), so the call
 //     never leaves the thread.
 //   * all the others are `__proxy: 'sync'`: per-tick or per-action, and the WebSocket, the session token and
 //     fetch() all live on the main thread. Pthreads share memory, so a proxied call reads the string at the
-//     pointer and fills the out-buffers in the SAME heap — no marshalling.
+//     pointer and fills the out-buffers in the same heap, with no marshalling.
 mergeInto(LibraryManager.library, {
     $ueProxyNet: function () {
         var ue = Module['UE'];
@@ -45,7 +45,7 @@ mergeInto(LibraryManager.library, {
         return m ? m.ue_proxynet_state(connId) : 3;
     },
 
-    // --- the packet path: NOT proxied. Answered on the engine thread by the shared rings. ---
+    // --- the packet path: not proxied. Answered on the engine thread by the shared rings. ---
     ue_proxynet_send__deps: ['$ueProxyNet'],
     ue_proxynet_send: function (connId, dataPtr, len) {
         var m = ueProxyNet();
@@ -94,7 +94,7 @@ mergeInto(LibraryManager.library, {
         if (m) m.ue_proxynet_http_close(handle);
     },
 
-    // --- the in-game server browser's list (2.79o) ---
+    // --- the in-game server browser's list ---
     ue_proxynet_list_open__deps: ['$ueProxyNet'],
     ue_proxynet_list_open__proxy: 'sync',
     ue_proxynet_list_open: function () {

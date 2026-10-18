@@ -2,23 +2,23 @@
  * ue_abi.h — the engine↔glue thin-shim ABI (C face).  ABI_VERSION 2.
  * ============================================================================
  * The C declaration of the boundary between an engine's WASM and its JavaScript host
- * (docs/02). abi.ts is the TypeScript face; both live in packages/glue/abi/, the single
- * source of truth. test/abi-parity.test.cjs fails if the two faces, or the vendored
+ * (docs/02-abi-contract.md). abi.ts is the TypeScript face; both live in packages/glue/abi/,
+ * the single source of truth. test/abi-parity.test.cjs fails if the two faces, or the vendored
  * net-shim.js, disagree on any {name, arity, direction}, on the state enum, or on the
  * version.
  *
  * Every engine repo vendors this header with the shims in vendor/glue/, written by
- * packages/glue/bin/vendor-engine.mjs (docs/05 §2). A change to the import/export set
+ * packages/glue/bin/vendor-engine.mjs. A change to the import/export set
  * bumps UE_ABI_VERSION, and the engines and glue move together: each engine re-vendors
  * and re-links. A mismatch fails loudly, at build (the artifact's meta.json abiVersion is
  * read from this file) and at boot (the shims assert Module.UE.abiVersion before main()).
  *
- *  - UE_IMPORT : a C function the engine CALLS and JS PROVIDES. The vendored net-shim.js
+ *  - UE_IMPORT : a C function the engine calls and JS provides. The vendored net-shim.js
  *                forwards each to the host-injected Module.UE.net.*; the WASM imports these.
- *  - UE_EXPORT : a C function the engine PROVIDES (EMSCRIPTEN_KEEPALIVE) and JS CALLS.
+ *  - UE_EXPORT : a C function the engine provides (EMSCRIPTEN_KEEPALIVE) and JS calls.
  *
- * The parity test keys off the UE_IMPORT / UE_EXPORT markers, so keep every boundary
- * function on ONE line in the marked blocks below.
+ * The parity test keys off the UE_IMPORT / UE_EXPORT markers, so every boundary function
+ * stays on one line in the marked blocks below.
  *
  * Part of the contract, but not C functions of the engine's own, so not declared here:
  *   - the filesystem. Engines are built -sWASMFS; the vendored wasmfs-shim.js forwards the
@@ -28,7 +28,7 @@
  *     thread; the engine's own Asyncify use is its main loop, not this boundary.
  *   - the optional ABI modules in the sibling folders: each has its own header, shim and
  *     version, and is vendored only by the engines whose target descriptor lists it
- *     (publish.engine.abiModules). This header knows none of their names, on purpose.
+ *     (publish.engine.abiModules). This header names none of them.
  */
 #ifndef UE_ABI_H
 #define UE_ABI_H
@@ -81,7 +81,7 @@ UE_IMPORT int  ue_net_get_server_ping(int index);
 /* ===================== ABI-PARITY: exports (JS→C) ======================== *
  * Engine provides (EMSCRIPTEN_KEEPALIVE); JS calls via ccall/cwrap.
  */
-UE_EXPORT char* ue_exec_command(const char* cmd);   /* run a console command, RETURN its captured output (ADR-10). */
+UE_EXPORT char* ue_exec_command(const char* cmd);   /* run a console command, return its captured output (ADR-10). */
 /* ===================== ABI-PARITY: end exports =========================== */
 
 #ifdef __cplusplus
