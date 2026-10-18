@@ -77,12 +77,8 @@ void UEngine::InitAudio()
 		Audio = ConstructObject<UAudioSubsystem>( AudioClass );
 		if( !Audio->Init() )
 		{
-#if defined(__ANDROID__)
-			// Android: audio init failure is a warning, and the game continues without sound.
-			debugf( NAME_Warning, TEXT("Audio unavailable on Android (no OpenAL) -- continuing without sound.") );
-#else
-			debugf( NAME_Error, TEXT("Audio initialization failed.") );
-#endif
+			// Not an error: the game runs without sound (as when the build has no audio device at all).
+			debugf( NAME_Warning, TEXT("Audio initialization failed -- continuing without sound.") );
 			delete Audio;
 			Audio = NULL;
 		}
