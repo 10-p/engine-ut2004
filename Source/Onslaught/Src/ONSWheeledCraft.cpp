@@ -9,7 +9,7 @@ Revision history:
 
 #include "OnslaughtPrivate.h"
 
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
 
 void AONSWheeledCraft::UpdateVehicle(FLOAT DeltaTime)
 {
@@ -681,6 +681,6 @@ void AONSWheeledCraft::PackState()
 	unguard;
 }
 
-#endif // WITH_KARMA || WITH_PHYSICS
+#endif // WITH_KARMA
 
 IMPLEMENT_CLASS(AONSWheeledCraft);

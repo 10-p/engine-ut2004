@@ -145,7 +145,6 @@ native stack* below) and any script still calling them will fail with "no such p
 > `grep ^METOOLKIT_DIR <dir>/CMakeCache.txt` — it should name `_deps/metoolkitkarmadecomp-src/…`.
 | **`native-nokarma`** | `native` **+ `USE_KARMA_DECOMP=OFF`** — the NO_KARMA control. Not a spare: it is what says whether a failure is Karma's fault or the harness's, and the ut2004 browser suite's 51/51 only meant something because this arm was run through it in the same session. | `build-native-nokarma/` | `.../ut2004-nokarma-pixo.bin` |
 | **`legacy-karma`** | `native` **+ `BUILD_KARMA_REF=ON`, `USE_KARMA_DECOMP=OFF`** — the **A/B REFERENCE ARM** (restored 2026-09-12). Identical engine and renderers; MathEngine's own prebuilt i386 archives as the physics instead of the recovered sources. This is what the recovery is judged against, and it replaced `native-nokarma` in CI: comparing against the real thing answers *is the recovered code right*, where comparing against no physics only answered *is Karma involved*. **32-bit x86 only** — the archives are binary-only i386 and the build refuses early rather than fail at the link. ✅ Measured 2026-09-12: 40/40 frames on `test-karma-1` and `ktrace_score.py` says `MATCH` (8/8 bodies at rest, 8/8 asleep) against `native`. | `build-legacy-karma/` | `.../ut2004-legacykarma-pixo.bin` |
-| `physics` | `native` + `WITH_PHYSICS=ON` — the Jolt vehicle sources in `Source/Onslaught`. Not part of the green checkpoint and not exercised recently. | `build-physics/` | `.../ut2004-pixo.bin` |
 | `wasm` | **The everyday web build.** `-O2 -g`: named stacks, DWARF, assertions, and still playable. | `build-wasm/` | `Source/SDLLaunch/SDLLaunch.{js,wasm,data}` |
 | `wasm-debug` | `-O0`, nothing inlined, every local live. **Last resort** — reach for it when the *optimiser* is the suspect. ~5× the boot time. | `build-wasm-debug/` | same names |
 | `wasm-perf` | Shipping: `-O3 -g0`, assertions off. Smallest and fastest. | `build-wasm-perf/` | same names |
@@ -730,8 +729,8 @@ drivers, coupled 1:1 to an SDL viewport manager) its matching `ViewportManager`:
 | Switch | Render device | Viewport | Available in |
 |--------|---------------|----------|--------------|
 | `-GL4ESRENDERER`   | `GL4ESDrv.GL4ESRenderDevice`   | `SDL2Drv.SDL2Client` | all presets (the default on web) |
-| `-OPENGLRENDERER`  | `OpenGLDrv.OpenGLRenderDevice` | `SDL2Drv.SDL2Client` | `native*`, `physics`, `windows*` |
-| `-SOFTWARERENDERER`| `PixoDrv.PixoRenderDevice`     | (keep current)       | `native*`, `physics` (`USE_PIXOMATIC=ON`, never on web or Windows) |
+| `-OPENGLRENDERER`  | `OpenGLDrv.OpenGLRenderDevice` | `SDL2Drv.SDL2Client` | `native*`, `windows*` |
+| `-SOFTWARERENDERER`| `PixoDrv.PixoRenderDevice`     | (keep current)       | `native*` (`USE_PIXOMATIC=ON`, never on web or Windows) |
 | `-NULLRENDERER`    | `Engine.NullRenderDevice`      | (keep current)       | all presets |
 
 - Availability is a `StaticFindObject` on the class' short name — a device statically linked into

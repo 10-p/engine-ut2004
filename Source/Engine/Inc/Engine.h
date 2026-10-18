@@ -67,35 +67,25 @@ ENGINE_API extern class FTempLineBatcher*	GTempLineBatcher;
 #endif
 #endif
 
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
 #if SUPPORTS_PRAGMA_PACK
 #pragma pack (push,8)
 #endif
-#ifdef WITH_KARMA
     #include "MePrecision.h"
     #include "Mst.h"
     #include "McdTriangleList.h"
     #include "MeAssetDB.h"
     #include "MeAssetFactory.h"
-#endif
 #if SUPPORTS_PRAGMA_PACK
 #pragma pack (pop)
 #endif
 
     // These need to be public for UnrealEd etc.
-#ifdef WITH_KARMA
     const MeReal K_ME2UScale = (MeReal)50;
     const MeReal K_U2MEScale = (MeReal)0.02;
 
 	const MeReal K_Rad2U = (MeReal)10430.2192;
 	const MeReal K_U2Rad = (MeReal)0.000095875262;
-#elif defined(WITH_PHYSICS)
-    const FLOAT K_ME2UScale = 50.0f;
-    const FLOAT K_U2MEScale = 0.02f;
-
-    const FLOAT K_Rad2U = 10430.2192f;
-    const FLOAT K_U2Rad = 0.000095875262f;
-#endif
 #endif
 
 

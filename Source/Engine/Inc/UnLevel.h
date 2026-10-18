@@ -337,15 +337,9 @@ class ENGINE_API ULevel : public ULevelBase
 	MeAssetFactory*	KAssetFactory; /* Used for instancing ragdolls etc. */
 
     McdModelID      KLevelModel; /* Level collision model (usually tri-list) */
-#elif defined(WITH_PHYSICS)
-    void*           KWorld; /* Jolt PhysicsSystem* */
-    void*           KBridge; /* Unused, NULL */
-    void*           KAssetFactory; /* Unused, NULL */
-
-    void*           KLevelModel; /* Unused, NULL */
 #endif
 
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
 	TArray<AActor*> Ragdolls; // Currently active ragdolls. Oldest first.
 #endif
 

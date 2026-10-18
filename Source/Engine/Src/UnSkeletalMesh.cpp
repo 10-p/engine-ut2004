@@ -847,7 +847,7 @@ void USkeletalMesh::Destroy()
 
 
 
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
 /* Destroy dynamics/collision for this Skeletal Mesh instance. */
 void USkeletalMeshInstance::Destroy()
 {
@@ -4296,7 +4296,7 @@ void USkeletalMeshInstance::GetFrame
 		// Digest bones into the spacebases.
 		for( INT bone=0; bone < Mesh.RefSkeleton.Num(); bone ++ )
 		{
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
             if( BoneFlags(bone) == BBONE_RefPose || bForceRefpose )
             {
                 if(NoRefPose.Num() && NoRefPose(bone))

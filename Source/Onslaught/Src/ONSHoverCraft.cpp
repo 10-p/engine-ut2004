@@ -9,7 +9,7 @@ Revision history:
 
 #include "OnslaughtPrivate.h"
 
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
 
 // Don't let repulsors hit non-vehicle pawns of the other team.
 UBOOL AONSHoverCraft::KRepulsorsShouldHit(AActor* Actor)
@@ -211,7 +211,6 @@ UBOOL AONSHoverCraft::Tick(FLOAT DeltaTime, enum ELevelTick TickType)
 	}
 
 	UKarmaParams* KP = Cast<UKarmaParams>(KParams);
-#ifdef WITH_KARMA
 	if (KP)
 		for (INT i = 0; i < KP->Repulsors.Num(); i++)
 			if (KP->Repulsors(i))
@@ -221,7 +220,6 @@ UBOOL AONSHoverCraft::Tick(FLOAT DeltaTime, enum ELevelTick TickType)
 				else
 					KP->Repulsors(i)->bEnableRepulsion = false;
 			}
-#endif
 
 	return TickDid;
 

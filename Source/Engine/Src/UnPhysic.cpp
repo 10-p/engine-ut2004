@@ -151,13 +151,13 @@ void AActor::setPhysics(BYTE NewPhysics, AActor *NewFloor, FVector NewFloorV)
 	}
 
     
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
     BYTE OldPhysics = Physics;
 #endif
     
 	Physics = NewPhysics;
 
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
     // If the new physics isn't using Karma, but the old one was, shut it down.
     if(OldPhysics == PHYS_Karma)
     {
@@ -239,7 +239,7 @@ void AMover::performPhysics(FLOAT DeltaSeconds)
 		case PHYS_Rotating: break;
 		case PHYS_MovingBrush: physMovingBrush(DeltaSeconds); break;
         case PHYS_Trailer: physTrailer(DeltaSeconds); break;
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
         case PHYS_Karma: physKarma(DeltaSeconds); break;
         case PHYS_KarmaRagDoll: physKarmaRagDoll(DeltaSeconds); break;
 #endif
@@ -285,7 +285,7 @@ void AActor::performPhysics(FLOAT DeltaSeconds)
 		case PHYS_Trailer: physTrailer(DeltaSeconds); break;
 		case PHYS_RootMotion: physRootMotion(DeltaSeconds); break;
 		case PHYS_CinMotion: physRootMotion(DeltaSeconds);break;
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
         case PHYS_Karma: physKarma(DeltaSeconds); break;
         case PHYS_KarmaRagDoll: physKarmaRagDoll(DeltaSeconds); break;
 #endif
@@ -429,7 +429,7 @@ void APawn::startNewPhysics(FLOAT deltaTime, INT Iterations)
 		case PHYS_Ladder: physLadder(deltaTime, Iterations); break;
 		case PHYS_RootMotion: physRootMotion(deltaTime); break;
 		case PHYS_CinMotion: physRootMotion(deltaTime); break;
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
         case PHYS_Karma: physKarma(deltaTime); break;
         case PHYS_KarmaRagDoll: physKarmaRagDoll(deltaTime); break;
 #endif

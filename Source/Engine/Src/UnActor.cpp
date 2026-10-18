@@ -1782,14 +1782,14 @@ void AActor::Destroy()
 		ActorRenderData = NULL;
 	}
 
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
     KTermActorKarma(this);
 #endif
 #ifdef WITH_KARMA
 	if(XLevel)
 		check(XLevel->KContactGenActors.FindItemIndex(this) == INDEX_NONE);
 #endif
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
 	// If this is not a garbage-collection destroy, manually destroy the KParams.
 	if( KParams && !GIsGarbageCollecting )
 	{

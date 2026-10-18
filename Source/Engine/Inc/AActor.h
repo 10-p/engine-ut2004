@@ -244,7 +244,7 @@
     virtual McdModelID getKModel() const;
 #endif
 
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
 	void KWake();
 	void KGetRigidBodyState(FKRigidBodyState* state);
 	UBOOL KIsAwake();

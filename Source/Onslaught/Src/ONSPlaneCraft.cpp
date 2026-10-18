@@ -9,7 +9,7 @@ Revision history:
 
 #include "OnslaughtPrivate.h"
 
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
 
 static inline float HeadingAngle(FVector dir)
 {

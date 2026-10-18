@@ -1061,7 +1061,7 @@ void AActor::execLinkSkelAnim( FFrame& Stack, RESULT_DECL )
 	unguardexecSlow;
 }
 
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
 static UBOOL MeshIsCompatible(UMesh* Mesh, UMesh* newMesh)
 {
 	guard(MeshIsCompatible);
@@ -1106,7 +1106,7 @@ void AActor::execLinkMesh( FFrame& Stack, RESULT_DECL )
 			// If we are currently in ragdoll, check the mesh has the same heirarchy before replacing it.
 			if(Mesh)
 			{
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
 				USkeletalMeshInstance* inst = (USkeletalMeshInstance*)Mesh->MeshGetInstance(this);
 
 				// If we are currently running ragdoll, skeletons have to exactly match

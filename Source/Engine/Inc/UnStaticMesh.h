@@ -467,9 +467,6 @@ public:
 #ifdef WITH_KARMA
 	TArray<McdGeometryID>					KCollisionGeom;
 	TArray<FVector>							KCollisionGeomScale3D;
-#elif defined(WITH_PHYSICS)
-	TArray<void*>							KCollisionGeom;
-	TArray<FVector>							KCollisionGeomScale3D;
 #endif
 
 	// Constructor.

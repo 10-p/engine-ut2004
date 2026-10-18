@@ -274,14 +274,6 @@ McdGeometryID	ENGINE_API KAggregateGeomInstance(FKAggregateGeom* uGeom, FVector 
 void			ENGINE_API KUpdateMassProps(UKMeshProps* mp);
 void			ENGINE_API KCopyMassPropsToClipboard(UKMeshProps* mp);
 
-#elif defined(WITH_PHYSICS)
-/* Jolt versions use void* instead of Karma types (see JoltGlobals.h) */
-void    ENGINE_API KU2MEPosition(void* mv, const FVector fv);
-void    ENGINE_API KME2UPosition(FVector* fv, const void* mv);
-void    ENGINE_API KU2METransform(void* tm, const FVector pos, const FRotator rot);
-void    ENGINE_API KME2UTransform(FVector* pos, FRotator* rot, const void* tm);
-void*   ENGINE_API KAggregateGeomInstance(FKAggregateGeom* uGeom, FVector scale3D, void* geomMan, const TCHAR* name);
-
 #endif
 
 #include "UnForcePacking_end.h"

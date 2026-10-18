@@ -17,10 +17,6 @@
     #include "KarmaSupport.h"
 #endif
 
-#ifdef WITH_PHYSICS
-    #include "Jolt/JoltGlobals.h"
-#endif
-
 #ifdef WITH_LIPSINC
 	#include "LIPSincSupport.h"
 #endif

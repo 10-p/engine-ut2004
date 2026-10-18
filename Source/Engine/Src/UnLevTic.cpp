@@ -9,7 +9,6 @@
 #include "EnginePrivate.h"
 #include "UnNet.h"
 #include "UnPath.h"
-#include "PhysicsStateLogger.h"
 /*-----------------------------------------------------------------------------
 	Helper classes.
 -----------------------------------------------------------------------------*/
@@ -1730,10 +1729,9 @@ void ULevel::Tick( ELevelTick TickType, FLOAT DeltaSeconds )
 		NewlySpawned = NULL;
 		INT Updated  = 1;
 
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
         KTickLevelKarma(this, DeltaSeconds);
 #endif
-        PhysicsStateLogTick(this);
 
 		for( INT iActor=iFirstDynamicActor; iActor<Actors.Num(); iActor++ )
 		{
@@ -1760,9 +1758,6 @@ void ULevel::Tick( ELevelTick TickType, FLOAT DeltaSeconds )
 #ifdef WITH_KARMA
 		if(KGData)
 			KGData->bDoTick = 0;
-#elif defined(WITH_PHYSICS)
-		if(GJoltData)
-			GJoltData->bDoTick = 0;
 #endif
 		unguard;
 	}

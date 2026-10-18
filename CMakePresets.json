@@ -58,16 +58,6 @@
             }
         },
         {
-            "name": "physics",
-            "displayName": "GL4ES + Jolt physics",
-            "description": "gl4es stack with WITH_PHYSICS=ON. Builds in build-physics/.",
-            "inherits": "native",
-            "binaryDir": "${sourceDir}/build-physics",
-            "cacheVariables": {
-                "WITH_PHYSICS": "ON"
-            }
-        },
-        {
             "name": "wasm",
             "displayName": "Web (Emscripten/WASM) -- dev default",
             "description": "Emscripten web build: -O2 + DWARF + assertions + exception catching. The everyday dev build and the shipped -debug binary: named stacks and readable errors at a playable speed. The largest of the three (DWARF plus un-cleaned-up inlining). Builds in build-wasm/. Run `source <emsdk>/emsdk_env.sh` first (sets EMSDK). Requires -DUE_ASSETS_DIR=<UT2004 folder> (the link embeds System/Build.ini and System/Packages.md5 from it).",
@@ -191,10 +181,6 @@
         {
             "name": "native-sse",
             "configurePreset": "native-sse"
-        },
-        {
-            "name": "physics",
-            "configurePreset": "physics"
         },
         {
             "name": "wasm",

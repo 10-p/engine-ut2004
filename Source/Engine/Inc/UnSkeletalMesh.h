@@ -1009,15 +1009,9 @@ class ENGINE_API USkeletalMeshInstance : public ULodMeshInstance
     /* Physics for rag-doll. */
     TArray <McdModelID>         KSkelModels;
     TArray <MdtConstraintID>    KSkelJoints;
-#elif defined(WITH_PHYSICS)
-    TArray <UBOOL>              NoRefPose;
-
-    /* Physics for rag-doll (Jolt equivalents). */
-    TArray <void*>              KSkelModels;
-    TArray <void*>              KSkelJoints;
 #endif
 
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
     UBOOL                       KSkelIsInitialised;
 
     //  BIG FAT HACK! - theres no easy way to tell from a Trace which Bone got hit,
@@ -1036,7 +1030,7 @@ class ENGINE_API USkeletalMeshInstance : public ULodMeshInstance
 	TArray <FKBoneLifter>		KBoneLifters;
 #endif
 
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
 	// First and last bones in the array which have physics.
 	INT							KPhysRootIndex;
 	INT							KPhysLastIndex;
@@ -1047,7 +1041,7 @@ class ENGINE_API USkeletalMeshInstance : public ULodMeshInstance
 	TMap<KModelPairType, UBOOL>			KSkelDisableTable;
 #endif
 
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
 	// How long this ragdoll has been physical for.
 	FLOAT						KRagdollAge;
 
@@ -1070,13 +1064,13 @@ class ENGINE_API USkeletalMeshInstance : public ULodMeshInstance
 		m_nActiveLIPSincAnim = -1;
 #endif
 
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
         KSkelIsInitialised = 0;
         KLastTraceHit = -1;
 #endif
 	}
 
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
 	virtual void Destroy();
 #endif
 

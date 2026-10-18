@@ -386,7 +386,7 @@ FBox USkeletalMesh::GetCollisionBoundingBox( const AActor* Owner ) const
 	if( BoneCollisionSpheres.Num() > 0 || BoneCollisionBoxes.Num() > 0 )
 		return CalcPrimBox(inst);
 
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
 	if(inst->KFrozen)
 		return inst->KSkelBox;
 

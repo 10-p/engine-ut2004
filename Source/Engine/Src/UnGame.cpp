@@ -178,7 +178,7 @@ void UGameEngine::Init()
 		ufrontApplyShadowCfg();
 	}
 
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
     KInitGameKarma(); // Init physics.
 #endif
 #ifdef WITH_LIPSINC
@@ -414,8 +414,6 @@ void UGameEngine::Destroy()
 
 #ifdef WITH_KARMA
     KGData->bShutdownPending = 1;
-    KTermGameKarma();
-#elif defined(WITH_PHYSICS)
     KTermGameKarma();
 #endif
 
@@ -2370,7 +2368,7 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 			SavePackage( GLevel->GetOuter(), GLevel, 0, Filename, GLog );
 		}
 
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
 		if(!GIsEditor) // dont need to do this in editor - no physics runs.
 		{
 			// To save memory, we remove physics from all actors before loading the new level.
@@ -2777,7 +2775,7 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 		Info->bStartup = 1;
 		Info->TimeDilation = ((ALevelInfo *)(Info->GetClass()->GetDefaultActor()))->TimeDilation;
 
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
 		if(!GIsEditor && !GLevel->GetLevelInfo()->bKNoInit)
 		{
 			KInitLevelKarma(GLevel);
@@ -2877,7 +2875,7 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 					GLevel->Actors(i)->PostEditChange();
 				}
 
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
 				AActor* actor = GLevel->Actors(i);
 
 				if(actor->Physics != PHYS_Karma || !actor->KParams || !actor->KParams->IsA(UKarmaParams::StaticClass()))
@@ -2913,7 +2911,7 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 		debugf( NAME_Log, TEXT("Bringing %s up for play (%i) appSeconds: %f..."), GLevel->GetFullName(), appRound(GetMaxTickRate()), appSeconds() ); // sjs
 		GLevel->FinishedPrecaching = 0;
 
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
 		if(!GIsEditor && !GLevel->GetLevelInfo()->bKNoInit)
 		{
 			KInitLevelKarma(GLevel);
@@ -2940,7 +2938,7 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 					GLevel->Actors(i)->PostEditChange();
 				}
 
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
 				AActor* actor = GLevel->Actors(i);
 
 				if ( actor->Physics == PHYS_KarmaRagDoll )

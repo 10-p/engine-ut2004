@@ -377,7 +377,7 @@ public:
     DECLARE_CLASS(AONSWheeledCraft,AONSVehicle,0|CLASS_Config|CLASS_NativeReplication,Onslaught)
 	INT* GetOptimizedRepList(BYTE* Recent, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map, UActorChannel* Channel);
 
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
 	// Actor interface.
 	virtual UBOOL Tick(FLOAT DeltaTime, enum ELevelTick TickType);
 	virtual void preKarmaStep(FLOAT DeltaTime);
@@ -442,7 +442,7 @@ public:
     DECLARE_CLASS(AONSTreadCraft,AONSVehicle,0|CLASS_Config|CLASS_NativeReplication,Onslaught)
 	INT* GetOptimizedRepList(BYTE* Recent, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map, UActorChannel* Channel);
 
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
 	// Actor interface.
 	virtual UBOOL Tick(FLOAT DeltaTime, enum ELevelTick TickType);
 	virtual void PostNetReceive();
@@ -502,7 +502,7 @@ public:
     DECLARE_CLASS(AONSPlaneCraft,AONSVehicle,0|CLASS_Config|CLASS_NativeReplication,Onslaught)
 	INT* GetOptimizedRepList(BYTE* Recent, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map, UActorChannel* Channel);
 
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
 	// Actor interface.
 	virtual UBOOL Tick(FLOAT DeltaTime, enum ELevelTick TickType);
 	virtual void PostNetReceive();
@@ -571,7 +571,7 @@ public:
     DECLARE_CLASS(AONSHoverCraft,AONSVehicle,0|CLASS_Config|CLASS_NativeReplication,Onslaught)
 	INT* GetOptimizedRepList(BYTE* Recent, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map, UActorChannel* Channel);
 
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
 	// Actor interface.
 	virtual UBOOL Tick(FLOAT DeltaTime, enum ELevelTick TickType);
 	virtual void PostNetReceive();
@@ -651,7 +651,7 @@ public:
 	INT* GetOptimizedRepList(BYTE* Recent, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map, UActorChannel* Channel);
 	virtual UBOOL AdjustFlight(FLOAT ZDiff, UBOOL bFlyingDown, FLOAT Distance, AActor* GoalActor);
 
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
 	// Actor interface.
 	virtual UBOOL Tick(FLOAT DeltaTime, enum ELevelTick TickType);
 	virtual void PostNetReceive();

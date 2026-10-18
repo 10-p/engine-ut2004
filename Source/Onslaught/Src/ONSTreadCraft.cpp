@@ -8,7 +8,7 @@ Revision history:
 
 #include "OnslaughtPrivate.h"
 
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
 
 // Calculate forces for thrust/turning etc. and apply them.
 void AONSTreadCraft::UpdateVehicle(FLOAT DeltaTime)
@@ -16,22 +16,6 @@ void AONSTreadCraft::UpdateVehicle(FLOAT DeltaTime)
 	guard(AONSTreadCraft::UpdateVehicle);
 
 	BikeMPH = 0.0f;
-
-	// DIAGNOSTIC
-	{
-		static INT sTreadUV = 0;
-		sTreadUV++;
-		if(sTreadUV <= 5 || sTreadUV % 1000 == 0)
-		{
-			FILE* lf = fopen("/tmp/jolt-physics.log", "a");
-			if(lf) {
-				fprintf(lf, "TREAD-UV #%d awake=%d ctrl=%d oThrust=%.2f oTurn=%.2f thr=%.2f\n",
-					sTreadUV, KIsAwake() ? 1 : 0, Controller ? 1 : 0,
-					OutputThrust, OutputTurn, Throttle);
-				fclose(lf);
-			}
-		}
-	}
 
 	// Dont go adding forces if vehicle is asleep.
 	if( !KIsAwake() )

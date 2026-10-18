@@ -126,7 +126,7 @@ ULevel::ULevel( UEngine* InEngine, UBOOL InRootOutside )
 
 	GScriptEntryTag = GScriptCycles = FinishedPrecaching = 0;
 
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
     this->KWorld = NULL;
     this->KBridge = NULL;
 	this->KAssetFactory = NULL;
@@ -485,7 +485,7 @@ void ULevel::Destroy()
 	for(INT ProjectorIndex = 0;ProjectorIndex < DynamicProjectors.Num();ProjectorIndex++)
 		DynamicProjectors(ProjectorIndex)->RemoveReference();
 
-#if defined(WITH_KARMA) || defined(WITH_PHYSICS)
+#ifdef WITH_KARMA
     KTermLevelKarma(this);
 #endif
 
