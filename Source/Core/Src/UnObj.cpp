@@ -3557,7 +3557,7 @@ ULinkerLoad* UObject::GetPackageLinker
 		{
 			// Resolve filename from package name.
 			if( !InOuter )
-#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
+#if UE_FAIL_SOFT_LOAD
 				return NULL;
 #else
 				appThrowf( LocalizeError(TEXT("PackageResolveFailed"),TEXT("Core")) );
@@ -3567,7 +3567,7 @@ ULinkerLoad* UObject::GetPackageLinker
 				// See about looking in the dll.
 				if( (LoadFlags & LOAD_AllowDll) && InOuter->IsA(UPackage::StaticClass()) && ((UPackage*)InOuter)->DllHandle )
 					return NULL;
-#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
+#if UE_FAIL_SOFT_LOAD
 				debugf( NAME_Warning, TEXT("Package not found: %s (returning NULL, not throwing)"), InOuter->GetName() );
 				return NULL;
 #else
@@ -3579,7 +3579,7 @@ ULinkerLoad* UObject::GetPackageLinker
 		{
 			// Verify that the file exists.
 			if( !appFindPackageFile( InFilename, CompatibleGuid, NewFilename, GenerationLevel ) )
-#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
+#if UE_FAIL_SOFT_LOAD
 			{
 				// Return NULL instead of throwing. C++ exceptions cannot unwind across
 				// this Asyncify-instrumented frame (it does async file I/O via
@@ -3615,7 +3615,7 @@ ULinkerLoad* UObject::GetPackageLinker
 			if( InOuter==NULL )
 			{
 				if( !FilenamePkg )
-#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
+#if UE_FAIL_SOFT_LOAD
 				{
 					debugf( NAME_Warning, TEXT("[PACKAGE-LOAD] Could not derive a package name from file '%s'"), InFilename );
 					return NULL;
@@ -3638,7 +3638,7 @@ ULinkerLoad* UObject::GetPackageLinker
 
 		// Make sure the package is accessible in the sandbox.
 		if( Sandbox && !Sandbox->SupportsPackage(InOuter) )
-#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
+#if UE_FAIL_SOFT_LOAD
 		{
 			debugf( NAME_Warning, TEXT("[PACKAGE-LOAD] Package '%s' is not allowed in this context (sandbox)"), InOuter->GetName() );
 			return NULL;
@@ -3648,13 +3648,13 @@ ULinkerLoad* UObject::GetPackageLinker
 #endif
 
 		// Create new linker.
-#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
+#if UE_FAIL_SOFT_LOAD
 		const UBOOL FreshLinker = !Result;	// only a linker made here may be dropped below
 #endif
 		if( !Result )
 		{
 			Result = new ULinkerLoad( InOuter, NewFilename, LoadFlags );
-#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
+#if UE_FAIL_SOFT_LOAD
 			// The ULinkerLoad constructor fails soft here: a corrupt / incompatible / unopenable
 			// package leaves Success != 1 and logs a message at the failure point. Drop the
 			// half-built linker and return NULL (a failed load, not an abort). Only a freshly
@@ -3670,7 +3670,7 @@ ULinkerLoad* UObject::GetPackageLinker
 
 		// Verify compatibility.
 		if( CompatibleGuid && Result->Summary.Guid!=*CompatibleGuid )
-#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
+#if UE_FAIL_SOFT_LOAD
 		{
 			debugf( NAME_Warning, TEXT("[PACKAGE-LOAD] '%s' is an incompatible version of package '%s' (GUID mismatch)"), NewFilename, InOuter->GetName() );
 			// Drop the linker only if it was made here: one that was already there belongs to a package in
@@ -3852,12 +3852,12 @@ UObject* UObject::StaticLoadObject( UClass* ObjectClass, UObject* InOuter, const
 			Result = Linker->Create( ObjectClass, InName, LoadFlags, 0 );
 		if( !Result )
 			Result = StaticFindObject( ObjectClass, InOuter, InName );
-#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
+#if UE_FAIL_SOFT_LOAD
 		if( !Result )
 		{
-			// Don't throw — the catch below can't fire across Asyncify frames, so the
-			// throw would escape uncaught and abort the module. Return NULL; callers
-			// (DynamicLoadObject → None, LoadMap → "could not load map") handle it.
+			// Fail soft: return NULL instead of throwing (on the web the catch below could not
+			// fire across Asyncify frames); callers (DynamicLoadObject → None, LoadMap →
+			// "could not load map") handle it.
 			EndLoad();
 			return NULL;
 		}

@@ -278,11 +278,10 @@ void UGameEngine::Init()
 
 	// Handle failure.
 	if( !Success )
-#ifdef __EMSCRIPTEN__
+#if UE_FAIL_SOFT_LOAD
 	{
-		// Web: a bad startup map must not be fatal. appErrorf is GError->Logf, which
-		// throws to unwind to the guarded frame, and that throw can't cross Asyncify
-		// frames (uncaught abort). Entry is already loaded, so fall back to the menu
+		// A bad startup map is not fatal (on the web appErrorf's throw could not even cross the
+		// Asyncify frames to the guarded one). Entry is already loaded, so fall back to the menu
 		// and let the player pick a valid map or host from the UI.
 		debugf( TEXT("Startup map '%s' failed to load (%s) — falling back to the menu"), Parm, *Error );
 		if( !GLevel )
@@ -2167,8 +2166,8 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 					PackageMap->List(i).RemoteGeneration
 				);
 			}
-#ifdef __EMSCRIPTEN__
-			// On the web GetPackageLinker answers NULL for a package it cannot have (not found, or found in
+#if UE_FAIL_SOFT_LOAD
+			// Fail-soft GetPackageLinker answers NULL for a package it cannot have (not found, or found in
 			// another version than the server's: [PACKAGE-LOAD] ... GUID mismatch), and VerifyLinker would
 			// then call Verify() on NULL (in wasm that reads low memory instead of trapping). Fail the join
 			// here, with the reason a native client shows, before the live level is torn down.
@@ -2196,11 +2195,11 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 		ULevel* LoadedLevel = LoadObject<ULevel>( MapParent, TEXT("MyLevel"), *URL.Map, LOAD_Verify | LOAD_Throw | LOAD_NoWarn, NULL );
 		EndLoad();
 		(void)LoadedLevel;
-#ifdef __EMSCRIPTEN__
-		// On the web SafeLoadError does not re-throw (Asyncify breaks the cross-frame exception unwind
-		// the catch below relies on), so a failed map load arrives here as a NULL object instead of an
-		// exception. Route it through the same failure the catch handler performs: report "could not
-		// load map" and return to the menu.
+#if UE_FAIL_SOFT_LOAD
+		// A fail-soft load answers NULL instead of throwing (and on the web SafeLoadError does not
+		// re-throw: Asyncify breaks the cross-frame exception unwind the catch below relies on), so a
+		// failed map load arrives here as a NULL object. Route it through the same failure the catch
+		// handler performs: report "could not load map" and return to the menu.
 		if( !LoadedLevel )
 		{
 			debugf( TEXT("LoadMap failed: map '%s' could not be loaded — failing gracefully (no abort)"), *URL.Map );

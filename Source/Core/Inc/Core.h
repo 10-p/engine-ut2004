@@ -116,6 +116,15 @@ public:
     #define PLATFORM_32BITS 1
 #endif
 
+// UE_FAIL_SOFT_LOAD: on the web and Android a missing, corrupt or incompatible package makes the load
+// return NULL with a [PACKAGE-LOAD] warning instead of throwing, and a bad startup map or a failed join
+// returns to the menu. Native builds keep Epic's fatal errors.
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
+	#define UE_FAIL_SOFT_LOAD 1
+#else
+	#define UE_FAIL_SOFT_LOAD 0
+#endif
+
 #if ((PLATFORM_64BITS) && (!SUPPORTS_PRAGMA_PACK))
 #error You really need SUPPORTS_PRAGMA_PACK on 64-bit systems.
 #endif

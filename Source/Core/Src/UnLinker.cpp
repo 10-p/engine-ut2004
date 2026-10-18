@@ -265,11 +265,11 @@ ULinkerLoad::ULinkerLoad( UObject* InParent, const TCHAR* InFilename, DWORD InLo
 
 	Loader = GFileManager->CreateFileReader( InFilename, 0, GError );
 	if( !Loader )
-#ifdef __EMSCRIPTEN__
+#if UE_FAIL_SOFT_LOAD
 	{
-		// Fail soft: Asyncify can't unwind a throw out of this (it does async file I/O),
-		// so leave Success != 1 and emit a clear message. GetPackageLinker drops the
-		// half-built linker and returns NULL — the load fails with a message, not an abort.
+		// Fail soft (on the web a throw could not unwind out of this async file I/O): leave
+		// Success != 1 and emit a clear message. GetPackageLinker drops the half-built
+		// linker and returns NULL — the load fails with a message, not an abort.
 		debugf( NAME_Warning, TEXT("[PACKAGE-LOAD] Could not open package file '%s'"), InFilename );
 		return;
 	}
@@ -280,7 +280,7 @@ ULinkerLoad::ULinkerLoad( UObject* InParent, const TCHAR* InFilename, DWORD InLo
 	// Error if linker already loaded.
 	{for( INT i=0; i<GObjLoaders.Num(); i++ )
 		if( GetLoader(i)->LinkerRoot == LinkerRoot )
-#ifdef __EMSCRIPTEN__
+#if UE_FAIL_SOFT_LOAD
 		{ debugf( NAME_Warning, TEXT("[PACKAGE-LOAD] Package '%s' is already loaded"), LinkerRoot->GetName() ); return; }
 #else
 			appThrowf( LocalizeError(TEXT("LinkerExists"),TEXT("Core")), LinkerRoot->GetName() );
@@ -337,7 +337,7 @@ ULinkerLoad::ULinkerLoad( UObject* InParent, const TCHAR* InFilename, DWORD InLo
 	if( Summary.Tag != PACKAGE_FILE_TAG )
 	{
 		GWarn->Logf( LocalizeError(TEXT("BinaryFormat"),TEXT("Core")), *Filename );
-#ifdef __EMSCRIPTEN__
+#if UE_FAIL_SOFT_LOAD
 		debugf( NAME_Warning, TEXT("[PACKAGE-LOAD] '%s' is not a valid Unreal package (corrupt file or wrong format) — skipping"), *Filename );
 		return;
 #else
@@ -355,7 +355,7 @@ ULinkerLoad::ULinkerLoad( UObject* InParent, const TCHAR* InFilename, DWORD InLo
 	// Validate the summary.
 	guard(CheckVersion);
 	if( Summary.GetFileVersion() < PACKAGE_MIN_VERSION )
-#ifdef __EMSCRIPTEN__
+#if UE_FAIL_SOFT_LOAD
 	{
 		debugf( NAME_Warning, TEXT("[PACKAGE-LOAD] '%s' is an incompatible (older) package — file version %i, engine needs >= %i"), *Filename, Summary.GetFileVersion(), PACKAGE_MIN_VERSION );
 		return;
@@ -619,10 +619,10 @@ void ULinkerLoad::VerifyImport( INT i )
 						debugf( TEXT("Broken import: %s %s (file %s)"), *Import.ClassName, *GetImportFullName(i), *Import.SourceLinker->Filename );
 						return;
 					}
-#ifdef __EMSCRIPTEN__
+#if UE_FAIL_SOFT_LOAD
 					// Fail soft: the dependency package is present but the referenced object
 					// is private/incompatible (an incompatible mod). Mark broken links +
-					// message and continue, instead of a throw that Asyncify can't unwind.
+					// message and continue instead of throwing.
 					if( Cast<UPackage>(LinkerRoot) )
 						Cast<UPackage>(LinkerRoot)->PackageFlags |= PKG_BrokenLinks;
 					debugf( NAME_Warning, TEXT("[PACKAGE-LOAD] '%s' references a private/incompatible object: %s %s — skipping (broken link)"), *Import.SourceLinker->Filename, *Import.ClassName, *GetImportFullName(i) );
@@ -680,10 +680,10 @@ void ULinkerLoad::VerifyImport( INT i )
 				debugf( TEXT("Broken import: %s %s (file %s)"), *Import.ClassName, *GetImportFullName(i), *Import.SourceLinker->Filename );
 				return;
 			}
-#ifdef __EMSCRIPTEN__
+#if UE_FAIL_SOFT_LOAD
 			// Fail soft: the dependency package is present but the referenced object is
 			// missing (an incompatible mod). Mark broken links + message and continue,
-			// instead of a throw that Asyncify can't unwind.
+			// instead of throwing.
 			if( Cast<UPackage>(LinkerRoot) )
 				Cast<UPackage>(LinkerRoot)->PackageFlags |= PKG_BrokenLinks;
 			debugf( NAME_Warning, TEXT("[PACKAGE-LOAD] '%s' is missing referenced content: %s %s — skipping (broken link; package may be an incompatible mod)"), *Import.SourceLinker->Filename, *Import.ClassName, *GetImportFullName(i) );
