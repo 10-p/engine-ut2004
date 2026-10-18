@@ -3,9 +3,10 @@ name: build
 # CI for the engine build matrix: build on every push and pull request and upload the binaries as
 # workflow artifacts (and the newest build of a tracked branch as the rolling "latest" release).
 #
-# It does not run the game (a hosted runner has no GPU) and does not build the web target: the web link
-# of this engine embeds `${UE_ASSETS_DIR}/System/Build.ini`, a file of the retail asset tree, which is not
-# in this repository.
+# It does not run the game (a hosted runner has no GPU). The web job builds `wasm-perf` to prove it links
+# and emits its descriptor, and uploads nothing: the web link embeds `${UE_ASSETS_DIR}/System/Build.ini` and
+# `System/Packages.md5`, files of the retail asset tree that are not in this repository, so the job links
+# empty stand-ins and its output is not a playable artifact.
 
 on:
   push:
@@ -269,6 +270,56 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  web:
+    name: web (wasm-perf)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # emsdk must be on PATH before cmake configures (emcc is probed then); the preset's toolchain file
+      # reads $EMSDK. The version is the one BUILD.md names.
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 5.0.7
+          actions-cache-folder: emsdk-cache
+
+      # A fresh emsdk has an empty ports cache, and the SDL2 port's headers reach the sysroot only once
+      # the port is built.
+      - name: Build the SDL2 port into the emsdk sysroot
+        run: embuilder build sdl2
+
+      - name: Cache fetched dependencies
+        uses: actions/cache@v4
+        with:
+          path: build-wasm-perf/_deps
+          key: deps-wasm-perf-${{ hashFiles('CMakeLists.txt', 'Source/*/CMakeLists.txt', 'cmake/*.cmake') }}
+
+      # The two install files the link embeds, as empty stand-ins (see the header).
+      - name: Stand-in asset folder
+        run: |
+          mkdir -p "$RUNNER_TEMP/ut2004/System"
+          : > "$RUNNER_TEMP/ut2004/System/Build.ini"
+          : > "$RUNNER_TEMP/ut2004/System/Packages.md5"
+
+      - name: Configure
+        run: cmake --preset wasm-perf -DUE_ASSETS_DIR="$RUNNER_TEMP/ut2004"
+
+      - name: Build
+        run: cmake --build build-wasm-perf -j$(nproc)
+
+      # The descriptor the frontend's build validates: present, and at the ABI version of vendor/glue/ue_abi.h.
+      - name: Check the artifact and its meta.json
+        run: |
+          set -euo pipefail
+          out=build-wasm-perf/Source/SDLLaunch
+          for f in SDLLaunch.js SDLLaunch.wasm SDLLaunch.data meta.json; do
+            test -s "$out/$f" || { echo "::error::$out/$f is missing or empty"; exit 1; }
+          done
+          want=$(sed -n 's/^#define UE_ABI_VERSION[[:space:]]\+\([0-9]\+\).*/\1/p' vendor/glue/ue_abi.h)
+          got=$(python3 -c "import json;print(json.load(open('$out/meta.json'))['abiVersion'])")
+          echo "meta.json abiVersion=$got, ue_abi.h UE_ABI_VERSION=$want"
+          [ "$got" = "$want" ] || { echo "::error::meta.json abiVersion $got != UE_ABI_VERSION $want"; exit 1; }
+
   android:
     name: android (x86_64 + arm64 + armv7 APK)
     runs-on: ubuntu-24.04
@@ -328,8 +379,8 @@ jobs:
   # `permissions: contents: write` is required: this repository's default workflow token is read-only,
   # and without it the final step fails with HTTP 403.
   #
-  # The web target is not in this workflow (see the header), so "latest" carries the native, Windows
-  # and Android builds only.
+  # The web job uploads nothing (see the header), so "latest" carries the native, Windows and Android
+  # builds only.
   latest:
     name: rolling "latest" release
     needs: [linux, windows, android]
