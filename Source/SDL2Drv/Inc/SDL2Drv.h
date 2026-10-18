@@ -54,6 +54,7 @@ class USDL2Client : public UClient, public FNotifyHook
     // Configuration.
     BITFIELD            StartupFullscreen;
     BITFIELD            UseJoystick;        // game pads on (default) or off; read every tick (USDL2Viewport::UpdateInput)
+    INT                 WebGLVersion;       // the web's WebGL context: 1 (default) or 2; -WEBGL=<n> overrides it
 
     // Variables.
     UBOOL               InMenuLoop;

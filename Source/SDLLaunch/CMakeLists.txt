@@ -213,6 +213,9 @@ if(EMSCRIPTEN)
     -sASYNCIFY_STACK_SIZE=262144
     "-sASYNCIFY_IMPORTS=['emscripten_sleep','emscripten_set_main_loop','__syscall_openat']"
     -sFULL_ES2=1
+    # WebGL 1 by default, WebGL 2 on request ([SDL2Drv.SDL2Client] WebGLVersion, -WEBGL=<n>; SDL2Viewport.cpp).
+    -sMIN_WEBGL_VERSION=1
+    -sMAX_WEBGL_VERSION=2
     -sUSE_SDL=2
     -sALLOW_MEMORY_GROWTH=1
     # PThread: the host needs the worker list to hand the FS sync channel to the thread that runs main().

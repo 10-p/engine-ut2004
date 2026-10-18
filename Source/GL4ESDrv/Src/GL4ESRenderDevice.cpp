@@ -560,7 +560,17 @@ UBOOL UGL4ESRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Ful
 
 			// Configure GL4ES before initialization. Every LIBGL_* value is fixed here; the
 			// user's environment is not passed through.
+#if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
+			// The viewport created the context (SDL2Viewport.cpp): on WebGL 2 GL4ES runs its OpenGL ES 3 back end.
+			{
+				EmscriptenWebGLContextAttributes CtxAttrs;
+				const UBOOL WebGL2 = emscripten_webgl_get_context_attributes( emscripten_webgl_get_current_context(), &CtxAttrs ) == EMSCRIPTEN_RESULT_SUCCESS
+					&& CtxAttrs.majorVersion >= 2;
+				setenv("LIBGL_ES", WebGL2 ? "3" : "2", 1);
+			}
+#else
 			setenv("LIBGL_ES", "2", 1);               // Target GLES2
+#endif
 			setenv("LIBGL_NOBANNER", "1", 1);          // Suppress GL4ES banner
 			setenv("LIBGL_NOERROR", "0", 1);           // Keep error reporting for debugging
 			// LIBGL_USEVBO=1: real buffer objects. With 0, gl4es hands glVertexAttribPointer client-side

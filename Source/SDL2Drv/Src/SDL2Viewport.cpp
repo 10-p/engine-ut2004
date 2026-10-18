@@ -975,9 +975,12 @@ UBOOL USDL2Viewport::ResizeViewport( DWORD NewBlitFlags, INT InNewX, INT InNewY,
         // context serves every web device: GL4ESDrv renders into it, Engine.NullRenderDevice never draws.
         EmscriptenWebGLContextAttributes Attrs;
         emscripten_webgl_init_context_attributes( &Attrs );
-        // majorVersion 1 == WebGL 1.0 == GLES2, which is what GL4ES targets (DEFAULT_ES=2) and what the
-        // SDL path requests via CONTEXT_PROFILE_ES 2.0.
-        Attrs.majorVersion              = 1;
+        // WebGL 1 (OpenGL ES 2, what the SDL path requests via CONTEXT_PROFILE_ES 2.0) by default;
+        // [SDL2Drv.SDL2Client] WebGLVersion=2 or -WEBGL=2 asks for WebGL 2 (OpenGL ES 3), on which GL4ES runs its
+        // OpenGL ES 3 back end (LIBGL_ES=3, GL4ESRenderDevice::SetRes). A browser without WebGL 2 gets WebGL 1.
+        INT WebGLVersion = GetOuterUSDL2Client()->WebGLVersion;
+        Parse( appCmdLine(), TEXT("WEBGL="), WebGLVersion );
+        Attrs.majorVersion              = ( WebGLVersion == 2 ) ? 2 : 1;
         Attrs.minorVersion              = 0;
         Attrs.alpha                     = 0;
         Attrs.depth                     = 1;
@@ -1011,6 +1014,12 @@ UBOOL USDL2Viewport::ResizeViewport( DWORD NewBlitFlags, INT InNewX, INT InNewY,
         Attrs.explicitSwapControl       = 1;
         Attrs.renderViaOffscreenBackBuffer = 1;
         EMSCRIPTEN_WEBGL_CONTEXT_HANDLE WebGLCtx = emscripten_webgl_create_context( "#canvas", &Attrs );
+        if( WebGLCtx <= 0 && Attrs.majorVersion == 2 )
+        {
+            debugf( NAME_Init, TEXT("No WebGL 2 context on the worker (handle %i): WebGL 1"), (INT)WebGLCtx );
+            Attrs.majorVersion = 1;
+            WebGLCtx = emscripten_webgl_create_context( "#canvas", &Attrs );
+        }
         if( WebGLCtx <= 0 )
         {
             debugf( NAME_Init, TEXT("Could not create WebGL context on the worker (handle %i)"), (INT)WebGLCtx );
@@ -1023,7 +1032,7 @@ UBOOL USDL2Viewport::ResizeViewport( DWORD NewBlitFlags, INT InNewX, INT InNewY,
         }
         // Stash it where the rest of the viewport already tests for "do we have GL".
         GLContext = (SDL_GLContext)(intptr_t)WebGLCtx;
-        debugf( NAME_Init, TEXT("Created WebGL context on the worker (handle %i)"), (INT)WebGLCtx );
+        debugf( NAME_Init, TEXT("Created WebGL %i.0 context on the worker (handle %i)"), (INT)Attrs.majorVersion, (INT)WebGLCtx );
 #else
         // Check which render device is active.
         const TCHAR* RenDevStr = GConfig->GetStr(TEXT("Engine.Engine"), TEXT("RenderDevice"), TEXT("System"));

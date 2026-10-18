@@ -35,6 +35,8 @@ void USDL2Client::StaticConstructor()
     // The retail key the game's own "Enable Joystick" option writes (GUI2K4: `set ini:Engine.Engine.ViewportManager
     // UseJoystick`); on by default.
     new(GetClass(),TEXT("UseJoystick"),       RF_Public)UBoolProperty(CPP_PROPERTY(UseJoystick),       TEXT("Joystick"), CPF_Config );
+    // The web's WebGL context version (USDL2Viewport::ResizeViewport); read by nothing natively.
+    new(GetClass(),TEXT("WebGLVersion"),      RF_Public)UIntProperty (CPP_PROPERTY(WebGLVersion),      TEXT("Display"), CPF_Config );
 
     // Compiled defaults for the inherited UClient settings. UClient::StaticConstructor (Engine/Src/UnCamMgr.cpp)
     // registers its CPF_Config properties without values, and a retail UT2004.ini has no [SDL2Drv.SDL2Client]
@@ -61,6 +63,7 @@ void USDL2Client::StaticConstructor()
     WeatherEffects          = 1;
     StartupFullscreen       = 0;
     UseJoystick             = 1;
+    WebGLVersion            = 1;
 
     // The web build does not take its render size from these: USDL2Viewport::ResizeViewport queries the canvas
     // whenever the requested size is 0x0. These are the native window size and the fallback.
