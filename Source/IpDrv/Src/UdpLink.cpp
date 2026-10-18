@@ -51,7 +51,7 @@ void AUdpLink::execBindPort( FFrame& Stack, RESULT_DECL )
 	{
 #ifdef __EMSCRIPTEN__
 		// BSD sockets don't exist on the web. Return 0 (failure) so the calling script handles it.
-		debugf( NAME_DevNet, TEXT("[WebRTC] AUdpLink::BindPort: skipped on Emscripten (no BSD sockets)") );
+		debugf( NAME_DevNet, TEXT("AUdpLink::BindPort: skipped on the web (no BSD sockets)") );
 		*(INT*)Result = 0;
 		return;
 #endif

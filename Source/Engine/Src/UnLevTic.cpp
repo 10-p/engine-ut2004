@@ -1366,7 +1366,7 @@ INT ULevel::ServerTickClients( FLOAT DeltaSeconds )
 							static INT UfrontRelClose = 0;
 							if( UfrontRelClose++ < 40 )
 								debugf( NAME_DevNetTraffic,
-									TEXT("[UFRONT-DIAG] RELEVANCE CLOSE #%i: actor=%s class=%s cansee=%i alwaysRel=%i onlyOwner=%i ")
+									TEXT("[NET-DIAG] RELEVANCE CLOSE #%i: actor=%s class=%s cansee=%i alwaysRel=%i onlyOwner=%i ")
 									TEXT("relTime=%.2f driverTime=%.2f age=%.2f timeout=%.2f | viewer=%s realViewer=%s viewTarget=%s ")
 									TEXT("connState=%i sinceRecv=%.2f"),
 									UfrontRelClose,

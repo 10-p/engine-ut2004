@@ -3076,7 +3076,7 @@ void appPlatformInit()
 	// appSeconds() in UnGnuG.h is `#if 0`'d); its readers here are stats, debugf lines and the -benchmark
 	// frame log.
 	GSecondsPerCycle = 0.000001;
-	debugf( NAME_Init, TEXT("[ufront] appCycles() is a microsecond counter; GSecondsPerCycle pinned to %e"), GSecondsPerCycle );
+	debugf( NAME_Init, TEXT("appCycles() is a microsecond counter; GSecondsPerCycle pinned to %e"), GSecondsPerCycle );
 #endif
 
 	unguard;

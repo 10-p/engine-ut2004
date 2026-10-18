@@ -390,7 +390,7 @@ void FTcpLink::Listen( INT LocalPort )
 {
 	guard(FTcpLink::Listen);
 #ifdef __EMSCRIPTEN__
-	debugf( NAME_DevNet, TEXT("[WebRTC] FTcpLink::Listen(%d): skipped on Emscripten"), LocalPort );
+	debugf( NAME_DevNet, TEXT("FTcpLink::Listen(%d): skipped on the web (no BSD sockets)"), LocalPort );
 	return;
 #endif
 
@@ -674,7 +674,7 @@ void FTcpLink::Connect( FIpAddr RemoteAddr )
 {
 	guard(FTcpLink::Connect);
 #ifdef __EMSCRIPTEN__
-	debugf( NAME_DevNet, TEXT("[WebRTC] FTcpLink::Connect: skipped on Emscripten") );
+	debugf( NAME_DevNet, TEXT("FTcpLink::Connect: skipped on the web (no BSD sockets)") );
 	return;
 #endif
 
@@ -1014,7 +1014,7 @@ UBOOL FUdpLink::BindPort( INT InPort )
 	guard(FUdpLink::BindPort);
 #ifdef __EMSCRIPTEN__
 	// BSD sockets don't exist on the web. Return 0 so callers handle it.
-	debugf( NAME_DevNet, TEXT("[WebRTC] FUdpLink::BindPort(%d): skipped on Emscripten"), InPort );
+	debugf( NAME_DevNet, TEXT("FUdpLink::BindPort(%d): skipped on the web (no BSD sockets)"), InPort );
 	return 0;
 #endif
 	SocketData.Port				= InPort;

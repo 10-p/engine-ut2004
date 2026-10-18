@@ -392,7 +392,7 @@ UBOOL ULevel::DestroyActor( AActor* ThisActor, UBOOL bNetForce )
 		if( DyingPC && DyingPC->Player && DyingPC->Player->Actor==DyingPC )
 		{
 			debugf( NAME_Warning,
-				TEXT("[ufront] DestroyActor: %s (0x%08x, class %s, role=%i, netforce=%i) was the INSTALLED viewport actor — cleared Player->Actor (would otherwise dangle)"),
+				TEXT("DestroyActor: %s (0x%08x, class %s, role=%i, netforce=%i) was the INSTALLED viewport actor — cleared Player->Actor (would otherwise dangle)"),
 				DyingPC->GetName(), (DWORD)(PTRINT)DyingPC, DyingPC->GetClass()->GetName(),
 				(INT)DyingPC->Role, (INT)bNetForce );
 			DyingPC->Player->Actor = NULL;
@@ -400,7 +400,7 @@ UBOOL ULevel::DestroyActor( AActor* ThisActor, UBOOL bNetForce )
 		else if( DyingPC )
 		{
 			debugf( NAME_DevNet,
-				TEXT("[UFRONT-DIAG] DestroyActor: PlayerController %s (0x%08x, class %s, role=%i, netforce=%i, Player=%s) destroyed"),
+				TEXT("[NET-DIAG] DestroyActor: PlayerController %s (0x%08x, class %s, role=%i, netforce=%i, Player=%s) destroyed"),
 				DyingPC->GetName(), (DWORD)(PTRINT)DyingPC, DyingPC->GetClass()->GetName(),
 				(INT)DyingPC->Role, (INT)bNetForce,
 				DyingPC->Player ? DyingPC->Player->GetName() : TEXT("none") );

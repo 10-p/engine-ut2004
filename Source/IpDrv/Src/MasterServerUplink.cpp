@@ -939,7 +939,7 @@ void AMasterServerUplink::execReconnect( FFrame& Stack, RESULT_DECL )
 	// No master-server uplink on the web: servers are found through WebRTC discovery or the game
 	// proxy's list. The FMasterServerUplinkLink constructor casts NetDriver to UTcpNetDriver, which
 	// the web's net drivers are not.
-	debugf( NAME_DevNet, TEXT("[WebRTC] MasterServerUplink::Reconnect: skipped on Emscripten (using PeerJS discovery)") );
+	debugf( NAME_DevNet, TEXT("MasterServerUplink::Reconnect: skipped on the web (servers are found through the host)") );
 	return;
 #endif
 	if( !LinkPtr )

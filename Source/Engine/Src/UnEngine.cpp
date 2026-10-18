@@ -312,7 +312,7 @@ UBOOL UEngine::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 		if( ParseCommand(&FlushStr,TEXT("FLUSHCONFIG")) )
 		{
 			GConfig->Flush( 0 );
-			Ar.Log( TEXT("ufront: flushed config to disk (ok)") );
+			Ar.Log( TEXT("FLUSHCONFIG: flushed config to disk (ok)") );
 			return 1;
 		}
 	}

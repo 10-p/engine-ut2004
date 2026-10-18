@@ -1029,7 +1029,7 @@ UBOOL USDL2Viewport::ResizeViewport( DWORD NewBlitFlags, INT InNewX, INT InNewY,
             }
             Attrs.antialias = ( MsBuffers > 0 && MsSamples > 1 ) ? 1 : 0;
             // NAME_Log: the inis suppress Init once the engine is up, and the viewport comes after.
-            debugf( NAME_Log, TEXT("ufront 2.50: WebGL antialias=%i (buffers=%i samples=%i from [%s])"),
+            debugf( NAME_Log, TEXT("WebGL antialias=%i (buffers=%i samples=%i from [%s])"),
                 (INT)Attrs.antialias, MsBuffers, MsSamples, RenDevStr ? RenDevStr : TEXT("<none>") );
         }
         // explicitSwapControl + renderViaOffscreenBackBuffer make the frame ours to present: without them

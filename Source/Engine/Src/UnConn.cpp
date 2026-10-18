@@ -1009,7 +1009,7 @@ void UNetConnection::HandleClientPlayer( APlayerController *PC )
 	debugf(TEXT("%s setplayer %s"),PC->GetName(), Viewport->GetName());
 	// Devnet diagnostic: the pointer the viewport now holds, so a later "unusable Viewport->Actor" can be
 	// matched against the object installed here.
-	debugf( NAME_DevNet, TEXT("[UFRONT-DIAG] HandleClientPlayer: viewport %s -> actor %s (0x%08x, class %s)"),
+	debugf( NAME_DevNet, TEXT("[NET-DIAG] HandleClientPlayer: viewport %s -> actor %s (0x%08x, class %s)"),
 		Viewport->GetName(), PC->GetName(), (DWORD)(PTRINT)PC, PC->GetClass()->GetName() );
 	PC->GetLevel()->Engine->Client->Viewports(0)->Input->ResetInput();
 //	PC->GetLevel()->Engine->Flush( 1 );

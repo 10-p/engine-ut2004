@@ -15,7 +15,7 @@ extern FString WebRTCDiscovery_RoomForHost( const TCHAR* Host );
 #include <emscripten.h>
 // Engine pointer (set in SDLLaunch.cpp after InitEngine). Used to reach the
 // current GameInfo for the listen-server status push, and for deferred connect.
-extern UEngine* GWebRTCEngine;
+extern UEngine* GEngineForExec;
 #endif
 
 /*-----------------------------------------------------------------------------
@@ -423,7 +423,7 @@ void UWebRTCNetDriver::TickDispatch( FLOAT DeltaTime )
 			GLastStatusPush = Now;
 			FString SName = ServerName, MapName = TEXT("?"), GType = TEXT("");
 			INT Players = 0, MaxPl = 0;
-			UGameEngine* GE = Cast<UGameEngine>( GWebRTCEngine );
+			UGameEngine* GE = Cast<UGameEngine>( GEngineForExec );
 			if( GE && GE->GLevel )
 			{
 				if( GE->GLevel->URL.Map.Len() )
@@ -500,7 +500,7 @@ IMPLEMENT_CLASS(UWebRTCNetDriver);
 #ifdef __EMSCRIPTEN__
 
 // Declared in SDLLaunch.cpp — engine pointer for deferred connect.
-extern UEngine* GWebRTCEngine;
+extern UEngine* GEngineForExec;
 
 // C-callable function for deferred client connect from JS.
 // Called by shell.html setTimeout after the engine boots and game loop ticks.
@@ -512,7 +512,7 @@ extern "C" int EMSCRIPTEN_KEEPALIVE webrtc_deferred_open()
 
 	// Read the pending connect room from JS WITHOUT clearing it. Engine init on
 	// Emscripten is partly asynchronous (package file opens yield via Asyncify),
-	// so GWebRTCEngine may not be assigned yet when shell.html first polls. Keep
+	// so GEngineForExec may not be assigned yet when shell.html first polls. Keep
 	// the room name around so the next poll can retry — only clear it once the
 	// connect has actually been issued.
 	char roomBuf[128] = {0};
@@ -530,7 +530,7 @@ extern "C" int EMSCRIPTEN_KEEPALIVE webrtc_deferred_open()
 		return 0;
 	}
 
-	if( !GWebRTCEngine )
+	if( !GEngineForExec )
 	{
 		printf("[WebRTC] webrtc_deferred_open: engine not ready yet, will retry\n");
 		return 0;
@@ -539,7 +539,7 @@ extern "C" int EMSCRIPTEN_KEEPALIVE webrtc_deferred_open()
 	FString Room = ANSI_TO_TCHAR(roomBuf);
 	FString Cmd = FString::Printf( TEXT("open %s?connect"), *Room );
 	printf("[WebRTC] webrtc_deferred_open: calling Engine->Exec('%s')\n", TCHAR_TO_ANSI(*Cmd));
-	GWebRTCEngine->Exec( *Cmd, *GLog );
+	GEngineForExec->Exec( *Cmd, *GLog );
 	printf("[WebRTC] webrtc_deferred_open: Exec returned\n");
 
 	// Connect issued — clear the pending room so JS stops polling.

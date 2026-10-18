@@ -1203,7 +1203,7 @@ void PrimeQuickScreenshots()
 				GQuickScreenshots->Set( *Base.Locs(), (BYTE)1 );
 		}
 	}
-	debugf( NAME_RecordCache, TEXT("ufront 2.49: %i quick screenshot package(s) available"), GQuickScreenshots->Num() );
+	debugf( NAME_RecordCache, TEXT("%i quick screenshot package(s) available"), GQuickScreenshots->Num() );
 
 	unguard;
 }

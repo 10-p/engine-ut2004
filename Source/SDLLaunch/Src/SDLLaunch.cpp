@@ -620,7 +620,7 @@ inline CMainLoop::~CMainLoop(void)
 
 #ifdef __EMSCRIPTEN__
 // The engine behind ue_exec_command and the deferred WebRTC connect (webrtc_deferred_open in WebRTCNetDriver.cpp).
-UEngine* GWebRTCEngine = NULL;
+UEngine* GEngineForExec = NULL;
 
 // ue_exec_command (vendor/glue/ue_abi.h): runs a console command and returns its captured output. TCHAR is
 // ANSICHAR on the web (NO_UNICODE_OS_SUPPORT), so no encoding adapter is needed. The text is held in a static
@@ -630,10 +630,10 @@ extern "C" char* EMSCRIPTEN_KEEPALIVE ue_exec_command( const char* Cmd )
 {
 	static FString Captured;
 	Captured = TEXT("");
-	if( GWebRTCEngine && Cmd )
+	if( GEngineForExec && Cmd )
 	{
 		FStringOutputDevice Out;
-		GWebRTCEngine->Exec( Cmd, Out );
+		GEngineForExec->Exec( Cmd, Out );
 		Captured = Out;
 	}
 	return (char*)(*Captured);
@@ -685,7 +685,7 @@ static UEngine* InitEngine()
             {
                 if( IsRenderDeviceAvailable(ViewportPreference[i]) )
                 {
-                    debugf(TEXT("ufront 2.34: ViewportManager=%s is not in this build -> %s"), Viewport, ViewportPreference[i]);
+                    debugf(TEXT("ViewportManager=%s is not in this build -> %s"), Viewport, ViewportPreference[i]);
                     GConfig->SetString(TEXT("Engine.Engine"), TEXT("ViewportManager"), ViewportPreference[i]);
                     break;
                 }
@@ -706,7 +706,7 @@ static UEngine* InitEngine()
             {
                 if( IsRenderDeviceAvailable(DevicePreference[i]) )
                 {
-                    debugf(TEXT("ufront 2.34: RenderDevice=%s is not in this build -> %s"), Device, DevicePreference[i]);
+                    debugf(TEXT("RenderDevice=%s is not in this build -> %s"), Device, DevicePreference[i]);
                     GConfig->SetString(TEXT("Engine.Engine"), TEXT("RenderDevice"), DevicePreference[i]);
                     break;
                 }
@@ -722,12 +722,12 @@ static UEngine* InitEngine()
         {
             if( IsRenderDeviceAvailable(TEXT("ALAudio.ALAudioSubsystem")) )
             {
-                debugf(TEXT("ufront: AudioDevice=%s is not in this build -> ALAudio.ALAudioSubsystem"), Audio);
+                debugf(TEXT("AudioDevice=%s is not in this build -> ALAudio.ALAudioSubsystem"), Audio);
                 GConfig->SetString(TEXT("Engine.Engine"), TEXT("AudioDevice"), TEXT("ALAudio.ALAudioSubsystem"));
             }
             else
             {
-                debugf(NAME_Warning, TEXT("ufront: AudioDevice=%s is not in this build and no audio device is -> no sound"), Audio);
+                debugf(NAME_Warning, TEXT("AudioDevice=%s is not in this build and no audio device is -> no sound"), Audio);
                 GConfig->SetBool(TEXT("Engine.Engine"), TEXT("UseSound"), 0);
             }
         }
@@ -932,7 +932,7 @@ static void SelectRenderDevice()
 		{
 			if( IsRenderDeviceAvailable( Sw.Device ) )
 			{
-				debugf( TEXT("ufront 2.9: -%s selects render device %s"), Sw.Param, Sw.Device );
+				debugf( TEXT("-%s selects render device %s"), Sw.Param, Sw.Device );
 				GConfig->SetString( TEXT("Engine.Engine"), TEXT("RenderDevice"), Sw.Device );
 				if( Sw.Viewport )
 					GConfig->SetString( TEXT("Engine.Engine"), TEXT("ViewportManager"), Sw.Viewport );
@@ -942,7 +942,7 @@ static void SelectRenderDevice()
 			}
 			else
 			{
-				debugf( NAME_Warning, TEXT("ufront 2.9: render device %s not available (not compiled into this build) -> keeping the default; -%s ignored"), Sw.Device, Sw.Param );
+				debugf( NAME_Warning, TEXT("render device %s not available (not compiled into this build) -> keeping the default; -%s ignored"), Sw.Device, Sw.Param );
 			}
 			return; // first -*RENDERER switch present wins
 		}
@@ -959,11 +959,11 @@ static void PersistRenderChoiceIfSwitched()
 	if( appStricmp( Active, *GRequestedRenderDevice )==0 )
 	{
 		GConfig->Flush( 0 );
-		debugf( TEXT("ufront 2.9: persisted render device %s as the default (sticks next boot)"), *GRequestedRenderDevice );
+		debugf( TEXT("persisted render device %s as the default (sticks next boot)"), *GRequestedRenderDevice );
 	}
 	else
 	{
-		debugf( NAME_Warning, TEXT("ufront 2.9: render device changed from %s to %s during init -> not persisted"), *GRequestedRenderDevice, Active );
+		debugf( NAME_Warning, TEXT("render device changed from %s to %s during init -> not persisted"), *GRequestedRenderDevice, Active );
 	}
 }
 
@@ -1013,13 +1013,13 @@ static void ReexecIfPixomaticNeedsAnExecutableHeap( char** argv )
 	int persNow = personality( 0xffffffffUL );
 	if( persNow != -1 && (persNow & READ_IMPLIES_EXEC) )
 	{
-		debugf( TEXT("ufront 2.79: Pixomatic runs with an executable heap (READ_IMPLIES_EXEC)") );
+		debugf( TEXT("Pixomatic runs with an executable heap (READ_IMPLIES_EXEC)") );
 		return;
 	}
-	debugf( TEXT("ufront 2.79: the render device is Pixomatic -> re-exec with READ_IMPLIES_EXEC (its JIT runs code from the heap)") );
+	debugf( TEXT("the render device is Pixomatic -> re-exec with READ_IMPLIES_EXEC (its JIT runs code from the heap)") );
 	if( persNow != -1 && personality( (unsigned long)persNow | READ_IMPLIES_EXEC ) != -1 )
 		execv( "/proc/self/exe", argv );
-	debugf( NAME_Warning, TEXT("ufront 2.79: the re-exec failed (errno %i) -> Pixomatic runs on an NX heap and will likely crash"), errno );
+	debugf( NAME_Warning, TEXT("the re-exec failed (errno %i) -> Pixomatic runs on an NX heap and will likely crash"), errno );
 }
 #endif
 #if defined(__ANDROID__)
@@ -1333,7 +1333,7 @@ extern BYTE GLoadedALAudio; snprintf(&blah, 1, "%d", (int) GLoadedALAudio);
 			PersistRenderChoiceIfSwitched();
 
 #ifdef __EMSCRIPTEN__
-		GWebRTCEngine = Engine;
+		GEngineForExec = Engine;
 #endif
 
 		if( Engine )

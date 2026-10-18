@@ -3567,13 +3567,8 @@ ULinkerLoad* UObject::GetPackageLinker
 				// See about looking in the dll.
 				if( (LoadFlags & LOAD_AllowDll) && InOuter->IsA(UPackage::StaticClass()) && ((UPackage*)InOuter)->DllHandle )
 					return NULL;
-#if defined(__ANDROID__)
-				// The generic missing-package guard: WebRTCDrv is not in the Android build, so the
-				// line carries no "[WebRTC]" tag.
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
 				debugf( NAME_Warning, TEXT("Package not found: %s (returning NULL, not throwing)"), InOuter->GetName() );
-				return NULL;
-#elif defined(__EMSCRIPTEN__)
-				debugf( NAME_Warning, TEXT("[WebRTC] Package not found: %s (returning NULL, not throwing)"), InOuter->GetName() );
 				return NULL;
 #else
 				appThrowf( LocalizeError(TEXT("PackageNotFound"),TEXT("Core")), InOuter->GetName() );
@@ -3591,11 +3586,7 @@ ULinkerLoad* UObject::GetPackageLinker
 				// appFindPackageFile), so even our own catch below won't fire — the
 				// throw would escape uncaught and abort the module. Callers handle a
 				// NULL linker (→ NULL object → graceful "could not load map").
-#if defined(__ANDROID__)
 				debugf( NAME_Warning, TEXT("Package file not found: %s (returning NULL, not throwing)"), InFilename );
-#else
-				debugf( NAME_Warning, TEXT("[WebRTC] Package file not found: %s (returning NULL, not throwing)"), InFilename );
-#endif
 				return NULL;
 			}
 #else

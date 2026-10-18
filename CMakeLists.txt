@@ -71,12 +71,12 @@ endif()
 # The SDL 1.2 stack does not exist: refuse a request for it by name (an old script or -DUSE_SDL12=ON).
 if(DEFINED USE_SDL12 AND USE_SDL12)
   message(FATAL_ERROR
-    "USE_SDL12=ON: the SDL 1.2 stack was retired in ufront 2.34. The SDL2 build now contains BOTH GL "
+    "USE_SDL12=ON: there is no SDL 1.2 stack. The SDL2 build contains both GL "
     "render devices — run it with -OPENGLRENDERER for the desktop-GL path the legacy binary provided.")
 endif()
 if(NOT UT_GFX_BACKEND STREQUAL "gl4es")
   message(FATAL_ERROR
-    "UT_GFX_BACKEND='${UT_GFX_BACKEND}': only 'gl4es' remains (SDL 1.2 retired in ufront 2.34). "
+    "UT_GFX_BACKEND='${UT_GFX_BACKEND}': only 'gl4es' exists. "
     "That stack carries OpenGLDrv as well; select it at runtime with -OPENGLRENDERER.")
 endif()
 
@@ -85,7 +85,6 @@ if(EMSCRIPTEN)
   set(UT_GFX_BACKEND "gl4es")
 endif()
 
-set(USE_SDL12 OFF)
 message(STATUS "Graphics backend: ${UT_GFX_BACKEND} (SDL2; OpenGLDrv + GL4ESDrv in one binary)")
 
 #-----------------------------------------------------------------------------
@@ -111,7 +110,7 @@ endif()
 message(STATUS "Target arch: ${TARGET_ARCH}")
 message(STATUS "64-bit: ${TARGET_IS_64BIT}")
 
-option(UT_ALLOW_64BIT "Build x86_64 instead of demoting to -m32. A supported configuration (ufront 2.54); 32-bit remains the default." OFF)
+option(UT_ALLOW_64BIT "Build x86_64 instead of demoting to -m32. 32-bit is the default." OFF)
 # UT_PTR_BYTES: the pointer width this build will actually produce, computed once so the gates below
 # have something trustworthy to test. Neither obvious variable is right on its own:
 #   * CMAKE_SIZEOF_VOID_P is fixed during project() and does not see the -m32 demotion applied
@@ -254,7 +253,7 @@ if(BUILD_KARMA_REF)
       "Use USE_KARMA_DECOMP on Windows; the legacy A/B arm is Linux-only.")
   endif()
 endif()
-option(UT_FPMATH_SSE "32-bit x86 only: add -msse2 -mfpmath=sse — the ktrace CONTROL arm (see BUILD.md, ufront 2.58)" OFF)
+option(UT_FPMATH_SSE "32-bit x86 only: add -msse2 -mfpmath=sse — the ktrace control arm (the native-sse preset)" OFF)
 
 # Karma at 64-bit: the recovered code carries the LP64 post-passes (metoolkit_decomp/src's README;
 # `decomp/test/standalone/lp64_pipeline.sh` in that repository), and LP64 Karma plays on every 64-bit
@@ -816,12 +815,12 @@ if(USE_KARMA_DECOMP)
     endforeach()
     list(LENGTH _md_targets _md_n)
     if(EMSCRIPTEN)
-      message(STATUS "Karma decomp: ${_md_n} target(s) pinned to -O0 ON THE WEB (UT_KARMA_PIN_WEB; ufront 2.58 measurement arm)")
+      message(STATUS "Karma decomp: ${_md_n} target(s) pinned to -O0 on the web (UT_KARMA_PIN_WEB measurement arm)")
     else()
-      message(STATUS "Karma decomp: ${_md_n} target(s) pinned to -O0 (engine keeps -O2; ufront 2.55)")
+      message(STATUS "Karma decomp: ${_md_n} target(s) pinned to -O0 (engine keeps -O2)")
     endif()
     if(_md_o2 GREATER 0)
-      message(STATUS "Karma decomp: ${_md_o2} source(s) compiled with '${UT_KARMA_O2_OPTIONS}' via UT_KARMA_O2_FILES='${UT_KARMA_O2_FILES}' (ufront 2.58 probe/bisect arm)")
+      message(STATUS "Karma decomp: ${_md_o2} source(s) compiled with '${UT_KARMA_O2_OPTIONS}' via UT_KARMA_O2_FILES='${UT_KARMA_O2_FILES}' (probe/bisect arm)")
     endif()
   endif()
 endif()

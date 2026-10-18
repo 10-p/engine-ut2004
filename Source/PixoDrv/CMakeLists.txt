@@ -18,7 +18,7 @@ else()
   set(PIXOMATIC_LIB "${PIXOMATIC_DIR}/Pixomatic/Lib/pixomatic_linux.a")
 endif()
 if(NOT EXISTS "${PIXOMATIC_LIB}")
-  message(FATAL_ERROR "USE_PIXOMATIC: ${PIXOMATIC_LIB} missing. Restore the in-tree <repo>/Pixomatic/ vendored drop, or set -DPIXOMATIC_DIR=/path/to/drop (containing Pixomatic/{Inc,Lib}).")
+  message(FATAL_ERROR "USE_PIXOMATIC: ${PIXOMATIC_LIB} missing. Restore the vendored Thirdparty/Pixomatic/ drop, or set -DPIXOMATIC_DIR=/path/to/drop (containing Pixomatic/{Inc,Lib}).")
 endif()
 
 set(SRC_FILES

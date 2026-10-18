@@ -284,7 +284,7 @@ void UGameEngine::Init()
 		// throws to unwind to the guarded frame, and that throw can't cross Asyncify
 		// frames (uncaught abort). Entry is already loaded, so fall back to the menu
 		// and let the player pick a valid map or host from the UI.
-		debugf( TEXT("[WebRTC] Startup map '%s' failed to load (%s) — falling back to the menu"), Parm, *Error );
+		debugf( TEXT("Startup map '%s' failed to load (%s) — falling back to the menu"), Parm, *Error );
 		if( !GLevel )
 			GLevel = GEntry;
 	}
@@ -944,7 +944,7 @@ static void MatchViewportsToActors( UClient* Client, ULevel* Level, const FURL& 
 			appErrorf( TEXT("%s"), *Error );
 
 		// Devnet diagnostic: the window where Viewport->Actor is NULL closes here (pairs with the dissociate line).
-		debugf( NAME_DevNet, TEXT("[UFRONT-DIAG] MatchViewportsToActors: viewport %s -> actor %s (0x%08x, class %s) in level %s"),
+		debugf( NAME_DevNet, TEXT("[NET-DIAG] MatchViewportsToActors: viewport %s -> actor %s (0x%08x, class %s) in level %s"),
 			Viewport->GetName(), PlayerController->GetName(), (DWORD)(PTRINT)PlayerController,
 			PlayerController->GetClass()->GetName(), Level->GetName() );
 
@@ -2179,7 +2179,7 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 					TCHAR Found[256];
 					const UBOOL HaveFile = appFindPackageFile( Name, &PackageMap->List(i).Guid, Found, PackageMap->List(i).RemoteGeneration );
 					Error = FString::Printf( HaveFile ? LocalizeError(TEXT("PackageVersion"),TEXT("Core")) : LocalizeError(TEXT("PackageNotFound"),TEXT("Core")), Name );
-					debugf( TEXT("[WebRTC] LoadMap: %s — failing the join gracefully (no abort)"), *Error );
+					debugf( TEXT("LoadMap failed: %s — failing the join gracefully (no abort)"), *Error );
 					EndLoad();
 					// Error stays set: the caller (AttemptLoadPending) shows the disconnect menu with it; an empty
 					// Error there means "loaded", and it would send the join from the level we are still in.
@@ -2203,7 +2203,7 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 		// load map" and return to the menu.
 		if( !LoadedLevel )
 		{
-			debugf( TEXT("[WebRTC] LoadMap: map '%s' could not be loaded — failing gracefully (no abort)"), *URL.Map );
+			debugf( TEXT("LoadMap failed: map '%s' could not be loaded — failing gracefully (no abort)"), *URL.Map );
 			Error = FString::Printf( TEXT("Could not load map '%s'"), *URL.Map );
 			if( Pending && Pending->NetDriver && Pending->NetDriver->ServerConnection )
 			{
@@ -2351,7 +2351,7 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 		{
 			APlayerController* Actor    = Client->Viewports(i)->Actor;
 			// Devnet diagnostic: the window where Viewport->Actor is NULL opens here.
-			debugf( NAME_DevNet, TEXT("[UFRONT-DIAG] LoadMap: dissociating viewport %s (actor=%s) — Actor goes NULL until MatchViewportsToActors"),
+			debugf( NAME_DevNet, TEXT("[NET-DIAG] LoadMap: dissociating viewport %s (actor=%s) — Actor goes NULL until MatchViewportsToActors"),
 				Client->Viewports(i)->GetName(), Actor ? Actor->GetName() : TEXT("NULL") );
 			ULevel*      Level          = Actor->GetLevel();
 			Actor->Player               = NULL;
@@ -3188,7 +3188,7 @@ void UGameEngine::Draw( UViewport* Viewport, UBOOL Blit, BYTE* HitData, INT* Hit
 				UBOOL Recycled = DiagActor
 					&& UObject::GetIndexedObject( (INT)DiagActor->GetIndex() ) == (UObject*)DiagActor;
 				debugf( NAME_Warning,
-					TEXT("[ufront] Draw skipped — unusable Viewport->Actor: ptr=0x%08x null=%i live=%i class=%s ")
+					TEXT("Draw skipped — unusable Viewport->Actor: ptr=0x%08x null=%i live=%i class=%s ")
 					TEXT("GLevel=%s GEntry=%s Pending=%i LevelAction=%i NetMode=%i hit=%i"),
 					(DWORD)(PTRINT)DiagActor, (INT)(DiagActor==NULL), (INT)Recycled,
 					Recycled ? DiagActor->GetClass()->GetName() : TEXT("<dead>"),

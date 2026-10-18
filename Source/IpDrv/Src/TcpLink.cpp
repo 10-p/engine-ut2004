@@ -54,7 +54,7 @@ void ATcpLink::execBindPort( FFrame& Stack, RESULT_DECL )
 	if( GIpDrvInitialized )
 	{
 #ifdef __EMSCRIPTEN__
-		debugf( NAME_DevNet, TEXT("[WebRTC] ATcpLink::BindPort: skipped on Emscripten (no BSD sockets)") );
+		debugf( NAME_DevNet, TEXT("ATcpLink::BindPort: skipped on the web (no BSD sockets)") );
 		*(INT*)Result = 0;
 		return;
 #endif

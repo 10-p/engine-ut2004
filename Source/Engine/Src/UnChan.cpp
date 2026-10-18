@@ -127,7 +127,7 @@ void UChannel::Close()
 	// server means the close flag was never sent and the bunch header is being misread by the transport;
 	// a line here means the engine decided to close.
 	debugf( NAME_DevNetTraffic,
-		TEXT("[UFRONT-DIAG] UChannel::Close SEND ch=%i type=%i closing=%i connState=%i isServer=%i actor=%s"),
+		TEXT("[NET-DIAG] UChannel::Close SEND ch=%i type=%i closing=%i connState=%i isServer=%i actor=%s"),
 		ChIndex, (INT)ChType, (INT)Closing, (INT)Connection->State,
 		(INT)(Connection->Driver && Connection->Driver->ServerConnection==NULL),
 		(ChType==CHTYPE_Actor && ((UActorChannel*)this)->Actor)
@@ -300,7 +300,7 @@ UBOOL UChannel::ReceivedSequencedBunch( FInBunch& Bunch )
 			appErrorfSlow( TEXT("Close Anomaly %i / %i"), Bunch.ChSequence, InRec->ChSequence );
 		// Devnet diagnostic, the other half of the pair (NAME_DevNetTraffic below is off in this build).
 		debugf( NAME_DevNetTraffic,
-			TEXT("[UFRONT-DIAG] CLOSE-NOTIFY RECEIVED ch=%i type=%i bOpen=%i bReliable=%i seq=%i actor=%s — the actor dies with the channel"),
+			TEXT("[NET-DIAG] CLOSE-NOTIFY RECEIVED ch=%i type=%i bOpen=%i bReliable=%i seq=%i actor=%s — the actor dies with the channel"),
 			ChIndex, (INT)ChType, (INT)Bunch.bOpen, (INT)Bunch.bReliable, (INT)Bunch.ChSequence,
 			(ChType==CHTYPE_Actor && ((UActorChannel*)this)->Actor)
 				? ((UActorChannel*)this)->Actor->GetName() : TEXT("-") );
