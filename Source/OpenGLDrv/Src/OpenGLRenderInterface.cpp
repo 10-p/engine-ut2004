@@ -1427,6 +1427,7 @@ void FOpenGLRenderInterface::CommitStreams( INT FirstIndex, INT Pass )
 		INT		Stride;
 		INT		VertexOffset;
 		void*	VertexBuffer;
+		GLuint	Buffer;			// the VBO this texcoord lives in (rebound below)
 	} TexCoordInfo[8];
 
 	INT		NumTexCoords	= 0;
@@ -1525,6 +1526,7 @@ void FOpenGLRenderInterface::CommitStreams( INT FirstIndex, INT Pass )
 				TexCoordInfo[NumTexCoords].VertexBuffer	= VertexBuffer;
 				TexCoordInfo[NumTexCoords].VertexOffset = VertexOffset + Offset;
 				TexCoordInfo[NumTexCoords].Stride		= VertexStride;
+				TexCoordInfo[NumTexCoords].Buffer		= BufferATI;	// rebound below
 				NumTexCoords++;
 			}
 
@@ -1599,6 +1601,14 @@ void FOpenGLRenderInterface::CommitStreams( INT FirstIndex, INT Pass )
 			}
 			else
 			{
+				// Rebind this texcoord's own vertex buffer first: glTexCoordPointer captures whatever is
+				// bound to GL_ARRAY_BUFFER, and the stream loop above leaves the last stream's VBO bound.
+				// With VBOs the recorded VertexBuffer is a pure offset, so a texcoord in a separate stream
+				// (UStaticMesh UV streams: terrain decoration layers, skybox sheets) would read the wrong
+				// buffer.
+				if( RenDev->SUPPORTS_GL_ARB_vertex_buffer_object )
+					RenDev->glBindBufferARB( GL_ARRAY_BUFFER_ARB, TexCoordInfo[CoordIndex].Buffer );
+
 				RenDev->glTexCoordPointer( 
 					TexCoordInfo[CoordIndex].NumCoords, 
 					GL_FLOAT,
