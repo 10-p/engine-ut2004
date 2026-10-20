@@ -374,6 +374,10 @@ elseif(ANDROID)
   # Android NDK is clang too -- apply the same GCC-like leniency as the Emscripten path
   # (grow the -Wno-* set as new clang diagnostics surface).
   string(APPEND CMAKE_CXX_FLAGS " -fdelayed-template-parsing -Wno-writable-strings -Wno-reserved-user-defined-literal -Wno-incompatible-pointer-types")
+  # Epic's code calls methods through null pointers on purpose ("Must be safe for NULL objects":
+  # UObject::GetFullName's `if( this )`), as MSVC allowed; Clang would delete those checks, and on Android a
+  # null page faults.
+  string(APPEND CMAKE_CXX_FLAGS " -fno-delete-null-pointer-checks")
 else()
   string(APPEND CMAKE_CXX_FLAGS " -fpermissive -Wno-register")
 endif()
