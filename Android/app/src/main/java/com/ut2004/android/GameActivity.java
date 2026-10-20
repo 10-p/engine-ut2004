@@ -23,9 +23,9 @@ import java.io.InputStream;
 import org.libsdl.app.SDLActivity;
 
 /**
- * UT2004 game process (SDL). MainActivity gates All-Files-Access, then launches this in the
- * ":game" process. Before SDL starts SDL_main we set the engine's basedir env + cwd so it reads
- * the ~11 GB game tree in place from /sdcard/UT2004 (no copy).
+ * UT2004 game process (SDL), launched by MainActivity in the ":game" process. Before SDL starts
+ * SDL_main we set the engine's basedir env + cwd so it reads the game folder the launcher chose: the
+ * app's internal copy, or a UT2004 folder on shared storage read in place.
  *
  * Touch input: after SDL builds its surface a full-screen {@link Ut2004TouchOverlayView} is laid
  * on top. It draws the on-screen controls and, during gameplay, feeds the engine through the JNI
@@ -62,9 +62,13 @@ public class GameActivity extends SDLActivity {
     /** App-private fast game root: {@code getFilesDir()/UT2004} (same path in both processes). */
     static File internalRoot(Context ctx) { return new File(ctx.getFilesDir(), "UT2004"); }
 
-    /** A dir is a usable game root iff it has a {@code System/} subdir (where the engine boots from). */
+    /**
+     * A dir is a usable game root iff its {@code System/} holds the engine's first package. A file, not
+     * the directory: without All files access a folder elsewhere on shared storage can be listed while
+     * its files cannot be read.
+     */
     static boolean hasGameTree(File root) {
-        return root != null && new File(root, "System").isDirectory();
+        return root != null && new File(new File(root, "System"), "Core.u").isFile();
     }
 
     static {
@@ -141,7 +145,8 @@ public class GameActivity extends SDLActivity {
      *     through to the external auto-detect (graceful: an empty internal copy still boots off the card).
      *   - {@code external} -> {@link #resolveExternalRoot} (the complete, slow FUSE tree).
      *   - no extra (a cold recents relaunch) -> prefer a populated internal copy, else auto-detect.
-     * Requires storage permission, which MainActivity has already ensured before starting this activity.
+     * A folder outside the app's own needs All files access, which MainActivity asks for before
+     * starting the game from there.
      */
     private File resolveDataRoot() {
         String mode = getIntent() != null ? getIntent().getStringExtra(EXTRA_STORAGE_MODE) : null;
@@ -167,9 +172,9 @@ public class GameActivity extends SDLActivity {
 
     /**
      * The external (slow FUSE) game tree. Prefer internal primary storage (/sdcard/UT2004 -- emulator
-     * + phones with room), else scan secondary volumes (a physical SD card, e.g. on the Retroid where
-     * internal is too small): derive each volume root from the app's external-files dirs and look for
-     * &lt;volume&gt;/UT2004 (and the app-specific &lt;...&gt;/files/UT2004). Static so MainActivity's
+     * + phones with room), else scan secondary volumes (a physical SD card): derive each volume root from
+     * the app's external-files dirs and look for &lt;volume&gt;/UT2004, then the app-specific
+     * &lt;...&gt;/files/UT2004 (the one place that needs no permission). Static so MainActivity's
      * launcher uses the exact same source for copy-to-internal and the external-size readout.
      */
     static File resolveExternalRoot(Context ctx) {

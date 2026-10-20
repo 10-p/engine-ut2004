@@ -242,8 +242,20 @@ cd Android
 - The SDK in `/usr/lib/android-sdk` is read-only, so a part the Gradle plugin would download instead fails the build
   with its name.
 
-The game tree is read in place from storage (the JNI bridge sets `UT2004_ANDROID_BASEDIR` and the cwd). A travel
-URL can be passed from adb:
+The engine reads its game folder by path (the JNI bridge sets `UT2004_ANDROID_BASEDIR` and the cwd); the launcher
+(`MainActivity`) chooses which:
+
+- Internal storage (`/data/data/com.ut2004.android/files/UT2004`): fast, deleted with the app, no permission.
+  "Choose the UT2004 folder" opens Android's folder picker, which gives the app that folder only, and "Copy to
+  internal storage" copies it in (only what is new or changed: a stopped copy resumes); with no folder chosen yet it
+  opens the picker first. "Copy settings and saves" writes the internal copy's `System/UT2004.ini`,
+  `System/User.ini` and `Save/` back to the chosen folder.
+- A UT2004 folder in place: `Android/data/com.ut2004.android/files/UT2004` on shared storage or an SD card needs no
+  permission; `/sdcard/UT2004` or `UT2004` at the top of an SD card needs All files access (the storage permission
+  on Android 10 and earlier), which the launcher asks for, with the copy as the alternative, only when the game is
+  started from there.
+
+A travel URL can be passed from adb:
 
 ```bash
 adb shell am start -n com.ut2004.android/.MainActivity \

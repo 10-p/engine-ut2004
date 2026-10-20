@@ -17,7 +17,7 @@ Requires assets from a retail UT2004 install. Every preset, option and driver: [
 * Karma physics from the recovered, portable sources ([10-p/metoolkit-karma-decomp](https://github.com/10-p/metoolkit-karma-decomp)) on every target.
 * 64-bit and ARM support: x86-64, arm64 and armv7 builds.
 * Windows build: MinGW-w64 cross builds, 32-bit (with Pixomatic) and 64-bit.
-* Android build: a Gradle/NDK project with touch controls, reading the game folder in place.
+* Android build: a Gradle/NDK project with touch controls; the game folder is copied into the app's storage from a folder chosen with Android's folder picker, or read in place.
 * GCC/Clang portability: builds with current GCC, Clang (Emscripten, NDK) and MinGW.
 * Save games: the stock `SAVEGAME`/`LOADGAME`, saved in the game folder's `Save` directory (on the web, persisted by the host).
 * Languages: the stock `[Engine.Engine] Language` key, also settable from the command line with `-ini:`.
