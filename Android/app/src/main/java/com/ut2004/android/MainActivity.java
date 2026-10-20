@@ -18,9 +18,11 @@ import android.provider.Settings;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.widget.Button;
 import android.widget.CompoundButton;
 import android.widget.LinearLayout;
@@ -49,7 +51,7 @@ import java.io.File;
  * The storage choice is conveyed to the separate ":game" process via an Intent extra
  * ({@link GameActivity#EXTRA_STORAGE_MODE}); default-mode SharedPreferences would not be multi-process
  * safe, so they only keep the launcher's own choices. Start game also runs by itself after a countdown
- * that the first touch stops.
+ * that the first touch, key or pad button stops.
  *
  * All widgets are built programmatically (the app has no androidx/Material dep and no XML layouts),
  * the same pattern as GameActivity's touch overlay.
@@ -219,6 +221,11 @@ public class MainActivity extends Activity {
         col.addView(hint);
 
         setContentView(scroll);
+        // Out of touch mode, the first navigation key is consumed to leave it and never reaches
+        // dispatchKeyEvent: leaving touch mode stops the countdown too.
+        scroll.getViewTreeObserver().addOnTouchModeChangeListener(new ViewTreeObserver.OnTouchModeChangeListener() {
+            @Override public void onTouchModeChanged(boolean inTouchMode) { if (!inTouchMode) cancelCountdown(true); }
+        });
 
         // The last choice; the first time, internal storage when there is a copy there.
         storageSwitch.setChecked(prefs().getBoolean(PREF_EXTERNAL,
@@ -272,6 +279,13 @@ public class MainActivity extends Activity {
             cancelCountdown(true);
         }
         return super.dispatchTouchEvent(ev);
+    }
+
+    /** So does the first key or pad button. */
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent ev) {
+        if (countdownActive && ev.getAction() == KeyEvent.ACTION_DOWN) cancelCountdown(true);
+        return super.dispatchKeyEvent(ev);
     }
 
     private void launchGame() {
