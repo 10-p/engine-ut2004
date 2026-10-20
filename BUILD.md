@@ -158,7 +158,8 @@ ALAudio runs on openal-soft everywhere: the `10-p/openal-soft-web` fork (`ufront
 wasm and built shared for Android and native Linux; Windows stages OpenAL Soft's official DLL as `OpenAL32.dll`
 (`cmake/OpenALMingw.cmake`). ALAudio loads `AL_DLL` first (`libopenal.so` / `OpenAL32.dll`) and falls back to the
 system library (`libopenal.so.1`; the retail `DefOpenAL32.dll` on Windows). The library is dlopen'd at audio init,
-never linked as DT_NEEDED. A run tree that takes the Linux binary takes `libopenal.so` with it.
+never linked as DT_NEEDED. A run tree that takes the Linux binary takes `libopenal.so` with it. On Android it plays
+through OpenSL ES and is built without C++20 modules (`ALSOFT_ENABLE_MODULES=OFF`) and without RTKit.
 
 ## Render devices and drivers
 

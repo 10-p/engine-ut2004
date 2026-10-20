@@ -604,6 +604,12 @@ if(ANDROID OR UE_LINUX_OPENALSOFT)
   set(ALSOFT_UPDATE_BUILD_VERSION OFF CACHE BOOL "" FORCE)
   if(ANDROID)
     set(ALSOFT_BACKEND_OPENSL ON CACHE BOOL "" FORCE)     # Android native audio (OpenSL ES)
+    # No C++20 modules: the NDK's clang 19 rejects libc++'s range adaptors instantiated across a module
+    # boundary (al/auxeffectslot.cpp), and below API 30 bionic's C11 threads (tss_set) are header inlines
+    # that an importing module does not see. No RTKit: Android has no D-Bus, and its probe would find the
+    # build machine's headers.
+    set(ALSOFT_ENABLE_MODULES OFF CACHE BOOL "" FORCE)
+    set(ALSOFT_RTKIT OFF CACHE BOOL "" FORCE)
   endif()
   # Linux: the backends are whatever the host's headers allow (PulseAudio and ALSA here; PipeWire when its
   # headers are present), each dlopen'd at run time (ALSOFT_DLOPEN), so the .so has no audio DT_NEEDED.
