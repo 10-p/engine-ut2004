@@ -660,7 +660,8 @@ void FOctreeNode::ActorZeroExtentLineCheck(FCollisionOctree* o,
 
 			if( testActor->bBlockZeroExtentTraces &&
 				testActor != o->ChkActor &&
-				!o->ChkActor->IsOwnedBy(testActor) &&
+				// A trace without a source actor (FindSpot, static lighting) has no owner to skip.
+				(!o->ChkActor || !o->ChkActor->IsOwnedBy(testActor)) &&
 				testActor->ShouldTrace(o->ChkActor, o->ChkTraceFlags) )
 			{
 #if TIME_OCTREE			
@@ -827,7 +828,7 @@ void FOctreeNode::ActorNonZeroExtentLineCheck(FCollisionOctree* o, const FPlane*
 			// Check collision.
 			if( testActor->bBlockNonZeroExtentTraces &&
 				testActor != o->ChkActor &&
-				!o->ChkActor->IsOwnedBy(testActor) &&
+				(!o->ChkActor || !o->ChkActor->IsOwnedBy(testActor)) &&
 				testActor->ShouldTrace(o->ChkActor, o->ChkTraceFlags) )
 			{
 
