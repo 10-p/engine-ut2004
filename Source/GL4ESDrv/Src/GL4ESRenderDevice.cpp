@@ -591,6 +591,11 @@ UBOOL UGL4ESRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Ful
 			setenv("LIBGL_NOPSA", "1", 1);
 			// NVIDIA's own OpenGL ES driver rejects the int overloads gl4es inserts into converted shaders.
 			setenv("LIBGL_NOINTOVLHACK", "1", 1);
+			// No framebuffer unbind and rebind around a draw that samples a texture attached to the bound
+			// framebuffer: gl4es switches that workaround on by itself for ARM and Imagination GPUs (Android's
+			// Mali), and its check indexes the bound textures with the texture unit read back from the program,
+			// which can be out of range. Off, every target runs gl4es the same way.
+			setenv("LIBGL_FBOUNBIND", "0", 1);
 
 #if defined(__ANDROID__)
 			// The Android emulator's emugl GLES translator mishandles GL_BGRA texture uploads (it
