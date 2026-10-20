@@ -326,10 +326,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # JDK 17: the Gradle daemon's (Android/gradle/gradle-daemon-jvm.properties).
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: '17'
 
       # Only platform-tools: the action's default list names `tools`, which the current SDK repository
       # (cmdline-tools 16.0) does not have. The NDK and CMake come from the next step.
@@ -342,8 +343,8 @@ jobs:
       # local.properties for this runner's SDK.
       - name: Install the NDK + CMake and point the build at this runner's SDK
         run: |
-          sdkmanager --install "ndk;30.0.14904198" "cmake;4.1.2" >/dev/null
-          printf 'sdk.dir=%s\nndk.dir=%s/ndk/30.0.14904198\n' "$ANDROID_HOME" "$ANDROID_HOME" > Android/local.properties
+          sdkmanager --install "ndk;28.2.13676358" "cmake;4.1.2" >/dev/null
+          printf 'sdk.dir=%s\nndk.dir=%s/ndk/28.2.13676358\n' "$ANDROID_HOME" "$ANDROID_HOME" > Android/local.properties
 
       - name: Build the APK
         run: ./gradlew assembleDebug --console=plain

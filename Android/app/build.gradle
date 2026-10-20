@@ -1,26 +1,28 @@
 plugins { id 'com.android.application' }
 
 android {
-    namespace 'com.ut2004.android'
-    compileSdk 34
-    ndkVersion '30.0.14904198'
+    namespace = 'com.ut2004.android'
+    // Android 16 (platform 36); the app keeps Android 14's behaviour (targetSdk).
+    compileSdk = 36
+    // Ubuntu's google-android-ndk-r28c-installer (BUILD.md, "Android").
+    ndkVersion = '28.2.13676358'
 
     defaultConfig {
-        applicationId 'com.ut2004.android'
-        minSdk 24
-        targetSdk 34
-        versionCode 1
-        versionName '0.1'
+        applicationId = 'com.ut2004.android'
+        minSdk = 24
+        targetSdk = 34
+        versionCode = 1
+        versionName = '0.1'
         // The shipped ABI set, plus an opt-in 32-bit x86 (`-Px86abi`), which is not for shipping:
         // it runs the same APK at 32-bit on an x86 emulator image
         // (`system-images;android-24;google_apis_playstore;x86`, this minSdk), a pointer-width control
         // for the x86_64 one. API 34 images have no 32-bit ABI at all.
         def utAbis = ['x86_64', 'arm64-v8a', 'armeabi-v7a']
         if (project.hasProperty('x86abi')) { utAbis += 'x86' }
-        ndk { abiFilters(*utAbis) }
+        ndk { abiFilters.addAll(utAbis) }
         externalNativeBuild {
             cmake {
-                abiFilters(*utAbis)
+                abiFilters.addAll(utAbis)
                 // The SDL2 source directory is opt-in: `-Psdl2Dir=/abs/path` or SDL2_SOURCE_DIR in the
                 // environment points at a local clone (skips the download and guarantees C/Java SDL
                 // parity); with neither, FetchContent clones the pinned SDL2 itself.
@@ -56,11 +58,11 @@ android {
                 } else if (sdl2Dir) {
                     logger.warn("sdl2Dir=${sdl2Dir} does not exist — letting FetchContent clone SDL2")
                 }
-                arguments(*cmakeArgs)
+                arguments.addAll(cmakeArgs)
                 // OpenAL (openal-soft) is built and packaged but not linked into libUT2004 (see
                 // SDLLaunch/CMakeLists.txt): ALAudio dlopens libopenal.so at audio init, after the
                 // engine allocator is up. Listed here so AGP builds and packages the standalone target.
-                targets 'SDLLaunch', 'ut2004_android_bridge', 'OpenAL'
+                targets.addAll(['SDLLaunch', 'ut2004_android_bridge', 'OpenAL'])
             }
         }
     }
@@ -69,15 +71,15 @@ android {
     // libUT2004.so (whole-archive) alongside libSDL2.so.
     externalNativeBuild {
         cmake {
-            path file('../../CMakeLists.txt')
-            version '4.1.2'
+            path = file('../../CMakeLists.txt')
+            version = '4.1.2+'
         }
     }
 
-    packagingOptions { jniLibs { useLegacyPackaging true } }
+    packaging { jniLibs { useLegacyPackaging = true } }
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
-    lint { disable 'ExpiredTargetSdkVersion' }
+    lint { disable.add('ExpiredTargetSdkVersion') }
 }

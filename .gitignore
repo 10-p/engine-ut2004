@@ -56,3 +56,14 @@ System/Shot*.bmp
 # Python bytecode (nothing in this repo generates it any more, but harmless).
 __pycache__/
 *.pyc
+
+# The Android Gradle project's build state (Android/): Gradle's caches, the build trees, the NDK's CMake trees
+# (FetchContent checkouts under them), this machine's SDK paths, Android Studio's project files.
+/Android/.gradle/
+/Android/.kotlin/
+/Android/build/
+/Android/app/build/
+/Android/app/.cxx/
+/Android/local.properties
+/Android/.idea/
+*.iml

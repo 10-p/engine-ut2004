@@ -216,8 +216,17 @@ for `addr2line -e ut2004.exe`. There is no `ucc` on Windows.
 
 ## Android
 
-`Android/` is a Gradle/NDK project whose `externalNativeBuild` points at this repository's root `CMakeLists.txt`
-(`targets SDLLaunch ut2004_android_bridge OpenAL`), built for `arm64-v8a`, `armeabi-v7a` and `x86_64`:
+`Android/` is a Gradle/NDK project (Android Gradle plugin 9.4.0, Gradle 9.6.0 through the wrapper) whose
+`externalNativeBuild` points at this repository's root `CMakeLists.txt` (`targets SDLLaunch ut2004_android_bridge
+OpenAL`), built for `arm64-v8a`, `armeabi-v7a` and `x86_64`. It needs platform 36 (`compileSdk`; `targetSdk` is 34,
+`minSdk` 24), build-tools 36.0.0, NDK 28.2.13676358 and CMake 4.1.2 or newer. Ubuntu's packages install the SDK
+parts into `/usr/lib/android-sdk`; `local.properties` names it and the distribution's CMake:
+
+```bash
+sudo apt install openjdk-17-jdk cmake ninja-build adb google-android-cmdline-tools-19.0-installer \
+  google-android-platform-36-installer google-android-build-tools-36.0.0-installer google-android-ndk-r28c-installer
+printf 'sdk.dir=/usr/lib/android-sdk\ncmake.dir=/usr\n' > Android/local.properties
+```
 
 ```bash
 cd Android
@@ -227,6 +236,11 @@ cd Android
 #   -Psdl2Dir=<path>     a local SDL2 checkout (or SDL2_SOURCE_DIR)
 #   -Px86abi             also 32-bit x86 (an emulator control, not for shipping)
 ```
+
+- The Gradle daemon runs on an installed JDK 17 (`Android/gradle/gradle-daemon-jvm.properties`), whatever `java` is
+  on the `PATH` or Android Studio's own JDK.
+- The SDK in `/usr/lib/android-sdk` is read-only, so a part the Gradle plugin would download instead fails the build
+  with its name.
 
 The game tree is read in place from storage (the JNI bridge sets `UT2004_ANDROID_BASEDIR` and the cwd). A travel
 URL can be passed from adb:
