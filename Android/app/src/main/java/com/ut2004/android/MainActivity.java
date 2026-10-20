@@ -51,7 +51,7 @@ import java.io.File;
  * The storage choice is conveyed to the separate ":game" process via an Intent extra
  * ({@link GameActivity#EXTRA_STORAGE_MODE}); default-mode SharedPreferences would not be multi-process
  * safe, so they only keep the launcher's own choices. Start game also runs by itself after a countdown
- * that the first touch, key or pad button stops.
+ * that runs only while the page is in view and that the first touch, key or pad button stops.
  *
  * All widgets are built programmatically (the app has no androidx/Material dep and no XML layouts),
  * the same pattern as GameActivity's touch overlay.
@@ -112,6 +112,13 @@ public class MainActivity extends Activity {
                 if (hasAllFilesAccess()) launchGame();
             }
         }
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        // The countdown runs only while the page is in view: not with the screen off or behind another app.
+        cancelCountdown(true);
     }
 
     // ---- launcher UI ----------------------------------------------------------------------------
