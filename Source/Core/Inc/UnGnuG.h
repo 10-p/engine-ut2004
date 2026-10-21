@@ -688,9 +688,8 @@ inline DWORD appCycles()
 	// which stays correct across a wrap.
 	r = (DWORD)(appSecondsSlow() * 1000000.0);
 #else
-    // !!! FIXME: WHY DOESN'T THIS WORK?!
-	//asm("rdtsc" : "=a" (r) : /* no inputs */ : "edx");
-	asm("rdtsc" : "=a" (r) : "d" (r));
+	// rdtsc writes EDX as well: it is a clobber, or the compiler keeps a value (an argument of the next call) in it.
+	asm volatile("rdtsc" : "=a" (r) : : "edx");
 #endif
 	return r;
 }
