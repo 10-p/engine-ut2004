@@ -904,6 +904,19 @@ UBOOL USDL2Viewport::ResizeViewport( DWORD NewBlitFlags, INT InNewX, INT InNewY,
             SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE
 #endif
         );
+#if !(defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__))
+        // The window fails when no EGL/GLX/WGL config has the multisampling the render device asked for (an
+        // emulator, some GPUs). Antialiasing is a request, so the window is made once more without it.
+        if( !Window )
+        {
+            debugf( NAME_Warning, TEXT("SDL_CreateWindow failed (%s); creating it without multisampling"),
+                appFromAnsi(SDL_GetError()) );
+            SDL_GL_SetAttribute( SDL_GL_MULTISAMPLEBUFFERS, 0 );
+            SDL_GL_SetAttribute( SDL_GL_MULTISAMPLESAMPLES, 0 );
+            Window = SDL_CreateWindow( "Unreal Tournament 2004", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                NewX, NewY, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE );
+        }
+#endif
         if( !Window )
         {
             appErrorf( TEXT("SDL_CreateWindow failed: %s"), appFromAnsi(SDL_GetError()) );
