@@ -321,7 +321,7 @@ jobs:
           [ "$got" = "$want" ] || { echo "::error::meta.json abiVersion $got != UE_ABI_VERSION $want"; exit 1; }
 
   android:
-    name: android (x86_64 + arm64 + armv7 APK)
+    name: android (arm64 + arm32 APK)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -356,7 +356,7 @@ jobs:
         run: |
           set -euo pipefail
           apk=Android/app/build/outputs/apk/debug/app-debug.apk
-          for abi in x86_64 arm64-v8a armeabi-v7a; do
+          for abi in armeabi-v7a arm64-v8a; do
             unzip -l "$apk" | grep -q "lib/$abi/libUT2004.so" || { echo "::error::missing $abi"; exit 1; }
           done
 

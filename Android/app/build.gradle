@@ -1,5 +1,18 @@
 plugins { id 'com.android.application' }
 
+// Signing: ueAndroidSigning (a Gradle property, e.g. in ~/.gradle/gradle.properties) or UE_ANDROID_SIGNING names a
+// properties file kept outside the repository with storeFile, storePassword, keyAlias and keyPassword. With it every
+// variant is signed with that key, so each new APK installs over the last; without it, with the debug key.
+def ueSigningPath = project.findProperty('ueAndroidSigning') ?: System.getenv('UE_ANDROID_SIGNING')
+def ueSigning = null
+if (ueSigningPath) {
+    def signingFile = file(ueSigningPath)
+    if (!signingFile.isFile())
+        throw new GradleException("ueAndroidSigning=${ueSigningPath} is not a file")
+    ueSigning = new Properties()
+    signingFile.withInputStream { ueSigning.load(it) }
+}
+
 android {
     namespace = 'com.ut2004.android'
     // Android 16 (platform 36); the app keeps Android 14's behaviour (targetSdk).
@@ -11,13 +24,13 @@ android {
         applicationId = 'com.ut2004.android'
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = '0.1'
-        // The shipped ABI set, plus an opt-in 32-bit x86 (`-Px86abi`), which is not for shipping:
-        // it runs the same APK at 32-bit on an x86 emulator image
-        // (`system-images;android-24;google_apis_playstore;x86`, this minSdk), a pointer-width control
-        // for the x86_64 one. API 34 images have no 32-bit ABI at all.
-        def utAbis = ['x86_64', 'arm64-v8a', 'armeabi-v7a']
+        versionCode = 10000
+        versionName = '1.0.0'
+        // The shipped ABIs: 32-bit and 64-bit ARM devices in one APK; -Pabis=<list> builds others (x86_64 for
+        // a fast emulator). `-Px86abi` adds a 32-bit x86, which is not for shipping: it runs the same APK at
+        // 32-bit on an x86 emulator image (`system-images;android-24;google_apis_playstore;x86`, this minSdk), a
+        // pointer-width control for the x86_64 one. API 34 images have no 32-bit ABI at all.
+        def utAbis = (project.findProperty('abis') ?: 'armeabi-v7a,arm64-v8a').split(',').collect { it.trim() }
         if (project.hasProperty('x86abi')) { utAbis += 'x86' }
         ndk { abiFilters.addAll(utAbis) }
         externalNativeBuild {
@@ -82,4 +95,19 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     lint { disable.add('ExpiredTargetSdkVersion') }
+
+    signingConfigs {
+        if (ueSigning) {
+            release {
+                storeFile = file(ueSigning.getProperty('storeFile'))
+                storePassword = ueSigning.getProperty('storePassword')
+                keyAlias = ueSigning.getProperty('keyAlias')
+                keyPassword = ueSigning.getProperty('keyPassword')
+            }
+        }
+    }
+    buildTypes {
+        release { signingConfig = ueSigning ? signingConfigs.release : signingConfigs.debug }
+        debug { if (ueSigning) signingConfig = signingConfigs.release }
+    }
 }
