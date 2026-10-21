@@ -64,8 +64,7 @@ public:
 									UseHardwareGamma;
 	INT								MaxTextureUnits,
 									AppleVA,
-									MultisampleBuffers,
-									MultisampleSamples,
+									NumAASamples,		// MSAA sample count; 0 = off
 									MultisampleHint;
 	DWORD							DesiredRefreshRate;
 

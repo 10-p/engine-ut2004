@@ -293,8 +293,6 @@ UBOOL UGL4ESRenderDevice::Init()
 		}
 	}
 
-	printf("[GL4ES-DBG] Init: start\n");
-
 	GIsOpenGL						= 1;
 	GIsPixomatic					= 0;
 
@@ -317,8 +315,6 @@ UBOOL UGL4ESRenderDevice::Init()
 	ScratchBuffer.Add( 65536 );
 
 	NumDevices++;
-
-	printf("[GL4ES-DBG] Init: complete, returning 1\n");
 
 	GGPUVendorID = 0xEEEE;
 	GGPUDeviceID = 0;
@@ -363,7 +359,6 @@ UBOOL UGL4ESRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Ful
 		appErrorf(TEXT("Can't change resolution while render device is locked!"));
 
 	debugf(TEXT("Enter SetRes: %dx%d Fullscreen %d"), NewX, NewY, Fullscreen );
-	printf("[GL4ES-DBG] SetRes: enter %dx%d\n", NewX, NewY);
 
 	switch( ColorBytes )
 	{

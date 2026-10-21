@@ -93,8 +93,7 @@ void UOpenGLRenderDevice::StaticConstructor()
 	new(GetClass(),TEXT("ReduceMouseLag"),      RF_Public)UBoolProperty ( CPP_PROPERTY(ReduceMouseLag      ), TEXT("Options"), CPF_Config );
 	new(GetClass(),TEXT("ForceCompression"),    RF_Public)UBoolProperty ( CPP_PROPERTY(ForceCompression    ), TEXT("Options"), CPF_Config );
 	new(GetClass(),TEXT("DesiredRefreshRate"),	RF_Public)UIntProperty  ( CPP_PROPERTY(DesiredRefreshRate  ), TEXT("Options"), CPF_Config );
-	new(GetClass(),TEXT("MultisampleBuffers"),	RF_Public)UIntProperty  ( CPP_PROPERTY(MultisampleBuffers  ), TEXT("Options"), CPF_Config );
-	new(GetClass(),TEXT("MultisampleSamples"),	RF_Public)UIntProperty  ( CPP_PROPERTY(MultisampleSamples  ), TEXT("Options"), CPF_Config );
+	new(GetClass(),TEXT("NumAASamples"),		RF_Public)UIntProperty  ( CPP_PROPERTY(NumAASamples        ), TEXT("Options"), CPF_Config );
 	new(GetClass(),TEXT("MultisampleHint"),		RF_Public)UIntProperty  ( CPP_PROPERTY(MultisampleHint     ), TEXT("Options"), CPF_Config );
 	new(GetClass(),TEXT("LevelOfAnisotropy"),	RF_Public)UFloatProperty( CPP_PROPERTY(LevelOfAnisotropy   ), TEXT("Options"), CPF_Config );
 	new(GetClass(),TEXT("UseRenderTargets"),	RF_Public)UBoolProperty	( CPP_PROPERTY(UseRenderTargets    ), TEXT("Options"), CPF_Config );
@@ -104,6 +103,29 @@ void UOpenGLRenderDevice::StaticConstructor()
 
 	GIsOpenGL						= 1;
 	GIsPixomatic					= 0;
+
+	// Compiled defaults, for an ini without a [OpenGLDrv.OpenGLRenderDevice] section (a retail install leaves
+	// every CPF_Config option at zero); the ini wins wherever it sets one. DetailTextures on, or the
+	// HandleDetail gate is never reached and detail-texture layers vanish.
+	DetailTextures					= 1;
+	UseVBO							= 1;
+	MaxTextureUnits					= 8;		// clamped to the real GL limit at init
+	UseTrilinear					= 1;
+	LevelOfAnisotropy				= 16.f;		// clamped to the GPU's maximum at init
+	ConfigVARSize					= 32;
+	UseRenderTargets				= 1;
+	DetailTexMipBias				= 0.f;
+	AppleVA							= 1;
+	MultisampleHint					= 2;
+	NumAASamples					= 4;
+
+	// Not raised: UsePixelShaders (this device draws through the fixed-function path), ForceCompression
+	// (DXT on already-decoded textures loses quality), UseVSync and ReduceMouseLag (both cost frames).
+	UsePixelShaders					= 0;
+	ForceCompression				= 0;
+	UseVSync						= 0;
+	ReduceMouseLag					= 0;
+	DesiredRefreshRate				= 0;
 
 	// Off by default: UpdateGamma reprograms the display's ramp, not the game's, so it recolours the
 	// whole desktop, and a process that dies before RestoreGamma leaves it that way. Set
@@ -264,6 +286,23 @@ UBOOL UOpenGLRenderDevice::Init()
 	guard(UOpenGLRenderDevice::Init);
 
 	debugf( TEXT("Initializing OpenGLDrv...") );
+
+	// NumAASamples replaces the MultisampleBuffers/MultisampleSamples pair: an ini without the new key
+	// is read through the old pair once (MSAA on when buffers > 0 and samples > 1).
+	{
+		const TCHAR* Section = TEXT("OpenGLDrv.OpenGLRenderDevice");
+		INT NewKey = 0, OldBuffers = 1, OldSamples = 4;
+		if( !GConfig->GetInt( Section, TEXT("NumAASamples"), NewKey ) )
+		{
+			UBOOL HaveOld = GConfig->GetInt( Section, TEXT("MultisampleBuffers"), OldBuffers );
+			HaveOld = GConfig->GetInt( Section, TEXT("MultisampleSamples"), OldSamples ) || HaveOld;
+			if( HaveOld )
+			{
+				NumAASamples = ( OldBuffers > 0 && OldSamples > 1 ) ? OldSamples : 0;
+				debugf( TEXT("OpenGL: NumAASamples=%i from the old MultisampleBuffers=%i MultisampleSamples=%i"), NumAASamples, OldBuffers, OldSamples );
+			}
+		}
+	}
 
 	GIsOpenGL						= 1;
 	GIsPixomatic					= 0;
@@ -444,8 +483,7 @@ UBOOL UOpenGLRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Fu
 	// Hint is: 0 == GL_DONT_CARE, 1 == GL_FASTEST, 2 == GL_NICEST.  --ryan.
 	MultisampleHint    = Max(MultisampleHint, 0);
 	MultisampleHint    = Min(MultisampleHint, 2);
-	MultisampleBuffers = Max(MultisampleBuffers, 0);
-	MultisampleSamples = Max(MultisampleSamples, 0);
+	NumAASamples       = Max(NumAASamples, 0);
 
 #if (defined USE_SDL)
 	SDL_GL_SetAttribute( SDL_GL_RED_SIZE, ColorBytes<=2 ? 5 : 8 );
@@ -453,8 +491,8 @@ UBOOL UOpenGLRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Fu
 	SDL_GL_SetAttribute( SDL_GL_BLUE_SIZE, ColorBytes<=2 ? 5 : 8 );
 	SDL_GL_SetAttribute( SDL_GL_DEPTH_SIZE, ColorBytes<=2 ? 16 : 24 );
 	SDL_GL_SetAttribute( SDL_GL_DOUBLEBUFFER, 1 );
-	SDL_GL_SetAttribute( SDL_GL_MULTISAMPLEBUFFERS, MultisampleBuffers );
-	SDL_GL_SetAttribute( SDL_GL_MULTISAMPLESAMPLES, MultisampleSamples );
+	SDL_GL_SetAttribute( SDL_GL_MULTISAMPLEBUFFERS, NumAASamples > 1 ? 1 : 0 );
+	SDL_GL_SetAttribute( SDL_GL_MULTISAMPLESAMPLES, NumAASamples > 1 ? NumAASamples : 0 );
 
 	// Change window size.
 	Viewport->ResizeViewport( Fullscreen ? (BLIT_Fullscreen|BLIT_OpenGL) : (BLIT_OpenGL), NewX, NewY );

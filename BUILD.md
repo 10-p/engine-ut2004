@@ -165,8 +165,8 @@ through OpenSL ES and is built without C++20 modules (`ALSOFT_ENABLE_MODULES=OFF
 
 | Switch | Render device | Built in |
 |---|---|---|
-| `-GL4ESRENDERER` | `GL4ESDrv.GL4ESRenderDevice` | every build (the only GL device on the web and Android) |
-| `-OPENGLRENDERER` | `OpenGLDrv.OpenGLRenderDevice` | native and Windows |
+| `-GL4ESRENDERER` | `GL4ESDrv.GL4ESRenderDevice` | every build (the only GL device on the web and Android; the web ini's default) |
+| `-OPENGLRENDERER` | `OpenGLDrv.OpenGLRenderDevice` | native and Windows (the native ini's default) |
 | `-SOFTWARERENDERER` | `PixoDrv.PixoRenderDevice` | 32-bit native and Windows (`USE_PIXOMATIC`) |
 | `-NULLRENDERER` | `Engine.NullRenderDevice` | every build |
 
@@ -177,9 +177,12 @@ render device with OpenGLDrv then GL4ESDrv, the audio device with ALAudio (or `U
 `IpDrv.TcpNetDriver` becomes `WebRTCDrv.WebRTCNetDriver`. `-NoReplaceViewport` and `-NoReplaceRenderDevice` turn
 the first two replacements off.
 
-- `[<Device>] NumAASamples` (GL4ESDrv; 0 = off): MSAA sample count. The native ini ships 0, the web ini 4. On the
-  web it decides the WebGL `antialias` flag only. An ini without the key is read through the old
+- `[<Device>] NumAASamples` (OpenGLDrv, GL4ESDrv; 0 = off): MSAA sample count. The native ini ships 0, the web ini
+  4. On the web it decides the WebGL `antialias` flag only. An ini without the key is read through the old
   `MultisampleBuffers`/`MultisampleSamples` pair.
+- OpenGLDrv and GL4ESDrv share their quality settings: render targets on (`UseRenderTargets`), 16x anisotropic
+  filtering clamped to the GPU's maximum, all texture units, trilinear; an ini without the device's section gets
+  them as compiled defaults.
 - `[<Device>] UseHardwareGamma` (OpenGLDrv, GL4ESDrv, PixoDrv; default False; `-NOGAMMA` forces it off): the
   in-game gamma reprograms the display's ramp; RestoreGamma puts back the ramp found at startup.
 - Pixomatic's JIT runs code from the heap: on Linux the launcher re-execs itself with `READ_IMPLIES_EXEC` when the
