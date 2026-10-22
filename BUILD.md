@@ -180,6 +180,10 @@ the first two replacements off.
 - `[<Device>] NumAASamples` (OpenGLDrv, GL4ESDrv; 0 = off): MSAA sample count. The native ini ships 0, the web ini
   4. On the web it decides the WebGL `antialias` flag only. An ini without the key is read through the old
   `MultisampleBuffers`/`MultisampleSamples` pair.
+- DXT textures (GL4ESDrv) go to the GPU as they are where it has S3TC. Where it has not, gl4es transcodes them at
+  upload to ASTC 4x4 (decoded at 8-bit precision where the GPU offers it) or ETC2, and only with neither decodes them
+  to RGBA8 (`LIBGL_AVOID16BITS`). The transcode happens in the texture precache at level load (`Finished precaching
+  textures in <s> seconds`).
 - OpenGLDrv and GL4ESDrv share their quality settings: render targets on (`UseRenderTargets`), 16x anisotropic
   filtering clamped to the GPU's maximum, all texture units, trilinear; an ini without the device's section gets
   them as compiled defaults.
@@ -238,6 +242,7 @@ cd Android
 #   -PnoKarma            no physics
 #   -PkarmaDir=<path>    a local metoolkit-karma-decomp checkout
 #   -Psdl2Dir=<path>     a local SDL2 checkout (or SDL2_SOURCE_DIR)
+#   -Pgl4esDir=<path>    a local gl4es checkout (or GL4ES_SOURCE_DIR)
 #   -Px86abi             also 32-bit x86 (an emulator control, not for shipping)
 ```
 

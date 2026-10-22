@@ -66,6 +66,14 @@ android {
                 if (project.hasProperty('noKarma')) {
                     cmakeArgs += '-DUSE_KARMA_DECOMP=OFF'
                 }
+                // `-Pgl4esDir=/abs/path` (or GL4ES_SOURCE_DIR) builds a local gl4es checkout
+                // (FETCHCONTENT_SOURCE_DIR_GL4ES) instead of the fork's branch.
+                def gl4esDir = project.findProperty('gl4esDir') ?: System.getenv('GL4ES_SOURCE_DIR')
+                if (gl4esDir) {
+                    if (!file(gl4esDir).isDirectory())
+                        throw new GradleException("gl4esDir=${gl4esDir} is not a directory")
+                    cmakeArgs += "-DFETCHCONTENT_SOURCE_DIR_GL4ES=${gl4esDir}".toString()
+                }
                 if (sdl2Dir && file(sdl2Dir).isDirectory()) {
                     cmakeArgs += "-DFETCHCONTENT_SOURCE_DIR_SDL2=${sdl2Dir}".toString()
                 } else if (sdl2Dir) {
