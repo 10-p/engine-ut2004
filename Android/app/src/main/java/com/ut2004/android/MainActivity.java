@@ -272,10 +272,12 @@ public class MainActivity extends Activity {
         ui.postDelayed(countdownTick, 1000L);
     }
 
+    /** Stops a running countdown; relabel also clears a count left on the button by a countdown that ran out. */
     private void cancelCountdown(boolean relabel) {
-        if (!countdownActive) return;
-        countdownActive = false;
-        ui.removeCallbacks(countdownTick);
+        if (countdownActive) {
+            countdownActive = false;
+            ui.removeCallbacks(countdownTick);
+        }
         if (relabel && startButton != null) startButton.setText("Start game");
     }
 
