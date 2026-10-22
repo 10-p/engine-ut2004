@@ -99,7 +99,7 @@ for Pixomatic. The web keeps the `SDLLaunch` name; Android builds `libUT2004.so`
 | `UE_KARMA_O2_FILES`, `UE_KARMA_O2_OPTIONS`, `UE_KARMA_PIN_WEB` | empty, `-O2`, OFF | measure the recovered Karma's `-O0` pin (below). |
 | `UE_ENGINE_TU_FILES`, `UE_ENGINE_TU_OPTIONS` | empty | extra compile options for matching Engine sources (a bisect aid). |
 | `KD_CENSUS` | OFF | instrument the recovered Karma with a per-function call counter (never a shipping build). |
-| `GL4ES_GIT_REPOSITORY`, `GL4ES_GIT_TAG` | `10-p/gl4es`, `fix/cubemap-bind-active-unit` | the GL4ES source; stock upstream is `ptitSeb/gl4es` `v1.1.6` (wrong cubemaps). |
+| `GL4ES_GIT_REPOSITORY`, `GL4ES_GIT_TAG` | `10-p/gl4es`, `ufront` | the GL4ES source; stock upstream is `ptitSeb/gl4es` `v1.1.6` (wrong cubemaps). |
 | `KARMA_DECOMP_GIT_TAG` | `main` | the metoolkit-karma-decomp revision. |
 
 A local checkout replaces any fetched dependency: `-DFETCHCONTENT_SOURCE_DIR_GL4ES=…`,

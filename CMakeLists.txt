@@ -634,7 +634,7 @@ endif()
 # cubemap/material-combiner fixes), and two -D flags repoint it at stock upstream.
 set(GL4ES_GIT_REPOSITORY "https://github.com/10-p/gl4es.git"
     CACHE STRING "GL4ES git remote. Default: 10-p fork (cubemap/material fixes). Upstream: https://github.com/ptitSeb/gl4es.git")
-set(GL4ES_GIT_TAG "fix/cubemap-bind-active-unit"
+set(GL4ES_GIT_TAG "ufront"
     CACHE STRING "GL4ES git ref (branch/tag/SHA). Default tracks our fork's integration branch (latest fixes). Upstream: v1.1.6")
 FetchContent_Declare(
   GL4ES
