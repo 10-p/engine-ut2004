@@ -701,6 +701,14 @@ void  UGUIController::NativePostRender(UCanvas* Canvas)
 		MouseY = ViewportOwner->WindowsMouseY;
 	}
 
+	// Whether the cursor is over a control that takes input (a game pad's A clicks it there).
+	if ( OwnerViewport )
+	{
+		UGUIComponent* Under = UnderCursor(MouseX, MouseY);
+		OwnerViewport->bCursorOverControl = Under && Under->bAcceptsInput
+			&& !Under->IsA(UGUIPage::StaticClass()) && !Under->IsA(UGUIPanel::StaticClass());
+	}
+
 	// Render the Mouse Cursor if we are not using the windows cusor.  Otherwise set the cursor index
 	if (!ViewportOwner->bShowWindowsMouse || PadCursor)
 	{

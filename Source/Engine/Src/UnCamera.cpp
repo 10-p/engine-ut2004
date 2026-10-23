@@ -159,6 +159,7 @@ UViewport::UViewport() : RenderTarget(this)
 
 	DirtyViewport			= 0;
 	bPadCursor				= 0;
+	bCursorOverControl		= 0;
 
 	// Setup pointer to the IM and then the default Console
 	InteractionMaster		= GetOuterUClient()->InteractionMaster;

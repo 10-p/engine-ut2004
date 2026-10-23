@@ -326,6 +326,9 @@ class ENGINE_API UViewport : public UPlayer
 	// control uses as a focus move.
 	UBOOL bPadCursor;
 
+	// The GUI's cursor is over a control that takes input (not a page or a panel), as of the GUI's last frame.
+	UBOOL bCursorOverControl;
+
 	// Constructor.
 	UViewport();
 
