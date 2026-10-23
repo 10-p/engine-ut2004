@@ -552,6 +552,10 @@ if(NOT EMSCRIPTEN)
       ut_provide_samplerate_linker_name()
       FetchContent_MakeAvailable(SDL2)
     endif()
+    # SDL takes the platform's wchar_t, not the engine's -fshort-wchar: its HID code hands wchar_t buffers to the C
+    # library (mbstowcs, wcsdup: 32-bit on Linux), and a 16-bit one is overrun by every device string it reads. No
+    # wchar_t crosses the SDL calls the engine makes.
+    target_compile_options(SDL2-static PRIVATE -fno-short-wchar)
   endif()
 endif()
 
