@@ -5495,25 +5495,19 @@ void UObject::CacheDrivers( UBOOL ForceRefresh )
 		GObjDrivers.Empty();
 		for( INT i=0; i<GSys->Paths.Num(); i++ )
 		{
-			TCHAR Filename[256];
-			appSprintf( Filename, TEXT("%s%s"), appBaseDir(), *GSys->Paths(i) );
-			TCHAR* Tmp = appStrstr( Filename, TEXT("*.") );
-			if( Tmp )
+			// The .int files of the path entry's folder, under the base directory (paths as strings, of any length).
+			INT Wildcard = GSys->Paths(i).InStr( TEXT("*.") );
+			if( Wildcard >= 0 )
 			{
-				appSprintf( Tmp, TEXT("*.int") );
-				TArray<FString> Files = GFileManager->FindFiles( Filename, 1, 0 );
+				FString Folder = FString(appBaseDir()) + GSys->Paths(i).Left(Wildcard);
+				TArray<FString> Files = GFileManager->FindFiles( *(Folder + TEXT("*.int")), 1, 0 );
 				for( INT j=0; j<Files.Num(); j++ )
 				{
-//					appSprintf( Tmp, TEXT("%s%s"), appBaseDir(), *Files(j) );
-					appSprintf( Tmp, TEXT("%s"), *Files(j) );
-					TCHAR* End = Tmp + appStrlen( Tmp ) - 4;
-					appSprintf( End, TEXT(".%s"), UObject::GetLanguage() );
-					UBOOL Success = GConfig->GetSection( TEXT("Public"), Buffer, ARRAY_COUNT(Buffer), Filename );
+					// Each file is read from that folder, in the language's localization first.
+					FString Stem = Folder + Files(j).Left( Files(j).Len() - 4 );
+					UBOOL Success = GConfig->GetSection( TEXT("Public"), Buffer, ARRAY_COUNT(Buffer), *(Stem + TEXT(".") + UObject::GetLanguage()) );
 					if( !Success )
-					{
-						appSprintf( End, TEXT(".int") );
-						Success = GConfig->GetSection( TEXT("Public"), Buffer, ARRAY_COUNT(Buffer), Filename );
-					}
+						Success = GConfig->GetSection( TEXT("Public"), Buffer, ARRAY_COUNT(Buffer), *(Stem + TEXT(".int")) );
 					if( Success )
 					{
 						TCHAR* Next;

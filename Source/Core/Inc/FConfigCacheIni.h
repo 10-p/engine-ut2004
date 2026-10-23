@@ -240,26 +240,25 @@ public:
 		guard(FConfigCacheIni::Find);
 
 		// If filename not specified, use default.
-		TCHAR Filename[256];
-		appStrcpy( Filename, InFilename ? InFilename : *SystemIni );
+		FString Filename = InFilename ? InFilename : *SystemIni;	// a path of any length
 
 		// Add .ini extension.
-		INT Len = appStrlen(Filename);
-		if( Len<5 || (Filename[Len-4]!='.' && Filename[Len-5]!='.') )
-			appStrcat( Filename, TEXT(".ini") );
+		INT Len = Filename.Len();
+		if( Len<5 || ((*Filename)[Len-4]!='.' && (*Filename)[Len-5]!='.') )
+			Filename += TEXT(".ini");
 
 		// Automatically translate generic filenames.
-		if( appStricmp(Filename,TEXT("User.ini"))==0 )
-			appStrcpy( Filename, *UserIni );
-		else if( appStricmp(Filename,TEXT("System.ini"))==0 )
-			appStrcpy(Filename,*SystemIni);
+		if( Filename==TEXT("User.ini") )
+			Filename = UserIni;
+		else if( Filename==TEXT("System.ini") )
+			Filename = SystemIni;
 
 		// Get file.
 		FConfigFile* Result = TMap<FString,FConfigFile>::Find( Filename );
-		if( !Result && (CreateIfNotFound || GFileManager->FileSize(Filename)>=0)  )
+		if( !Result && (CreateIfNotFound || GFileManager->FileSize(*Filename)>=0)  )
 		{
-			Result = &Set( Filename, FConfigFile() );
-			Result->Read( Filename );
+			Result = &Set( *Filename, FConfigFile() );
+			Result->Read( *Filename );
 		}
 		return Result;
 
@@ -328,7 +327,8 @@ public:
 		if( !Sec )
 			return 0;
 		TCHAR* End = Result;
-		for( FConfigSection::TIterator It(*Sec); It && End-Result+appStrlen(*It.Key())+1<Size; ++It )
+		// Whole "key=value" entries while they fit, with the final terminator.
+		for( FConfigSection::TIterator It(*Sec); It && End-Result+It.Key().Len()+1+It.Value().Len()+1<Size; ++It )
 			End += appSprintf( End, TEXT("%s=%s"), *It.Key(), *It.Value() ) + 1;
 		*End++ = 0;
 		return 1;
