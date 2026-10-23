@@ -57,6 +57,7 @@ class USDL2Client : public UClient, public FNotifyHook
     BITFIELD            UseJoystick;        // game pads on (default) or off; read every tick (USDL2Viewport::UpdateInput)
     INT                 WebGLVersion;       // the web's WebGL context: 1 (default) or 2; -WEBGL=<n> overrides it
     FLOAT               PadCursorSeconds;   // the pad's menu cursor: seconds across the viewport's width at full tilt
+    FLOAT               PadWalkTilt;        // the move stick out of its deadzone but below this tilt walks; 0: never
 
     // Variables.
     UBOOL               InMenuLoop;

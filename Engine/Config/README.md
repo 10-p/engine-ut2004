@@ -15,7 +15,7 @@ leaves out the derived `UT2004.ini` / `User.ini` so an install copy cannot shado
 | Section | What it holds |
 |---------|---------------|
 | `[Engine.Engine]` | `ViewportManager=SDL2Drv.SDL2Client`; `RenderDevice` is `OpenGLDrv.OpenGLRenderDevice` in the native set (desktop OpenGL on Linux and Windows; Android has no OpenGLDrv, so startup replaces it with GL4ESDrv) and `GL4ESDrv.GL4ESRenderDevice` in the web set. The launcher's `-*RENDERER` switches pick another and persist it. |
-| `[SDL2Drv.SDL2Client]` | The client settings (window sizes, brightness, detail levels), `UseJoystick` (game pads, on by default), `PadCursorSeconds` (the seconds a pad's left stick at full tilt takes the menu cursor across the viewport's width, 3.0); web: `WebGLVersion` (1 or 2). |
+| `[SDL2Drv.SDL2Client]` | The client settings (window sizes, brightness, detail levels), `UseJoystick` (game pads, on by default), `PadCursorSeconds` (the seconds a pad's left stick at full tilt takes the menu cursor across the viewport's width, 3.0), `PadWalkTilt` (the move stick tilted out of its deadzone but less than this walks, 0.5; 0 never); web: `WebGLVersion` (1 or 2). |
 | `[GL4ESDrv.GL4ESRenderDevice]` | Every GL4ESDrv option, listed in full. `NumAASamples` is the MSAA sample count (0 = off): native 0, web 4. Web: `UseVBO=True` and `DefaultTexMipBias`. |
 | `[OpenGLDrv.OpenGLRenderDevice]` | The desktop GL renderer's options, matching GL4ESDrv's where shared: `NumAASamples=0`, `UseRenderTargets=True`, `LevelOfAnisotropy=16.0`. |
 | `[PixoDrv.PixoRenderDevice]` | The Pixomatic software renderer's options. |

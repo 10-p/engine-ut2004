@@ -206,7 +206,11 @@ the first two replacements off.
   host; `[Engine.GameEngine] AllowNetCheats=True` (test harnesses only) opens them elsewhere.
 - `FLUSHCONFIG`: write the config cache to disk now.
 - `[SDL2Drv.SDL2Client] UseJoystick` (on by default): game pads, one pad (the first connected), the shared button
-  map, sticks sent as rates. While a menu is up, any pad button or a stick leaving its rest position takes the
+  map, sticks sent as rates. In play the left stick is the move stick: its deadzone is radial (0.12, rescaled from its
+  edge), so every direction between the axes keeps both parts, and a tilt out of it but below
+  `[SDL2Drv.SDL2Client] PadWalkTilt` (0.5 of the stick's travel; 0 never) walks, as the Walking button does: the stick
+  keeps a bit of its own set in the player's `bRun` (the Walking key writes the whole byte; the stick sets its bit
+  again the next update), and the moves a client sends to its server carry `bRun`. While a menu is up, any pad button or a stick leaving its rest position takes the
   cursor until the mouse moves: the GUI draws it and the system cursor is hidden. Only while the pad has the cursor
   (that press included) do its controls act on the menu; in play and while the mouse has the cursor they give their
   game keys and axes. The left stick moves the cursor, linear past the deadzone, across the viewport's width in
