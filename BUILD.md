@@ -206,7 +206,11 @@ the first two replacements off.
   host; `[Engine.GameEngine] AllowNetCheats=True` (test harnesses only) opens them elsewhere.
 - `FLUSHCONFIG`: write the config cache to disk now.
 - `[SDL2Drv.SDL2Client] UseJoystick` (on by default): game pads, one pad (the first connected), the shared button
-  map, sticks sent as rates.
+  map, sticks sent as rates. While a menu is up, touching the left stick takes the cursor and moves it (linear past
+  the deadzone, a viewport height a second at full tilt; in fullscreen, where the GUI adds up the mouse axes itself,
+  times the menu mouse sensitivity) until the mouse moves: the GUI draws it and the system cursor is hidden. The fire
+  controls click: primary fire (right trigger and bumper) the left button, alt fire the right. A key-binding page
+  waiting for a key gets the pad's own keys.
 - `-usehomedir`: user files under `~/.ut2004` instead of beside the game (the default).
 - A key-less install generates its CD key (63 bits of OS entropy) and saves it to `System/cdkey`.
 - `UT_NO_FAULT_HANDLER=1` (Android: `adb shell setprop debug.ut2004.nofault 1`): leave hardware faults to the OS's

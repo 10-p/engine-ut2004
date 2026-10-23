@@ -692,8 +692,17 @@ void  UGUIController::NativePostRender(UCanvas* Canvas)
 			ActivePage->RestoreCanvasState(Canvas);
 	}
 
+	// While a game pad moves the cursor the system cursor is hidden: the GUI draws its own at the system cursor's place.
+	UViewport* OwnerViewport = Cast<UViewport>(ViewportOwner);
+	const UBOOL PadCursor = ViewportOwner->bShowWindowsMouse && OwnerViewport && OwnerViewport->bPadCursor;
+	if ( PadCursor )
+	{
+		MouseX = ViewportOwner->WindowsMouseX;
+		MouseY = ViewportOwner->WindowsMouseY;
+	}
+
 	// Render the Mouse Cursor if we are not using the windows cusor.  Otherwise set the cursor index
-	if (!ViewportOwner->bShowWindowsMouse)
+	if (!ViewportOwner->bShowWindowsMouse || PadCursor)
 	{
 		
 		UMaterial* MouseMat;

@@ -127,6 +127,7 @@ class USDL2Viewport : public UViewport
     void CloseWindow();
     void UpdateInput( UBOOL Reset, FLOAT DeltaSeconds );
     void ClosePad();
+    void MovePadCursor( FLOAT X, FLOAT Y, FLOAT DeltaSeconds );
     void* GetWindow();
     void SetMouseCapture( UBOOL Capture, UBOOL Clip, UBOOL FocusOnly );
 

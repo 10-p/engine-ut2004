@@ -6,7 +6,7 @@ Requires assets from a retail UT2004 install. Every preset, option and driver: [
 ## Changes from the original source
 
 * WebAssembly build: the whole engine runs on a browser worker, with WasmFS file access through the host page, WebGL through GL4ES and an `ue_exec_command` console export.
-* SDL2 client driver (`SDL2Drv`): the one viewport on every target (window, GL context, keyboard, mouse, pads, Android touch).
+* SDL2 client driver (`SDL2Drv`): the one viewport on every target (window, GL context, keyboard, mouse, pads, Android touch); a pad's left stick and fire controls drive the menu cursor.
 * GL4ES renderer (`GL4ESDrv`): OpenGLDrv over gl4es, on OpenGL ES 2 / WebGL 1, or WebGL 2 with `WebGLVersion=2`.
 * OpenGL renderer: the stock `OpenGLDrv` on SDL2, in the same binary as the other renderers.
 * Software renderer: Pixomatic (`PixoDrv`) on 32-bit x86 Linux and Windows, presented through GL.

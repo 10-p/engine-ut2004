@@ -158,6 +158,7 @@ UViewport::UViewport() : RenderTarget(this)
 	CinematicsRatio			= 1.66f;
 
 	DirtyViewport			= 0;
+	bPadCursor				= 0;
 
 	// Setup pointer to the IM and then the default Console
 	InteractionMaster		= GetOuterUClient()->InteractionMaster;
