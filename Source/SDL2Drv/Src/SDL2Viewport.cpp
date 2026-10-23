@@ -12,6 +12,7 @@
 #endif
 
 #include "SDL2Drv.h"
+#include "SDL2InputTest.h"
 #if defined(__EMSCRIPTEN__)
 #include <emscripten/em_asm.h>   // WebPadPressed (a pad's first press)
 #endif
@@ -466,6 +467,10 @@ USDL2Viewport::USDL2Viewport()
     GLContext           = NULL;
     BlitFlags           = 0;
     ViewportButtonFlags = 0;
+    InputTest           = NULL;
+    FString InputTestFile;
+    if( Parse( appCmdLine(), TEXT("INPUTTEST="), InputTestFile ) )
+        InputTest = new FSDL2InputTest( *InputTestFile );
     unguard;
 }
 
@@ -476,6 +481,8 @@ void USDL2Viewport::Destroy()
 {
     guard(USDL2Viewport::Destroy);
     CloseWindow();
+    delete InputTest;
+    InputTest = NULL;
     Super::Destroy();
     unguard;
 }
@@ -1303,6 +1310,9 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
     // control gives its game key.
     const UBOOL Menu = GUIController && GUIController->bActive;
     const UBOOL PadMenu = Menu && !(Client->InteractionMaster && Client->InteractionMaster->bRequireRawJoystick);
+
+    if( InputTest )
+        InputTest->Tick( this );
 
     SDL_Event Ev;
     // Last tick's held-at-connect presses end now (a tap; GPadHeldTap).

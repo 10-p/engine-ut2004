@@ -39,6 +39,7 @@
 // Classes.
 class USDL2Viewport;
 class USDL2Client;
+class FSDL2InputTest;
 
 /*-----------------------------------------------------------------------------
     USDL2Client.
@@ -102,6 +103,7 @@ class USDL2Viewport : public UViewport
     SDL_GLContext       GLContext;
     DWORD               BlitFlags;
     DWORD               ViewportButtonFlags;
+    FSDL2InputTest*     InputTest;          // the input test channel (-INPUTTEST=), NULL without it
 
     // SDL2 scancode to EInputKey translation map (static, shared across all viewports).
     static BYTE         KeyMap[SDL2DRV_MAX_SCANCODES];

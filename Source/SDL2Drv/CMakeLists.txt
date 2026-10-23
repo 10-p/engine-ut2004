@@ -9,6 +9,7 @@ project(SDL2Drv CXX)
 set(SRC_FILES
   "Src/SDL2Client.cpp"
   "Src/SDL2Drv.cpp"
+  "Src/SDL2InputTest.cpp"
   "Src/SDL2Viewport.cpp"
 )
 

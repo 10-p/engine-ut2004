@@ -1,0 +1,175 @@
+# The move stick: the speed at five tilts straight ahead, the direction at stick angles between the axes at full
+# and at 0.4 tilt, the player's Walking button held at full tilt, and the stick after that button's release. Every
+# sample starts at one spot of DM-Rankin with 1,900 units free along yaw 33376, its view turned so that the stick's
+# direction runs along that yaw:
+#   tools/dev/inputtest/run.sh <run-tree> move.scen <out-dir> 'DM-Rankin?Game=XGame.xDeathMatch?NumBots=0' -SOFTWARERENDERER
+#   tools/dev/inputtest/rate.py <out-dir>/game.log 0
+# The tags name the tilt and the stick's angle in degrees clockwise from straight ahead (speed-0.4: 0.4 ahead;
+# dir-0.4-30: 0.4 at 30 degrees, which rate.py's "move" should read as 30).
+waitlog DM-Rankin.myLevel up for play
+sleep 4
+pad attach
+sleep 1
+# The match starts on Fire (the right trigger); the second press spawns the player if the first only started it.
+pad axis righttrigger 32767
+sleep 0.3
+pad axis righttrigger 0
+sleep 3
+pad axis righttrigger 32767
+sleep 0.3
+pad axis righttrigger 0
+sleep 3
+# The pad's Y button is the Walking button, as in DefUser.ini's layout.
+exec set input Joy6 Walking
+exec TELEPORT 4098 1192 -324 33376
+sleep 0.3
+pad axis lefty -6553
+sleep 2.0
+watch 40 speed-0.2
+sleep 1.2
+pad axis lefty 0
+sleep 0.8
+exec TELEPORT 4098 1192 -324 33376
+sleep 0.3
+pad axis lefty -13107
+sleep 2.0
+watch 40 speed-0.4
+sleep 1.2
+pad axis lefty 0
+sleep 0.8
+exec TELEPORT 4098 1192 -324 33376
+sleep 0.3
+pad axis lefty -19660
+sleep 2.0
+watch 40 speed-0.6
+sleep 1.2
+pad axis lefty 0
+sleep 0.8
+exec TELEPORT 4098 1192 -324 33376
+sleep 0.3
+pad axis lefty -26214
+sleep 2.0
+watch 40 speed-0.8
+sleep 1.2
+pad axis lefty 0
+sleep 0.8
+exec TELEPORT 4098 1192 -324 33376
+sleep 0.3
+pad axis lefty -32767
+sleep 2.0
+watch 40 speed-1.0
+sleep 1.2
+pad axis lefty 0
+sleep 0.8
+exec TELEPORT 4098 1192 -324 31556
+sleep 0.3
+pad axis leftx 5690
+pad axis lefty -32269
+sleep 1.2
+watch 40 dir-1.0-10
+sleep 1.2
+pad axis leftx 0
+pad axis lefty 0
+sleep 0.8
+exec TELEPORT 4098 1192 -324 27915
+sleep 0.3
+pad axis leftx 16383
+pad axis lefty -28377
+sleep 1.2
+watch 40 dir-1.0-30
+sleep 1.2
+pad axis leftx 0
+pad axis lefty 0
+sleep 0.8
+exec TELEPORT 4098 1192 -324 22453
+sleep 0.3
+pad axis leftx 28377
+pad axis lefty -16384
+sleep 1.2
+watch 40 dir-1.0-60
+sleep 1.2
+pad axis leftx 0
+pad axis lefty 0
+sleep 0.8
+exec TELEPORT 4098 1192 -324 18812
+sleep 0.3
+pad axis leftx 32269
+pad axis lefty -5690
+sleep 1.2
+watch 40 dir-1.0-80
+sleep 1.2
+pad axis leftx 0
+pad axis lefty 0
+sleep 0.8
+exec TELEPORT 4098 1192 -324 31556
+sleep 0.3
+pad axis leftx 2276
+pad axis lefty -12908
+sleep 1.2
+watch 40 dir-0.4-10
+sleep 1.2
+pad axis leftx 0
+pad axis lefty 0
+sleep 0.8
+exec TELEPORT 4098 1192 -324 27915
+sleep 0.3
+pad axis leftx 6553
+pad axis lefty -11351
+sleep 1.2
+watch 40 dir-0.4-30
+sleep 1.2
+pad axis leftx 0
+pad axis lefty 0
+sleep 0.8
+exec TELEPORT 4098 1192 -324 22453
+sleep 0.3
+pad axis leftx 11351
+pad axis lefty -6553
+sleep 1.2
+watch 40 dir-0.4-60
+sleep 1.2
+pad axis leftx 0
+pad axis lefty 0
+sleep 0.8
+exec TELEPORT 4098 1192 -324 18812
+sleep 0.3
+pad axis leftx 12908
+pad axis lefty -2276
+sleep 1.2
+watch 40 dir-0.4-80
+sleep 1.2
+pad axis leftx 0
+pad axis lefty 0
+sleep 0.8
+exec TELEPORT 4098 1192 -324 33376
+sleep 0.3
+pad button y 1
+pad axis lefty -32767
+sleep 1.2
+watch 40 walkbutton-1.0
+sleep 1.2
+pad axis lefty 0
+pad button y 0
+sleep 0.8
+exec TELEPORT 4098 1192 -324 33376
+sleep 0.3
+pad button y 1
+pad axis lefty -32767
+sleep 0.6
+pad button y 0
+sleep 1.2
+watch 40 walkbutton-released-1.0
+sleep 1.2
+pad axis lefty 0
+sleep 0.8
+exec TELEPORT 4098 1192 -324 33376
+sleep 0.3
+pad button y 1
+pad axis lefty -13107
+sleep 0.6
+pad button y 0
+sleep 1.2
+watch 40 walkbutton-released-0.4
+sleep 1.2
+pad axis lefty 0
+sleep 0.8

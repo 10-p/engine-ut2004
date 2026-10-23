@@ -300,6 +300,14 @@ python3 -c "import json;print(json.load(open('build-wasm-perf/Source/SDLLaunch/m
 CI (`.github/workflows/build.yml`) builds the native, Windows, Android and web presets on every push and asserts the
 physics each binary carries, the Windows imports, the packaged Android ABIs and the web descriptor.
 
+## Input test channel
+
+`-INPUTTEST=<file>` opens the input test channel (`Source/SDL2Drv/Src/SDL2InputTest.h`): commands appended to the file
+drive a virtual SDL game controller that takes the pad's place, run console commands and watch the view and the pawn
+once per input update. `tools/dev/inputtest/run.sh <run-tree> <scenario> <out-dir> [<args>]` runs the native build
+under Xvfb with it and feeds it a scenario (`move.scen`: the move stick's speed against tilt and its directions on
+DM-Rankin); `rate.py` gives the turn rate, the speed, the move direction and the walking share from the log.
+
 ## Layout
 
 | Dir | What |
@@ -310,3 +318,4 @@ physics each binary carries, the Windows imports, the packaged Android ABIs and 
 | `vendor/glue/` | the ABI header and shims the web build bakes in |
 | `Android/` | the Gradle/NDK project |
 | `cmake/` | CMake modules and the MinGW toolchain file |
+| `tools/dev/inputtest/` | the input test channel's runner, its scenarios and `rate.py` |
