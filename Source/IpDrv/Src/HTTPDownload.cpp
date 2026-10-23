@@ -235,15 +235,9 @@ void UHTTPDownload::Tick(void)
 		break;
 	case HTTP_Connecting:
 		INT err;
-		{
-			fd_set SocketSet;
-			TIMEVAL SelectTime = {0, 0};
-			FD_ZERO( &SocketSet );
-			FD_SET( ServerSocket, &SocketSet );
-			// Check for writability.  If the socket is writable, the
-			// connection attempt succeeded.
-			err = select( ServerSocket + 1, 0, &SocketSet, 0, &SelectTime);
-		}
+		// Check for writability.  If the socket is writable, the
+		// connection attempt succeeded.
+		err = SocketReady( ServerSocket, SOCKET_Writable, 0 );
 		if ( err == SOCKET_ERROR )
 		{
 			debugf( NAME_DevNet, TEXT("HTTPDownload: select() failed") );

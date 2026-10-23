@@ -224,13 +224,7 @@ UBOOL AUdpLink::Tick( FLOAT DeltaTime, enum ELevelTick TickType )
 		}
 		else if( ReceiveMode == RMODE_Manual )
 		{
-			fd_set SocketSet;
-			TIMEVAL SelectTime = {0, 0};
-			INT Error;
-
-			FD_ZERO( &SocketSet );
-			FD_SET( Socket, &SocketSet );
-			Error = select( Socket + 1, &SocketSet, 0, 0, &SelectTime);
+			INT Error = SocketReady( Socket, SOCKET_Readable, 0 );
 			if( Error==0 || Error==SOCKET_ERROR )
 			{
 				DataPending = 0;
