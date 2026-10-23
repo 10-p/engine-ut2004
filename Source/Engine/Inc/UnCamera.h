@@ -322,7 +322,8 @@ class ENGINE_API UViewport : public UPlayer
 
 	UBOOL bDumpingFrames;		// True if we are dumping each frame
 
-	// A game pad moves the menu cursor: the system cursor is hidden and the GUI draws its own.
+	// A game pad has the menu cursor: the system cursor is hidden, the GUI draws its own and takes an arrow key no
+	// control uses as a focus move.
 	UBOOL bPadCursor;
 
 	// Constructor.

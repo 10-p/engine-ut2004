@@ -206,11 +206,13 @@ the first two replacements off.
   host; `[Engine.GameEngine] AllowNetCheats=True` (test harnesses only) opens them elsewhere.
 - `FLUSHCONFIG`: write the config cache to disk now.
 - `[SDL2Drv.SDL2Client] UseJoystick` (on by default): game pads, one pad (the first connected), the shared button
-  map, sticks sent as rates. While a menu is up, touching the left stick takes the cursor and moves it (linear past
-  the deadzone, a viewport height a second at full tilt; in fullscreen, where the GUI adds up the mouse axes itself,
-  times the menu mouse sensitivity) until the mouse moves: the GUI draws it and the system cursor is hidden. The fire
-  controls click: primary fire (right trigger and bumper) the left button, alt fire the right. A key-binding page
-  waiting for a key gets the pad's own keys.
+  map, sticks sent as rates. While a menu is up, any pad button or a stick leaving its rest position takes the
+  cursor until the mouse moves: the GUI draws it and the system cursor is hidden. The left stick moves it, linear past
+  the deadzone, across the viewport's width in `[SDL2Drv.SDL2Client] PadCursorSeconds` (3.0) at full tilt (in
+  fullscreen, where the GUI adds up the mouse axes itself, times the menu mouse sensitivity). Primary fire (right
+  trigger and bumper) clicks the left button and alt fire the right; A is Enter (activates the focused control), B
+  Escape (back), and the D-pad the arrow keys, an arrow no control uses moving the focus as Tab does (down and right
+  to the next control, up and left to the previous one). A key-binding page waiting for a key gets the pad's own keys.
 - `-usehomedir`: user files under `~/.ut2004` instead of beside the game (the default).
 - A key-less install generates its CD key (63 bits of OS entropy) and saves it to `System/cdkey`.
 - `UT_NO_FAULT_HANDLER=1` (Android: `adb shell setprop debug.ut2004.nofault 1`): leave hardware faults to the OS's

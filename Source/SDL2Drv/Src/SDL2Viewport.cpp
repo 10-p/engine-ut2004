@@ -256,12 +256,29 @@ static const BYTE GPadButtonMap[SDL_CONTROLLER_BUTTON_MAX] =
 static const FLOAT GPadLookFactor = 5.7f;
 static const FLOAT GPadMoveFactor = 0.444f;
 
-// While a menu shows the cursor the left stick moves it, at a speed linear in the stick past the deadzone: this many
-// viewport heights a second at full tilt.
-static const FLOAT GPadCursorSpeed = 1.0f;
-
-// While a menu shows the cursor the fire controls click: primary fire (right trigger and bumper), alt fire (left).
+// While a menu is up the fire controls click: primary fire (right trigger and bumper), alt fire (left).
 static const BYTE GPadMenuClick[2] = { IK_LeftMouse, IK_RightMouse };
+
+// While a menu is up these buttons act as keys (IK_None: the button keeps its game key): A activates the focused
+// control and B goes back, as Enter and Escape do; the D-pad is the arrow keys (one no control uses moves the focus).
+static const BYTE GPadMenuButtonMap[SDL_CONTROLLER_BUTTON_MAX] =
+{
+    /* A             */ IK_Enter,
+    /* B             */ IK_Escape,
+    /* X             */ IK_None,
+    /* Y             */ IK_None,
+    /* BACK          */ IK_None,
+    /* GUIDE         */ IK_None,
+    /* START         */ IK_None,
+    /* LEFTSTICK     */ IK_None,
+    /* RIGHTSTICK    */ IK_None,
+    /* LEFTSHOULDER  */ IK_None,    // alt fire: GPadMenuClick
+    /* RIGHTSHOULDER */ IK_None,    // primary fire: GPadMenuClick
+    /* DPAD_UP       */ IK_Up,
+    /* DPAD_DOWN     */ IK_Down,
+    /* DPAD_LEFT     */ IK_Left,
+    /* DPAD_RIGHT    */ IK_Right,
+};
 
 // Rescale a normalized stick axis so motion starts at 0 past the deadzone.
 static inline FLOAT PadAxis( FLOAT V )
@@ -285,9 +302,11 @@ static BYTE                GPadRT        = IK_None; // right trigger -> IK_Joy1 
 static BYTE                GPadLT        = IK_None; // left trigger  -> IK_Joy3 (AltFire): likewise
 // The key each held button's press gave (IK_None: up); its release gives the same key, whatever shows meanwhile.
 static BYTE                GPadDown[SDL_CONTROLLER_BUTTON_MAX];
-// The pad has the menu cursor: its left stick left its rest position in a menu after the mouse last moved.
+// The pad has the menu cursor: one of its buttons was pressed, or a stick left its rest position, in a menu since the
+// mouse last moved.
 static UBOOL               GPadCursor    = 0;
-static UBOOL               GPadStickOff  = 0;      // the left stick is past its deadzone
+static UBOOL               GPadLeftOff   = 0;      // the left stick is past its deadzone
+static UBOOL               GPadRightOff  = 0;      // the right stick is past its deadzone
 // The keys a pad's held-at-connect press gave the game. SDL never reports their release (it never saw them go down),
 // so they are a tap: released at the next tick. (The triggers become a tap by themselves: the next read of their
 // state says up.)
@@ -299,14 +318,22 @@ static SDL_JoystickID PadInstance( SDL_GameController* Pad )
     return Pad ? SDL_JoystickInstanceID( SDL_GameControllerGetJoystick( Pad ) ) : -1;
 }
 
-// The key a pad control gives: its game key, or while a menu shows the cursor the click of its fire action.
-static BYTE PadKey( BYTE GameKey, UBOOL MenuClicks )
+// The key a pad control gives: its game key, or while a menu is up the click of its fire action.
+static BYTE PadKey( BYTE GameKey, UBOOL MenuKeys )
 {
-    if( MenuClicks && (GameKey == IK_Joy1 || GameKey == IK_Joy12) )  // Fire
+    if( MenuKeys && (GameKey == IK_Joy1 || GameKey == IK_Joy12) )  // Fire
         return GPadMenuClick[0];
-    if( MenuClicks && (GameKey == IK_Joy3 || GameKey == IK_Joy11) )  // AltFire
+    if( MenuKeys && (GameKey == IK_Joy3 || GameKey == IK_Joy11) )  // AltFire
         return GPadMenuClick[1];
     return GameKey;
+}
+
+// The key a pad button gives: its game key, or while a menu is up its menu key or click.
+static BYTE PadButtonKey( INT Button, UBOOL MenuKeys )
+{
+    if( MenuKeys && GPadMenuButtonMap[Button] != IK_None )
+        return GPadMenuButtonMap[Button];
+    return PadKey( GPadButtonMap[Button], MenuKeys );
 }
 
 static UBOOL GPadsOn = 1;   // UseJoystick as last seen (a change is logged once)
@@ -1201,19 +1228,21 @@ void USDL2Viewport::ClosePad()
     if( GPadRT != IK_None ) { CauseInputEvent( GPadRT, IST_Release ); GPadRT = IK_None; }
     if( GPadLT != IK_None ) { CauseInputEvent( GPadLT, IST_Release ); GPadLT = IK_None; }
     GPadMoveX = GPadMoveY = GPadYaw = GPadPitch = 0.f;
-    GPadCursor = GPadStickOff = 0;
+    GPadCursor = GPadLeftOff = GPadRightOff = 0;
     unguard;
 }
 
 //
-// Move the menu cursor by the pad's left stick (X, Y past the deadzone, -1 to 1) for this tick. The windowed menus
-// place the cursor at WindowsMouseX/Y, the fullscreen ones add up the mouse axes, and both take the axes for hover and
-// drags: the axes carry the step that stays on screen, or the whole step when the GUI keeps its own cursor.
+// Move the menu cursor by the pad's left stick (X, Y past the deadzone, -1 to 1) for this tick: linear in the stick,
+// across the viewport's width in PadCursorSeconds at full tilt. The windowed menus place the cursor at WindowsMouseX/Y,
+// the fullscreen ones add up the mouse axes, and both take the axes for hover and drags: the axes carry the step that
+// stays on screen, or the whole step when the GUI keeps its own cursor.
 //
 void USDL2Viewport::MovePadCursor( FLOAT X, FLOAT Y, FLOAT DeltaSeconds )
 {
     guard(USDL2Viewport::MovePadCursor);
-    const FLOAT Step = GPadCursorSpeed * SizeY * DeltaSeconds;
+    const FLOAT Seconds = Max( GetOuterUSDL2Client()->PadCursorSeconds, 0.1f );
+    const FLOAT Step = SizeX / Seconds * DeltaSeconds;
     const FLOAT NewX = Clamp( WindowsMouseX + X * Step, 0.f, (FLOAT)SizeX );
     const FLOAT NewY = Clamp( WindowsMouseY + Y * Step, 0.f, (FLOAT)SizeY );
     const FLOAT DX = bShowWindowsMouse ? NewX - WindowsMouseX : X * Step;
@@ -1228,6 +1257,35 @@ void USDL2Viewport::MovePadCursor( FLOAT X, FLOAT Y, FLOAT DeltaSeconds )
 }
 
 //
+// While the pad has the cursor of a menu (GPadCursor), the GUI draws it and takes the arrow keys no control uses as
+// focus moves (bPadCursor), and the system cursor is hidden.
+//
+void USDL2Viewport::UpdatePadCursor()
+{
+    guard(USDL2Viewport::UpdatePadCursor);
+    const UBOOL Shown = GPadCursor && GUIController && GUIController->bActive;
+    if( Shown != bPadCursor )
+    {
+        bPadCursor = Shown;
+        SDL_ShowCursor( bPadCursor ? SDL_DISABLE : SDL_ENABLE );
+        debugf( NAME_Log, TEXT("SDL2: menu cursor: %s"), bPadCursor ? TEXT("pad") : TEXT("system") );
+    }
+    unguard;
+}
+
+//
+// A pad interaction in a menu: the pad takes the cursor before its key goes out, so the GUI handles the key as the
+// pad's (UpdatePadCursor).
+//
+void USDL2Viewport::TakePadCursor()
+{
+    guard(USDL2Viewport::TakePadCursor);
+    GPadCursor = 1;
+    UpdatePadCursor();
+    unguard;
+}
+
+//
 // Update input -- full SDL2 event loop.
 // Handles keyboard (scancode-based), mouse (relative + absolute),
 // text input, and window events.
@@ -1238,10 +1296,10 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
 
     USDL2Client* Client = GetOuterUSDL2Client();
 
-    // A menu shows the cursor: the pad's left stick moves it and its fire controls click, unless a key-binding page
-    // waits for a pad key as it is (bRequireRawJoystick).
-    const UBOOL PadMenu = GUIController && GUIController->bActive
-        && !(Client->InteractionMaster && Client->InteractionMaster->bRequireRawJoystick);
+    // While a menu is up any pad interaction takes its cursor (Menu). The left stick moves the cursor and the buttons
+    // give their menu keys (PadMenu), unless a key-binding page waits for a pad key as it is (bRequireRawJoystick).
+    const UBOOL Menu = GUIController && GUIController->bActive;
+    const UBOOL PadMenu = Menu && !(Client->InteractionMaster && Client->InteractionMaster->bRequireRawJoystick);
 
     SDL_Event Ev;
     // Last tick's held-at-connect presses end now (a tap; GPadHeldTap).
@@ -1429,8 +1487,11 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
             if( WindowsMouseY < 0 )          WindowsMouseY = 0;
 
             // The mouse moving takes the menu cursor back from the pad.
-            if( DX || DY )
+            if( (DX || DY) && GPadCursor )
+            {
                 GPadCursor = 0;
+                UpdatePadCursor();
+            }
 
             // Send axis events (drives both GUI hover re-eval and in-game look).
             if( DX )
@@ -1481,7 +1542,10 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
                     if( !(Held & (1u << b)) )
                         continue;
                     // A trigger is a button in the browser's layout, an axis in SDL's.
-                    const BYTE Key = PadKey( b == 6 ? IK_Joy3 : b == 7 ? IK_Joy1 : GPadButtonMap[W3CToSDL[b]], PadMenu );
+                    const BYTE Key = b == 6 || b == 7 ? PadKey( b == 6 ? IK_Joy3 : IK_Joy1, PadMenu )
+                                                      : PadButtonKey( W3CToSDL[b], PadMenu );
+                    if( Menu )
+                        TakePadCursor();
                     if( Key != IK_None )
                     {
                         CauseInputEvent( Key, IST_Press );
@@ -1512,7 +1576,9 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
             BYTE& Down = GPadDown[Ev.cbutton.button];
             if( Ev.type == SDL_CONTROLLERBUTTONDOWN && Down == IK_None )
             {
-                Down = PadKey( GPadButtonMap[Ev.cbutton.button], PadMenu );
+                if( Menu )
+                    TakePadCursor();
+                Down = PadButtonKey( Ev.cbutton.button, PadMenu );
                 if( Down != IK_None )
                     CauseInputEvent( Down, IST_Press );
             }
@@ -1544,24 +1610,28 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
         GPadPitch = PadAxis( SDL_GameControllerGetAxis( GPad, SDL_CONTROLLER_AXIS_RIGHTY ) * Scale ); // -> IK_JoySlider1
         const UBOOL RT = SDL_GameControllerGetAxis( GPad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT ) * Scale > GPadTriggerPress;
         const UBOOL LT = SDL_GameControllerGetAxis( GPad, SDL_CONTROLLER_AXIS_TRIGGERLEFT ) * Scale > GPadTriggerPress;
+        if( Menu && ((RT && GPadRT == IK_None) || (LT && GPadLT == IK_None)) )
+            TakePadCursor();
         if( RT && GPadRT == IK_None )      { GPadRT = PadKey( IK_Joy1, PadMenu ); CauseInputEvent( GPadRT, IST_Press ); }  // Fire
         else if( !RT && GPadRT != IK_None ) { CauseInputEvent( GPadRT, IST_Release ); GPadRT = IK_None; }
         if( LT && GPadLT == IK_None )      { GPadLT = PadKey( IK_Joy3, PadMenu ); CauseInputEvent( GPadLT, IST_Press ); }  // AltFire
         else if( !LT && GPadLT != IK_None ) { CauseInputEvent( GPadLT, IST_Release ); GPadLT = IK_None; }
     }
 
-    // While a menu shows the cursor the left stick moves it instead of the player. Leaving its rest position takes the
-    // cursor from the mouse; a stick held off rest (or drifting) does not take it again once the mouse has moved.
-    const UBOOL StickOff = GPadMoveX != 0.f || GPadMoveY != 0.f;
+    // A stick leaving its rest position in a menu takes the cursor; one held off rest (or drifting) does not take it
+    // again once the mouse has moved. While a menu is up the left stick moves the cursor instead of the player.
+    const UBOOL LeftOff = GPadMoveX != 0.f || GPadMoveY != 0.f;
+    const UBOOL RightOff = GPadYaw != 0.f || GPadPitch != 0.f;
+    if( Menu && ((LeftOff && !GPadLeftOff) || (RightOff && !GPadRightOff)) )
+        TakePadCursor();
+    GPadLeftOff = LeftOff;
+    GPadRightOff = RightOff;
     if( PadMenu )
     {
-        if( StickOff && !GPadStickOff )
-            GPadCursor = 1;
-        if( StickOff && GPadCursor )
+        if( LeftOff && GPadCursor )
             MovePadCursor( GPadMoveX, GPadMoveY, DeltaSeconds );
         GPadMoveX = GPadMoveY = 0.f;
     }
-    GPadStickOff = StickOff;
 
     // Game pad sticks -> joystick axes, held-absolute (re-sent every tick while nonzero, plus one trailing 0).
     // Each scaled by this tick's DeltaSeconds: a rate, the same at any frame rate (GPadLookFactor, above).
@@ -1626,14 +1696,8 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
 
 #endif // __ANDROID__
 
-    // While the pad has the cursor of a menu the GUI draws it (bPadCursor) and the system cursor is hidden.
-    const UBOOL PadCursorShown = GPadCursor && GUIController && GUIController->bActive;
-    if( PadCursorShown != bPadCursor )
-    {
-        bPadCursor = PadCursorShown;
-        SDL_ShowCursor( bPadCursor ? SDL_DISABLE : SDL_ENABLE );
-        debugf( NAME_Log, TEXT("SDL2: menu cursor: %s"), bPadCursor ? TEXT("pad") : TEXT("system") );
-    }
+    // A menu that opened or closed this tick shows or hides the pad's cursor.
+    UpdatePadCursor();
 
     unguard;
 }

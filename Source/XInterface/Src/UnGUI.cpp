@@ -128,6 +128,22 @@ UBOOL UGUIPage::NativeKeyEvent(BYTE& iKey, BYTE& State, FLOAT Delta )
 	if ( Super::NativeKeyEvent(iKey, State, Delta) )
 		return true;
 
+	// While a game pad has the cursor (its D-pad is the arrow keys), an arrow key no control used moves the focus as
+	// Tab does: down and right to the next control, up and left to the previous one.
+	UViewport* Viewport = Cast<UViewport>(C->ViewportOwner);
+	if ( Viewport && Viewport->bPadCursor && (State == IST_Press || State == IST_Hold)
+		&& (iKey == IK_Up || iKey == IK_Down || iKey == IK_Left || iKey == IK_Right) )
+	{
+		UGUIComponent* Focused = this;
+		while ( Focused->GetFocused() )
+			Focused = Focused->GetFocused();
+		if ( iKey == IK_Down || iKey == IK_Right )
+			Focused->eventNextControl(NULL);
+		else
+			Focused->eventPrevControl(NULL);
+		return true;
+	}
+
 	// Handle Close	-- Add support for aborting
 	if ( State == IST_Press && iKey == IK_Escape && C->DropSource == NULL )
 		C->eventCloseMenu(true);
