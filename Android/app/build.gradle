@@ -26,11 +26,11 @@ android {
         targetSdk = 34
         versionCode = 10000
         versionName = '1.0.0'
-        // The shipped ABIs: 32-bit and 64-bit ARM devices in one APK; -Pabis=<list> builds others (x86_64 for
-        // a fast emulator). `-Px86abi` adds a 32-bit x86, which is not for shipping: it runs the same APK at
-        // 32-bit on an x86 emulator image (`system-images;android-24;google_apis_playstore;x86`, this minSdk), a
-        // pointer-width control for the x86_64 one. API 34 images have no 32-bit ABI at all.
-        def utAbis = (project.findProperty('abis') ?: 'armeabi-v7a,arm64-v8a').split(',').collect { it.trim() }
+        // The ABIs of every APK: 32-bit and 64-bit ARM devices, and x86_64 (x86 Chromebooks, the emulator).
+        // `-Px86abi` adds a 32-bit x86, which is not for shipping: it runs the same APK at 32-bit on an x86
+        // emulator image (`system-images;android-24;google_apis_playstore;x86`, this minSdk), a pointer-width
+        // control for the x86_64 one. API 34 images have no 32-bit ABI at all.
+        def utAbis = ['armeabi-v7a', 'arm64-v8a', 'x86_64']
         if (project.hasProperty('x86abi')) { utAbis += 'x86' }
         ndk { abiFilters.addAll(utAbis) }
         externalNativeBuild {
