@@ -142,7 +142,7 @@ the CMake that links it. Three arms:
 - The engine runs on a worker (`-sPROXY_TO_PTHREAD`, `#canvas` transferred to it). The viewport creates the WebGL
   context itself: WebGL 1 by default, WebGL 2 with `[SDL2Drv.SDL2Client] WebGLVersion=2` or `-WEBGL=2` (falling back
   to WebGL 1 where the browser has no WebGL 2; GL4ES then runs its OpenGL ES 3 back end). Each frame yields to the
-  worker's event loop.
+  worker's event loop until the display's next frame (`-TIMERFRAMES`: from timers, e.g. for a benchmark).
 - Files go through WasmFS with a JS-implemented backend that forwards every file operation to the host.
 - `meta.json` records the ABI version, the git sha, the emcc version and every fetched dependency as
   `<repo>@<branch|tag>` (`local:<path>` for a local override; `cmake/ArtifactDeps.cmake`).

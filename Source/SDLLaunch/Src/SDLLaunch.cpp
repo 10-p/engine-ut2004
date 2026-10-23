@@ -13,10 +13,17 @@ Revision history:
 #include <emscripten/html5.h>
 #include <AL/al.h>
 
-// Mutes the listener while the tab is hidden; the engine keeps ticking.
+// Whether the page is hidden, for the frame wait (the worker has no document of its own).
+EM_JS(void, ufront_set_hidden, (int hidden), {
+    globalThis.ufrontHidden = !!hidden;
+});
+
+// Mutes the listener while the tab is hidden; the engine keeps ticking (from timers: a hidden page has no display
+// frames).
 static EM_BOOL on_visibility_change(int eventType,
     const EmscriptenVisibilityChangeEvent* e, void* userData)
 {
+    ufront_set_hidden(e->hidden);
     if (e->hidden) {
         alListenerf(AL_GAIN, 0.0f);
     } else {
@@ -26,12 +33,29 @@ static EM_BOOL on_visibility_change(int eventType,
 }
 
 #ifdef __EMSCRIPTEN_PTHREADS__
-// Yield to the worker's event loop once per frame: the worker-owned OffscreenCanvas is composited when the
-// worker's task ends, and browser events and console commands are dispatched between tasks. It resumes from a
-// 0 ms timer because a timer task interleaves with rendering (a MessagePort task does not). EM_ASYNC_JS names
-// the import __asyncjs__ufront_yield_frame, which Asyncify's default import list (__asyncjs__*) covers.
-EM_ASYNC_JS(void, ufront_yield_frame, (void), {
-    await new Promise((resolve) => { setTimeout(resolve, 0); });
+// Yield to the worker's event loop until the next frame may start: the worker-owned OffscreenCanvas is composited
+// when the worker's task ends, and browser events and console commands are dispatched between tasks. It resumes at
+// the display's next frame (the worker's requestAnimationFrame), or at the first display frame that reaches waitMs
+// from now: frames that start on the display's frames take the browser's mouse motion (one coalesced event a
+// display frame) one batch a frame, and are shown at an even pace. Where the worker has no requestAnimationFrame,
+// while the page is hidden and with -TIMERFRAMES, a timer resumes it instead (waitMs, or 0 ms); a display frame
+// that does not come within 100 ms (the page hidden meanwhile) gives way to a timer too. EM_ASYNC_JS names the
+// import __asyncjs__ufront_wait_frame, which Asyncify's default import list (__asyncjs__*) covers.
+EM_ASYNC_JS(void, ufront_wait_frame, (int onDisplayFrame, double waitMs), {
+    const end = performance.now() + Math.max(0, waitMs);
+    for (;;) {
+        if (!onDisplayFrame || typeof requestAnimationFrame !== 'function' || globalThis.ufrontHidden) {
+            const left = end - performance.now();
+            await new Promise((resolve) => { setTimeout(resolve, Math.max(0, left)); });
+            return;
+        }
+        await new Promise((resolve) => {
+            const t = setTimeout(resolve, 100);
+            requestAnimationFrame(() => { clearTimeout(t); resolve(); });
+        });
+        if (performance.now() >= end - 1)
+            return;
+    }
 });
 #endif
 #endif
@@ -258,6 +282,31 @@ static void ExitSplash(void)
 // somewhere below this function on the stack.
 //
 
+#if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
+// -TIMERFRAMES (e.g. a benchmark): frames resume from timers alone.
+static int UfrontOnDisplayFrame()
+{
+	static int OnDisplayFrame = -1;
+	if( OnDisplayFrame < 0 )
+	{
+		OnDisplayFrame = !ParseParam( appCmdLine(), TEXT("TIMERFRAMES") );
+		debugf( NAME_Log, TEXT("ufront: frames start %s"), OnDisplayFrame ? TEXT("on the display's frames") : TEXT("from timers") );
+	}
+	return OnDisplayFrame;
+}
+
+// The frame-rate cap on the web: frames start on display frames, at most one a Period on average. Each frame's
+// due time is the one before plus Period, so a cap the display's rate does not divide still averages the cap (some
+// display frames are skipped); a frame later than its due time moves the schedule to itself.
+static void UfrontWaitCapped( DOUBLE Period )
+{
+	static DOUBLE Due = 0.0;
+	const DOUBLE Now = appSeconds();
+	ufront_wait_frame( UfrontOnDisplayFrame(), Max( 0.0, Due - Now ) * 1000.0 );
+	Due = Max( Due + Period, appSeconds() );
+}
+#endif
+
 class CMainLoop
 {
 public:
@@ -420,21 +469,25 @@ inline void	CMainLoop::RunLoop(void)
 			MaxTickRate = MaxFps;
 		if( MaxTickRate>0.0 )
 		{
+#if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
+			UfrontWaitCapped( 1.0/MaxTickRate );
+#else
 			FLOAT Delta = (1.0/MaxTickRate) - (appSeconds()-OldTime);
 			appSleep( Max(0.f,Delta) );
+#endif
 			LimiterSlept = 1;
 		}
 	}
 	unguard;
 
 #if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
-	// Return to this worker's event loop once per frame. GetMaxTickRate() is 0 for a standalone game, so without
-	// this yield the loop never returns to JS and postMessage (console commands) and the browser events SDL
-	// forwards are never dispatched. Skipped when the limiter above already slept.
+	// Return to this worker's event loop once per frame, until the display's next frame. GetMaxTickRate() is 0 for a
+	// standalone game, so without this yield the loop never returns to JS and postMessage (console commands) and the
+	// browser events SDL forwards are never dispatched. Skipped when the limiter above already waited.
 	guard(WorkerYield);
 	if( GUseFixedTimeStep || !IncludeMessaging || !LimiterSlept )
-		// The yield is also the point where the frame is presented.
-		ufront_yield_frame();
+		// The yield is also the point where the frame is presented; a fixed time step (benchmark) runs from timers.
+		ufront_wait_frame( UfrontOnDisplayFrame() && !GUseFixedTimeStep, 0.0 );
 	unguard;
 #endif
 
@@ -1333,7 +1386,10 @@ extern BYTE GLoadedALAudio; snprintf(&blah, 1, "%d", (int) GLoadedALAudio);
 			ExitSplash();
 
 #ifdef __EMSCRIPTEN__
-			// Mute audio while the tab is hidden.
+			// Mute audio while the tab is hidden, and keep its frames on timers.
+			EmscriptenVisibilityChangeEvent Visibility;
+			if( emscripten_get_visibility_status( &Visibility ) == EMSCRIPTEN_RESULT_SUCCESS )
+				ufront_set_hidden( Visibility.hidden );
 			emscripten_set_visibilitychange_callback(
 			    nullptr, EM_TRUE, on_visibility_change);
 			// Canvas resizes reach SDL2 as WINDOWEVENT_RESIZED; no callback is needed here.
