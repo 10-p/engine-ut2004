@@ -807,6 +807,8 @@ CORE_API INT wvsnprintf( TCHAR *buf, INT max, const TCHAR *fmt, va_list args )
                 fmtbuf[cpyidx] = 0;
 
                 int rc = snprintf(ansinum, sizeof (ansinum), fmtbuf, val);
+                if (rc > (int) sizeof (ansinum) - 1)
+                    rc = sizeof (ansinum) - 1;
                 if ((dst + rc) > enddst)
                     rc = enddst - dst;
                 for (int i = 0; i < rc; i++)
@@ -846,6 +848,8 @@ CORE_API INT wvsnprintf( TCHAR *buf, INT max, const TCHAR *fmt, va_list args )
                 fmtbuf[cpyidx] = 0;
 
                 int rc = snprintf(ansinum, sizeof (ansinum), fmtbuf, val);
+                if (rc > (int) sizeof (ansinum) - 1)
+                    rc = sizeof (ansinum) - 1;
                 if ((dst + rc) > enddst)
                     rc = enddst - dst;
                 for (int i = 0; i < rc; i++)
@@ -857,10 +861,14 @@ CORE_API INT wvsnprintf( TCHAR *buf, INT max, const TCHAR *fmt, va_list args )
             break;
 
             case 'f':
+            case 'e':
+            case 'E':
+            case 'g':
+            case 'G':
             {
                 src++;
                 double val = va_arg(args, double);
-                ANSICHAR ansinum[30];
+                ANSICHAR ansinum[64];
                 ANSICHAR fmtbuf[30];
 
                 // Yes, this is lame.
@@ -874,6 +882,9 @@ CORE_API INT wvsnprintf( TCHAR *buf, INT max, const TCHAR *fmt, va_list args )
                 fmtbuf[cpyidx] = 0;
 
                 int rc = snprintf(ansinum, sizeof (ansinum), fmtbuf, val);
+                // snprintf returns the length it wanted: copy only what the buffer holds.
+                if (rc > (int) sizeof (ansinum) - 1)
+                    rc = sizeof (ansinum) - 1;
                 if ((dst + rc) > enddst)
                     rc = enddst - dst;
                 for (int i = 0; i < rc; i++)
