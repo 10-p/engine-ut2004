@@ -32,7 +32,8 @@ Revision history:
 #if __STATIC_LINK
 #include "Engine.h"
 
-#if __UNIX__  // !!! FIXME: Macro problem! --ryan.
+#if __UNIX__ || defined(__MINGW32__)  // !!! FIXME: Macro problem! --ryan.
+// MinGW too: FFileManagerUnix.h, the file manager there, includes <time.h>, whose clock() the macro breaks.
 #undef clock
 #endif
 
@@ -91,7 +92,7 @@ FOutputDeviceAnsiError Error;
 FFeedbackContextAnsi Warn;
 
 // File manager.
-#if WIN32
+#if _MSC_VER
 	#include "FFileManagerWindows.h"
 	FFileManagerWindows FileManager;
 	#include "FMallocAnsi.h"
@@ -101,7 +102,8 @@ FFeedbackContextAnsi Warn;
 	FFileManagerPSX2 FileManager;
 	#include "FMallocAnsi.h"
 	FMallocAnsi Malloc;
-#elif ((__LINUX_X86__) || (__FreeBSD__) || (MACOSX))
+#elif ((__LINUX_X86__) || (__FreeBSD__) || (MACOSX) || (__MINGW32__))
+	// MinGW: UnUnix.cpp is the platform layer of every non-MSVC build, Windows included.
 	#include "FFileManagerUnix.h"
 	FFileManagerUnix FileManager;
 	#include "FMallocAnsi.h"
@@ -188,7 +190,9 @@ int main( int argc, char* argv[] )
 		// Parse command line.
 		TCHAR CmdLine[1024], *CmdLinePtr=CmdLine;
 		*CmdLinePtr = 0;
-		#if WIN32
+		// Every build but MSVC passes the arguments after the commandlet's name (argv[1]), which is what `ucc help`
+		// and the commandlets parse; MSVC keeps Epic's whole command line.
+		#if _MSC_VER
 			ANSICHAR* Ch = GetCommandLineA();
 			while( *Ch && *Ch!=' ' )
 				Ch++;

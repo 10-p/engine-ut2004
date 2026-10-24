@@ -258,6 +258,23 @@ jobs:
             echo "staged ${{ matrix.extra_dll }} ($(stat -c%s "$staged") bytes)"
           fi
 
+      # ucc-bin.exe, the console tool, carries no DLL beside it: system DLLs only.
+      - name: Assert ucc-bin.exe imports nothing but system DLLs
+        run: |
+          set -euo pipefail
+          imports=$(${{ matrix.objdump }} -p build-${{ matrix.preset }}/Source/UCC/ucc-bin.exe | sed -n 's/^\tDLL Name: //p' | sort -u)
+          echo "$imports"
+          allowed="ADVAPI32.dll GDI32.dll IMM32.dll KERNEL32.dll msvcrt.dll ole32.dll OLEAUT32.dll SETUPAPI.dll SHELL32.dll USER32.dll VERSION.dll WINMM.dll WS2_32.dll"
+          bad=""
+          for imp in $imports; do
+            ok=0
+            for a in $allowed; do
+              [ "$(echo "$imp" | tr 'A-Z' 'a-z')" = "$(echo "$a" | tr 'A-Z' 'a-z')" ] && ok=1 && break
+            done
+            [ "$ok" -eq 1 ] || bad="$bad $imp"
+          done
+          if [ -n "$bad" ]; then echo "::error::non-system DLL imports:$bad"; exit 1; fi
+
       # Retention: 7 days (see the linux job).
       - uses: actions/upload-artifact@v4
         with:
@@ -267,6 +284,7 @@ jobs:
           path: |
             build-${{ matrix.preset }}/Source/SDLLaunch/${{ matrix.bin }}
             build-${{ matrix.preset }}/Source/SDLLaunch/*.dll
+            build-${{ matrix.preset }}/Source/UCC/ucc-bin.exe
           if-no-files-found: error
           retention-days: 7
 

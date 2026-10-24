@@ -1,6 +1,6 @@
 #=============================================================================
-# UCC - the native command-line tool (dedicated server / commandlets). Native Linux only: no ucc on the
-# web, Android or Windows.
+# UCC - the native command-line tool (dedicated server / commandlets): ucc-bin on Linux, ucc-bin.exe on
+# Windows. No ucc on the web or Android.
 #
 # The native build is a single static binary (no .so packages), so this static-links the full game
 # module set with --whole-archive to preserve the AUTO_INITIALIZE_REGISTRANTS_* global constructors (as
@@ -40,15 +40,24 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE UCC_NO_EDITOR=1 WITH_SPEEX=0)
 # ALAudio). --whole-archive keeps every module's package-registrant global ctor.
 set(LINK_PACKAGES Engine Core Fire IpDrv UWeb XGame XInterface Onslaught zlib ogg vorbis)
 
-target_link_libraries(${PROJECT_NAME}
-  -Wl,--whole-archive ${LINK_PACKAGES} -Wl,--no-whole-archive
-  dl pthread m
-)
+if(MINGW)
+  # A console program; the C++ runtime and winpthread are linked statically by the root options, so it imports
+  # system DLLs only (ws2_32: IpDrv's WinSock).
+  target_link_libraries(${PROJECT_NAME}
+    -Wl,--whole-archive ${LINK_PACKAGES} -Wl,--no-whole-archive
+    ws2_32 winmm ole32 shell32 advapi32 m
+  )
+else()
+  target_link_libraries(${PROJECT_NAME}
+    -Wl,--whole-archive ${LINK_PACKAGES} -Wl,--no-whole-archive
+    dl pthread m
+  )
 
-# -m32 (32-bit i386, like the rest of the native build), -export-dynamic for the engine's reflection /
-# class-loading, -rpath,. so any vendored .so next to the binary resolves at runtime. The -m32 is gated on
-# UE_PTR_BYTES: a 64-bit build's objects are x86-64.
-if(UE_PTR_BYTES EQUAL 4)
-  target_link_options(${PROJECT_NAME} PRIVATE -m32)
+  # -m32 (32-bit i386, like the rest of the native build), -export-dynamic for the engine's reflection /
+  # class-loading, -rpath,. so any vendored .so next to the binary resolves at runtime. The -m32 is gated on
+  # UE_PTR_BYTES: a 64-bit build's objects are x86-64.
+  if(UE_PTR_BYTES EQUAL 4)
+    target_link_options(${PROJECT_NAME} PRIVATE -m32)
+  endif()
+  target_link_options(${PROJECT_NAME} PRIVATE -Wl,-export-dynamic -Wl,-rpath,.)
 endif()
-target_link_options(${PROJECT_NAME} PRIVATE -Wl,-export-dynamic -Wl,-rpath,.)
