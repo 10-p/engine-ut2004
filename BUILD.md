@@ -87,6 +87,9 @@ Every Linux and Windows preset also builds the command-line tool, headless (no r
 ones (no Editor target is built); it reads `UT2004.ini` and writes `ucc.log`. SIGTERM (Linux) or the console's
 Ctrl-C (Windows) asks a server to exit cleanly.
 
+The Linux binaries carry the RUNPATH `.` and nothing else (CMake's build RPATH is off): they find `libopenal.so` and
+anything else shipped beside them from their `System/` folder.
+
 ## Options
 
 | Option | Default | Effect |
