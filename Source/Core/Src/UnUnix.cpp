@@ -1230,6 +1230,11 @@ UBOOL USystem::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 
             GUnixSpawnOnExit = new TCHAR[xterm.Len() + 128];
             appStrcpy(GUnixSpawnOnExit, *xterm);
+        #elif defined(_WIN32)
+            // The console UCC beside the game; Windows gives it a console window of its own.
+            GUnixSpawnOnExit = new TCHAR[arraylen];
+            appStrcpy(GUnixSpawnOnExit, TEXT("ucc.exe server "));
+            appStrcat(GUnixSpawnOnExit, Arg0);
         #else
             xterm = TEXT("xterm");
             if (FindBinaryInPath(xterm))
@@ -1254,13 +1259,6 @@ UBOOL USystem::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
         char ansistr[RELAUNCH_ARRAY];
         appToAnsi(Arg0, ansistr);
 
-#ifdef _WIN32
-		// No fork() on Windows: _spawnl starts the child and returns, so the child/parent split is
-		// spawn-then-exit.
-		if( _spawnl( _P_NOWAIT, "./ucc.exe", "ucc", "server", ansistr, (char*)NULL ) == -1 )
-			appErrorf( TEXT("Failed to launch process.") );
-		appRequestExit( 0 );
-#else
 		if (fork() == 0)
 		{
 			appSleep(3);
@@ -1270,7 +1268,6 @@ UBOOL USystem::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 		} else {
 			appRequestExit( 0 );
 		}
-#endif
 #endif
 		return 1;
 	}
@@ -3428,13 +3425,15 @@ void appPlatformExit()
     	    new(args)FString( fstrcmd.Mid(startstr) );
 
 
+        // appToAnsi returns the converted string (its own text in the ANSI builds, which leave a buffer argument
+        // untouched), so each is copied out.
         char *cmd = new char[args(0).Len() + 1];
-        appToAnsi(*(args(0)), cmd);
+        strcpy(cmd, appToAnsi(*(args(0))));
         char **ansiargs = new char *[args.Num() + 1];
         for (int i = 0; i < args.Num(); i++)
         {
             ansiargs[i] = new char[args(i).Len() + 1];
-            appToAnsi(*args(i), ansiargs[i]);
+            strcpy(ansiargs[i], appToAnsi(*args(i)));
         }
         ansiargs[args.Num()] = NULL;
 
