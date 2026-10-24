@@ -1458,6 +1458,13 @@ void* appGetDllHandle( const TCHAR* Filename )
 			return Result;
 	}
 
+#if defined(__ANDROID__)
+	// The engine is the app's shared library, not the executable, so the lookup above misses the packages linked
+	// into it; bionic's RTLD_DEFAULT also searches the calling library.
+	if( dlsym( RTLD_DEFAULT, appToAnsi(Test) ) )
+		return (void*)-1;
+#endif
+
 	// Load the new library.
 	Result = (void*)dlopen( appToAnsi(Filename), RTLD_NOW | RTLD_GLOBAL );
 	if( Result == NULL )
