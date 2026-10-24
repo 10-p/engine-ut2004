@@ -3148,8 +3148,20 @@ void appPlatformInit()
 	if( bNoFaultHandler )
 		debugf( NAME_Init, TEXT("UT_NO_FAULT_HANDLER set: leaving SIGSEGV/SIGILL/SIGTRAP/SIGIOT/SIGBUS/SIGFPE to the OS.") );
 
+#if !defined(__EMSCRIPTEN__)
+	// A signal taken on the main thread runs its handler on a stack of its own (SA_ONSTACK below): Pixomatic's
+	// span code uses ESP as a general register, and on that ESP the kernel cannot build the signal frame.
+	static BYTE SignalStack[1024 * 1024];
+	stack_t SigStack;
+	SigStack.ss_sp		= SignalStack;
+	SigStack.ss_size	= sizeof(SignalStack);
+	SigStack.ss_flags	= 0;
+	if( sigaltstack( &SigStack, NULL ) != 0 )
+		debugf( NAME_Init, TEXT("sigaltstack failed (errno %i): signal handlers run on the interrupted stack"), errno );
+#endif
+
 	// Only try once.
-	INT DefaultFlag			= SA_RESETHAND;
+	INT DefaultFlag			= SA_RESETHAND | SA_ONSTACK;
 
 	if( !bNoFaultHandler )
 	{
@@ -3165,10 +3177,10 @@ void appPlatformInit()
 	}
 
 	// Try multiple times.
-	DefaultFlag				= 0;
+	DefaultFlag				= SA_ONSTACK;
 
 	SigAction.sa_handler	= HandleChild;
-	SigAction.sa_flags		= 0;
+	SigAction.sa_flags		= SA_ONSTACK;
 	sigemptyset( &SigAction.sa_mask );
 	sigaction(SIGCHLD, &SigAction, 0);
 
