@@ -15,6 +15,9 @@ import android.os.Looper;
 import android.os.SystemClock;
 import android.provider.DocumentsContract;
 import android.provider.Settings;
+import android.text.Editable;
+import android.text.InputType;
+import android.text.TextWatcher;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -23,16 +26,20 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
+import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
 import android.widget.CompoundButton;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
+import android.widget.SeekBar;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.File;
+import java.util.Locale;
 
 /**
  * Launcher: which game folder the game runs from, and getting the game into it.
@@ -64,6 +71,8 @@ public class MainActivity extends Activity {
     private static final String PREFS = "launcher";
     private static final String PREF_EXTERNAL = "runFromExternal";
     private static final String PREF_FOLDER = "folderUri";
+    private static final String PREF_MOVE_FULL_TILT = "moveFullTiltDp";
+    private static final String PREF_MOVE_DEAD_ZONE = "moveDeadZoneDp";
     // The game's own settings and saves, relative to the game folder.
     private static final String[] SETTINGS_AND_SAVES = { "System/UT2004.ini", "System/User.ini", "Save" };
 
@@ -219,6 +228,8 @@ public class MainActivity extends Activity {
             @Override public void onClick(View v) { doExportSettings(); }
         });
 
+        buildMoveStickRows(col);
+
         TextView hint = new TextView(this);
         hint.setTextColor(0xFF6E747C);
         hint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f);
@@ -261,6 +272,139 @@ public class MainActivity extends Activity {
 
     private void applyStorageSwitchText() {
         storageSwitch.setText(storageSwitch.isChecked() ? "UT2004 folder (slower)" : "Internal storage (fast)");
+    }
+
+    // ---- the touch move stick -------------------------------------------------------------------
+
+    private NumberRow fullTiltRow, deadZoneRow;
+
+    private void buildMoveStickRows(LinearLayout col) {
+        label(col, "Touch move stick", 14f, 0xFFB8BCC2, 20);
+        fullTiltRow = new NumberRow(col, "Full speed at a drag of (dp)", PREF_MOVE_FULL_TILT,
+                GameActivity.MOVE_FULL_TILT_MIN_DP, GameActivity.MOVE_FULL_TILT_MAX_DP, 1f, GameActivity.MOVE_FULL_TILT_DP) {
+            @Override String describe(float v) {
+                return String.format(Locale.US, "Full speed %.1f mm from where the finger is held", v * 25.4f / 160f);
+            }
+            @Override void changed(float v) { if (deadZoneRow != null) deadZoneRow.refit(); }
+        };
+        deadZoneRow = new NumberRow(col, "Dead zone (dp)", PREF_MOVE_DEAD_ZONE,
+                0f, GameActivity.MOVE_DEAD_ZONE_MAX_DP, 0.5f, GameActivity.MOVE_DEAD_ZONE_DP) {
+            @Override float limit(float v) { return GameActivity.moveDeadZone(v, fullTiltRow.value()); }
+            @Override String describe(float v) {
+                return String.format(Locale.US, "A finger resting within %.1f mm does not move (always below full speed)", v * 25.4f / 160f);
+            }
+        };
+    }
+
+    /** The touch move stick's full tilt as saved, in its range. */
+    private float savedMoveFullTilt() {
+        return GameActivity.moveFullTilt(prefs().getFloat(PREF_MOVE_FULL_TILT, GameActivity.MOVE_FULL_TILT_DP));
+    }
+
+    /** The touch move stick's dead zone as saved, in its range and below full tilt. */
+    private float savedMoveDeadZone() {
+        return GameActivity.moveDeadZone(prefs().getFloat(PREF_MOVE_DEAD_ZONE, GameActivity.MOVE_DEAD_ZONE_DP), savedMoveFullTilt());
+    }
+
+    /**
+     * A number setting: a slider over its steps, a field for the exact value and a line on what it does, saved as it
+     * changes. limit() keeps a value inside bounds another setting sets; changed() tells the settings that depend on it.
+     */
+    private abstract class NumberRow {
+        private final String pref;
+        private final float min, max, step, def;
+        private final SeekBar bar;
+        private final EditText field;
+        private final TextView note;
+        private boolean updating = false;
+
+        NumberRow(LinearLayout col, String title, String pref, float min, float max, float step, float def) {
+            this.pref = pref;
+            this.min = min;
+            this.max = max;
+            this.step = step;
+            this.def = def;
+            label(col, title, 13f, 0xFFB8BCC2, 10);
+            LinearLayout row = new LinearLayout(MainActivity.this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            col.addView(row, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            bar = new SeekBar(MainActivity.this);
+            bar.setMax(Math.round((max - min) / step));
+            row.addView(bar, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            field = new EditText(MainActivity.this);
+            field.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+            field.setImeOptions(EditorInfo.IME_ACTION_DONE);
+            field.setSingleLine(true);
+            field.setTextColor(0xFFECEFF3);
+            field.setGravity(Gravity.CENTER);
+            row.addView(field, new LinearLayout.LayoutParams(dp(88), ViewGroup.LayoutParams.WRAP_CONTENT));
+            note = label(col, "", 12f, 0xFF9AA0A8, 2);
+            show(value(), true, true);
+
+            bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+                @Override public void onProgressChanged(SeekBar b, int progress, boolean fromUser) {
+                    if (fromUser && !updating) set(NumberRow.this.min + progress * NumberRow.this.step, false, true);
+                }
+                @Override public void onStartTrackingTouch(SeekBar b) { cancelCountdown(true); }
+                @Override public void onStopTrackingTouch(SeekBar b) {}
+            });
+            field.addTextChangedListener(new TextWatcher() {
+                @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+                @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
+                @Override public void afterTextChanged(Editable s) {
+                    if (updating) return;
+                    float v;
+                    try { v = Float.parseFloat(s.toString().trim()); } catch (NumberFormatException e) { v = -1f; }
+                    if (v >= NumberRow.this.min && v <= NumberRow.this.max) set(v, true, false);
+                    else note.setText(String.format(Locale.US, "Enter a value from %s to %s.",
+                            format(NumberRow.this.min), format(NumberRow.this.max)));
+                }
+            });
+        }
+
+        float limit(float v) { return v; }
+        abstract String describe(float v);
+        void changed(float v) {}
+
+        /** The saved value, in its range and its limit. */
+        float value() { return limit(Math.max(min, Math.min(max, prefs().getFloat(pref, def)))); }
+
+        /** Takes the saved value through limit() again: a setting it depends on moved. */
+        void refit() {
+            float v = value();
+            prefs().edit().putFloat(pref, v).apply();
+            show(v, true, true);
+        }
+
+        private void set(float v, boolean moveBar, boolean writeField) {
+            float kept = limit(v);
+            prefs().edit().putFloat(pref, kept).apply();
+            show(kept, moveBar || kept != v, writeField || kept != v);
+            changed(kept);
+        }
+
+        private void show(float v, boolean moveBar, boolean writeField) {
+            updating = true;
+            if (moveBar) bar.setProgress(Math.round((v - min) / step));
+            if (writeField) field.setText(format(v));
+            updating = false;
+            note.setText(describe(v));
+        }
+    }
+
+    private static String format(float v) {
+        return v == Math.rint(v) ? String.format(Locale.US, "%.0f", v) : String.format(Locale.US, "%.1f", v);
+    }
+
+    private TextView label(LinearLayout col, String text, float sp, int color, int top) {
+        TextView t = new TextView(this);
+        t.setText(text);
+        t.setTextColor(color);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
+        t.setPadding(0, dp(top), 0, dp(4));
+        col.addView(t);
+        return t;
     }
 
     // ---- start + countdown ----------------------------------------------------------------------
@@ -319,9 +463,12 @@ public class MainActivity extends Activity {
         }
         gameLaunched = true;
         cancelCountdown(false);
-        Log.i(TAG, "launching game, storage=" + mode);
+        float fullTilt = savedMoveFullTilt(), deadZone = savedMoveDeadZone();
+        Log.i(TAG, "launching game, storage=" + mode + ", move stick " + fullTilt + "/" + deadZone + " dp");
         Intent i = new Intent(this, GameActivity.class);
         i.putExtra(GameActivity.EXTRA_STORAGE_MODE, mode);
+        i.putExtra(GameActivity.EXTRA_MOVE_FULL_TILT_DP, fullTilt);
+        i.putExtra(GameActivity.EXTRA_MOVE_DEAD_ZONE_DP, deadZone);
         // Forward an extra engine command line (a travel URL) if this launcher was itself started
         // with one — see GameActivity.EXTRA_ARGS. GameActivity is not exported, so this hop is the
         // only route an `adb shell am start` has into the game process.

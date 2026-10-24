@@ -281,9 +281,12 @@ cd Android
   with its name.
 
 In play the touch overlay (`GameActivity.java`, into `Source/SDL2Drv/Src/SDL2Viewport.cpp`) has a move stick on the
-left half, drag-look on the right and FIRE, ALTFIRE, JUMP, CROUCH, NEXTWEAPON and MENU buttons. The move stick tilts
-fully `MOVE_FULL_TILT_DP` (12 dp) from where the finger is held, in the drag's direction, with a dead zone of
-`MOVE_DEAD_ZONE_DP` (3 dp) for a resting finger; past full tilt the held point follows the finger. It never walks.
+left half, drag-look on the right and FIRE, ALTFIRE, JUMP, CROUCH, NEXTWEAPON and MENU buttons. The move stick moves
+in the drag's direction and tilts fully as the launcher's "Touch move stick" settings say: full speed at a drag of
+12 dp from where the finger is held (4 to 60) and a dead zone of 3 dp for a resting finger (0 to 10, always below full
+speed), saved with the launcher's other settings and handed to the game when it starts
+(`GameActivity.EXTRA_MOVE_FULL_TILT_DP`, `EXTRA_MOVE_DEAD_ZONE_DP`); past full tilt the held point follows the finger.
+It never walks.
 
 The engine reads its game folder by path (the JNI bridge sets `UT2004_ANDROID_BASEDIR` and the cwd); the launcher
 (`MainActivity`) chooses which:
