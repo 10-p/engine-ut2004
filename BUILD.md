@@ -205,8 +205,10 @@ the first two replacements off.
 - `-UFRONTLOG` adds the port's diagnostic and repeated log lines: `[AutoFOV]` and `[AutoFOVUI]`, the 10 s
   `[NET-TRAFFIC]` traffic and replication windows and the `[WebRTC]` receive counts, the `[ENGINE-DBG]` boot steps,
   the menu-cursor handover (`SDL2: menu cursor:`), GL4ES's initialization steps, the `UseHardwareGamma=` (OpenGLDrv,
-  GL4ESDrv) and `Vertex buffers:` (GL4ESDrv) lines of every mode set, and the EAX room-effect line. Status lines,
-  warnings, errors and command answers are logged either way.
+  GL4ESDrv) and `Vertex buffers:` (GL4ESDrv) lines of every mode set, OpenGLDrv's and GL4ESDrv's device information
+  of every mode set after the process's first (the `GL_VENDOR`/`GL_RENDERER`/`GL_VERSION` lines, the `Device
+  supports:` list, the buffer formats, anisotropy, multisampling, pixel shaders and render targets), and the EAX
+  room-effect line. Status lines, warnings, errors and command answers are logged either way.
 - `[ufront.AutoFOV]` (`AutoFOV`, `ReferenceAspect`, `WeaponScale`, `AutoFOVUI`, `UIScale`): aspect-correct field
   of view and HUD scale (both `Default.ini` sets document the keys).
 - `[ufront.Shadows]` `CullDistance` / `FadeExponent`: the pawn-shadow range and fall-off (retail 1200 / 2.0; the
