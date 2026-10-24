@@ -956,10 +956,9 @@ endif()
 
 add_subdirectory(Source/SDLLaunch)
 
-# ucc-bin: the native command-line tool (dedicated server / commandlets). Not on the web or Android, and
-# not on Windows: UCC.cpp's Windows path wants the UNICODE-era winToUNICODE/winGetSizeUNICODE helpers
-# that only UnVcWin32.h provides, and the game does not need it.
-if(NOT EMSCRIPTEN AND NOT ANDROID AND NOT MINGW)
+# ucc-bin: the native command-line tool (dedicated server / commandlets), on Linux and Windows. Not on the
+# web or Android.
+if(NOT EMSCRIPTEN AND NOT ANDROID)
   add_subdirectory(Source/UCC)
 endif()
 

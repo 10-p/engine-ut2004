@@ -1,6 +1,6 @@
 #=============================================================================
-# UCC - the native command-line tool (dedicated server / commandlets). Native Linux only: no ucc on the
-# web, Android or Windows.
+# UCC - the native command-line tool (dedicated server / commandlets): ucc-bin on Linux, ucc-bin.exe on
+# Windows. No ucc on the web or Android.
 #
 # The native build is a single static binary (no .so packages), so this static-links the full game
 # module set with --whole-archive to preserve the AUTO_INITIALIZE_REGISTRANTS_* global constructors (as
@@ -18,8 +18,12 @@ set(SRC_FILES Src/UCC.cpp)
 
 add_executable(${PROJECT_NAME} ${SRC_FILES})
 
-# Retail parity: the binary is `ucc-bin` (classic Linux UT ships a `ucc` wrapper script over ucc-bin).
+# Retail parity: the binary is `ucc-bin` (classic Linux UT ships a `ucc` wrapper script over ucc-bin), without
+# the `.bin` suffix the Linux game binaries take.
 set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME ucc-bin)
+if(NOT WIN32)
+  set_target_properties(${PROJECT_NAME} PROPERTIES SUFFIX "")
+endif()
 
 # UCC.cpp includes headers from many modules under __STATIC_LINK. Each module exports its Inc/ dir PUBLIC,
 # so linking them propagates those includes; UnRender.h etc. live under Engine/Src, added explicitly (as
@@ -36,15 +40,24 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE UCC_NO_EDITOR=1 WITH_SPEEX=0)
 # ALAudio). --whole-archive keeps every module's package-registrant global ctor.
 set(LINK_PACKAGES Engine Core Fire IpDrv UWeb XGame XInterface Onslaught zlib ogg vorbis)
 
-target_link_libraries(${PROJECT_NAME}
-  -Wl,--whole-archive ${LINK_PACKAGES} -Wl,--no-whole-archive
-  dl pthread m
-)
+if(MINGW)
+  # A console program; the C++ runtime and winpthread are linked statically by the root options, so it imports
+  # system DLLs only (ws2_32: IpDrv's WinSock).
+  target_link_libraries(${PROJECT_NAME}
+    -Wl,--whole-archive ${LINK_PACKAGES} -Wl,--no-whole-archive
+    ws2_32 winmm ole32 shell32 advapi32 m
+  )
+else()
+  target_link_libraries(${PROJECT_NAME}
+    -Wl,--whole-archive ${LINK_PACKAGES} -Wl,--no-whole-archive
+    dl pthread m
+  )
 
-# -m32 (32-bit i386, like the rest of the native build), -export-dynamic for the engine's reflection /
-# class-loading, -rpath,. so any vendored .so next to the binary resolves at runtime. The -m32 is gated on
-# UE_PTR_BYTES: a 64-bit build's objects are x86-64.
-if(UE_PTR_BYTES EQUAL 4)
-  target_link_options(${PROJECT_NAME} PRIVATE -m32)
+  # -m32 (32-bit i386, like the rest of the native build), -export-dynamic for the engine's reflection /
+  # class-loading, -rpath,. so any vendored .so next to the binary resolves at runtime. The -m32 is gated on
+  # UE_PTR_BYTES: a 64-bit build's objects are x86-64.
+  if(UE_PTR_BYTES EQUAL 4)
+    target_link_options(${PROJECT_NAME} PRIVATE -m32)
+  endif()
+  target_link_options(${PROJECT_NAME} PRIVATE -Wl,-export-dynamic -Wl,-rpath,.)
 endif()
-target_link_options(${PROJECT_NAME} PRIVATE -Wl,-export-dynamic -Wl,-rpath,.)
