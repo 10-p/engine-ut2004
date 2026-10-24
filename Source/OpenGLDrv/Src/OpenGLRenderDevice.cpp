@@ -142,8 +142,17 @@ void UOpenGLRenderDevice::StaticConstructor()
 }
 
 
-// The "Device supports" list is logged at the first SetRes of the process, at a later one only with -UFRONTLOG.
-static UBOOL OpenGLExtensionsLogged = 0;
+// The device information (the GL strings, the "Device supports" list, the buffer formats and the features in use)
+// is logged at the first SetRes of the process, at a later one only with -UFRONTLOG. Warnings are always logged.
+static UBOOL OpenGLDeviceInfoLogged = 0;
+static void VARARGS OpenGLDeviceInfof( const TCHAR* Fmt, ... )
+{
+	if( OpenGLDeviceInfoLogged && !GUfrontLog )
+		return;
+	TCHAR TempStr[4096];
+	GET_VARARGS( TempStr, ARRAY_COUNT(TempStr), Fmt, Fmt );
+	debugf( TEXT("%s"), TempStr );
+}
 
 //
 // UOpenGLRenderDevice::FindExt
@@ -154,8 +163,8 @@ UBOOL UOpenGLRenderDevice::FindExt( const TCHAR* Name )
 	
 	// Can't use appStrFind as extension string might be > 1024 characters.
 	UBOOL Result = strstr( (char*) glGetString(GL_EXTENSIONS), appToAnsi(Name) ) != NULL;
-	if( Result && (!OpenGLExtensionsLogged || GUfrontLog) )
-		debugf( TEXT("OpenGL: Device supports: %s"), Name );
+	if( Result )
+		OpenGLDeviceInfof( TEXT("OpenGL: Device supports: %s"), Name );
 	return Result;
 	
 	unguard;
@@ -650,12 +659,11 @@ UBOOL UOpenGLRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Fu
 	ValidContext = 1;
 	MakeCurrent();
 
-	debugf( TEXT("GL_VENDOR     : %s"), appFromAnsi((ANSICHAR*)glGetString(GL_VENDOR))	);
-	debugf( TEXT("GL_RENDERER   : %s"), appFromAnsi((ANSICHAR*)glGetString(GL_RENDERER)) );
-	debugf( TEXT("GL_VERSION    : %s"), appFromAnsi((ANSICHAR*)glGetString(GL_VERSION))	);
+	OpenGLDeviceInfof( TEXT("GL_VENDOR     : %s"), appFromAnsi((ANSICHAR*)glGetString(GL_VENDOR))	);
+	OpenGLDeviceInfof( TEXT("GL_RENDERER   : %s"), appFromAnsi((ANSICHAR*)glGetString(GL_RENDERER)) );
+	OpenGLDeviceInfof( TEXT("GL_VERSION    : %s"), appFromAnsi((ANSICHAR*)glGetString(GL_VERSION))	);
 
 	FindProcs( 1 );
-	OpenGLExtensionsLogged = 1;
 
 	if(	appStrstr(appFromAnsi((ANSICHAR*)glGetString(GL_RENDERER)),TEXT("Radeon 7000"				)) != NULL
 	||	appStrstr(appFromAnsi((ANSICHAR*)glGetString(GL_RENDERER)),TEXT("Radeon 7200"				)) != NULL
@@ -704,14 +712,14 @@ UBOOL UOpenGLRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Fu
 	glGetIntegerv( GL_BLUE_BITS,	&BlueBits		);
 	glGetIntegerv( GL_ALPHA_BITS,	&AlphaBits		 );
 
-	debugf( TEXT("OpenGL: C%i RGB%i%i%i Z%i S%i"), ColorBytes * 8, RedBits, GreenBits, BlueBits, DepthBits, StencilBits );
+	OpenGLDeviceInfof( TEXT("OpenGL: C%i RGB%i%i%i Z%i S%i"), ColorBytes * 8, RedBits, GreenBits, BlueBits, DepthBits, StencilBits );
 
 	if( SUPPORTS_GL_EXT_texture_filter_anisotropic )
 	{
 		GLfloat MaxAnisotropy;
 		glGetFloatv( GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &MaxAnisotropy );
 		LevelOfAnisotropy = Max<FLOAT>( 1.0f, Min<FLOAT>( MaxAnisotropy, LevelOfAnisotropy ) );
-		debugf( TEXT("OpenGL: Level of anisotropy is %f (max %f)."), (float) LevelOfAnisotropy, (float) MaxAnisotropy );
+		OpenGLDeviceInfof( TEXT("OpenGL: Level of anisotropy is %f (max %f)."), (float) LevelOfAnisotropy, (float) MaxAnisotropy );
 		// Say which gamma path won: the option is invisible when it works.
 		if( GUfrontLog )
 			debugf( TEXT("OpenGL: UseHardwareGamma=%s (%s) -- the display's gamma ramp is %s"),
@@ -722,26 +730,26 @@ UBOOL UOpenGLRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Fu
 
 #ifndef UE_OPENGLDRV_WGL
 	if( !SUPPORTS_GL_ARB_multisample )
-		debugf( TEXT("OpenGL: Not using multisample") );
+		OpenGLDeviceInfof( TEXT("OpenGL: Not using multisample") );
 	else
 	{
         INT Buffers, Samples;
 		glGetIntegerv( GL_SAMPLE_BUFFERS_ARB, &Buffers );
 		glGetIntegerv( GL_SAMPLES_ARB, &Samples );
 
-		debugf( TEXT("OpenGL: Have %d multisamples buffer%s, %d sample%s."),
+		OpenGLDeviceInfof( TEXT("OpenGL: Have %d multisamples buffer%s, %d sample%s."),
                 (int) Buffers, Buffers == 1 ? TEXT("") : TEXT("s"),
                 (int) Samples, Samples == 1 ? TEXT("") : TEXT("s") );
 
 		if( !Buffers || !Samples )
 		{
-			debugf( TEXT("OpenGL: Failed to get a multisample GL context") );
+			OpenGLDeviceInfof( TEXT("OpenGL: Failed to get a multisample GL context") );
 			SUPPORTS_GL_ARB_multisample = 0;
 			SUPPORTS_GL_NV_multisample_filter_hint = 0;
 		}
 		else
         {
-			debugf( TEXT("OpenGL: Using multisample (%d buffers, %d samples)"),
+			OpenGLDeviceInfof( TEXT("OpenGL: Using multisample (%d buffers, %d samples)"),
 			        (int) Buffers, (int) Samples );
 
 			glEnable( GL_MULTISAMPLE_ARB );
@@ -750,7 +758,7 @@ UBOOL UOpenGLRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Fu
 			{
 				TCHAR *HintString[] = { TEXT("DONT_CARE"), TEXT("FASTEST"), TEXT("NICEST") };
 				GLenum HintEnum[] = { GL_DONT_CARE, GL_FASTEST, GL_NICEST };
-				debugf( TEXT("OpenGL: Using multisample hint: GL_%s"), HintString[MultisampleHint] );
+				OpenGLDeviceInfof( TEXT("OpenGL: Using multisample hint: GL_%s"), HintString[MultisampleHint] );
 				glHint( GL_MULTISAMPLE_FILTER_HINT_NV, HintEnum[MultisampleHint] );
 			}
 		}
@@ -767,11 +775,11 @@ UBOOL UOpenGLRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Fu
     if (SUPPORTS_GL_ARB_fragment_program)
     {
         if (UsePixelShaders)
-            debugf(TEXT("OpenGL: Using GL_ARB_fragment_program for pixel shaders."));
+            OpenGLDeviceInfof(TEXT("OpenGL: Using GL_ARB_fragment_program for pixel shaders."));
         else
         {
             SUPPORTS_GL_ARB_fragment_program = 0;
-            debugf(TEXT("OpenGL: Forcibly disabled pixel shaders."));
+            OpenGLDeviceInfof(TEXT("OpenGL: Forcibly disabled pixel shaders."));
         }
     }
 
@@ -819,13 +827,13 @@ UBOOL UOpenGLRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Fu
 		// Use APPLE_VAR
 		SUPPORTS_GL_APPLE_vertex_array_object	= 0;
 		if( SUPPORTS_GL_APPLE_vertex_array_range )
-			debugf( TEXT("OpenGL: Using GL_APPLE_vertex_array_range.") );
+			OpenGLDeviceInfof( TEXT("OpenGL: Using GL_APPLE_vertex_array_range.") );
 		break;
 	case 2:
 		// Use APPLE_VAR + APPLE_VAO
 		SUPPORTS_GL_APPLE_vertex_array_range	= 0;
 		if( SUPPORTS_GL_APPLE_vertex_array_object )
-			debugf( TEXT("OpenGL: Using GL_APPLE_vertex_array_object.") );
+			OpenGLDeviceInfof( TEXT("OpenGL: Using GL_APPLE_vertex_array_object.") );
 		break;
 	}
 
@@ -854,20 +862,21 @@ UBOOL UOpenGLRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Fu
 		appErrorf(TEXT("Either GL_EXT_bgra or glDrawRangeElements not supported- bailing out."));
 
     if (!SUPPORTS_GL_EXT_framebuffer_object)
-        debugf(TEXT("OpenGL: Render-to-Texture support unavailable."));
+        OpenGLDeviceInfof(TEXT("OpenGL: Render-to-Texture support unavailable."));
     else
     {
         if (UseRenderTargets)
-            debugf(TEXT("OpenGL: Using GL_EXT_framebuffer_object for render-to-texture."));
+            OpenGLDeviceInfof(TEXT("OpenGL: Using GL_EXT_framebuffer_object for render-to-texture."));
         else
         {
             SUPPORTS_GL_EXT_framebuffer_object = 0;
-            debugf(TEXT("OpenGL: Forcibly disabled render-to-texture."));
+            OpenGLDeviceInfof(TEXT("OpenGL: Forcibly disabled render-to-texture."));
         }
     }
     SupportsRenderToTextureRGBA8888 = SUPPORTS_GL_EXT_framebuffer_object;
     SupportsRenderToTextureRGB565 = SUPPORTS_GL_EXT_framebuffer_object;
     SupportsRenderToTextureNPOT = SUPPORTS_GL_ARB_texture_non_power_of_two;
+	OpenGLDeviceInfoLogged = 1;
 
 	// Disable vsync.
 	if( SUPPORTS_WGL_EXT_swap_control )

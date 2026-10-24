@@ -156,8 +156,17 @@ void UGL4ESRenderDevice::StaticConstructor()
 }
 
 
-// The "Device supports" list is logged at the first SetRes of the process, at a later one only with -UFRONTLOG.
-static UBOOL GL4ESExtensionsLogged = 0;
+// The device information (the GL strings, the "Device supports" list, the buffer formats and the features in use)
+// is logged at the first SetRes of the process, at a later one only with -UFRONTLOG. Warnings are always logged.
+static UBOOL GL4ESDeviceInfoLogged = 0;
+static void VARARGS GL4ESDeviceInfof( const TCHAR* Fmt, ... )
+{
+	if( GL4ESDeviceInfoLogged && !GUfrontLog )
+		return;
+	TCHAR TempStr[4096];
+	GET_VARARGS( TempStr, ARRAY_COUNT(TempStr), Fmt, Fmt );
+	debugf( TEXT("%s"), TempStr );
+}
 
 //
 // UGL4ESRenderDevice::FindExt
@@ -168,8 +177,8 @@ UBOOL UGL4ESRenderDevice::FindExt( const TCHAR* Name )
 	
 	// Can't use appStrFind as extension string might be > 1024 characters.
 	UBOOL Result = strstr( (char*) glGetString(GL_EXTENSIONS), appToAnsi(Name) ) != NULL;
-	if( Result && (!GL4ESExtensionsLogged || GUfrontLog) )
-		debugf( TEXT("GL4ES: Device supports: %s"), Name );
+	if( Result )
+		GL4ESDeviceInfof( TEXT("GL4ES: Device supports: %s"), Name );
 	return Result;
 	
 	unguard;
@@ -640,12 +649,11 @@ UBOOL UGL4ESRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Ful
 		}
 	}
 
-	debugf( TEXT("GL_VENDOR     : %s"), appFromAnsi((ANSICHAR*)glGetString(GL_VENDOR))	);
-	debugf( TEXT("GL_RENDERER   : %s"), appFromAnsi((ANSICHAR*)glGetString(GL_RENDERER)) );
-	debugf( TEXT("GL_VERSION    : %s"), appFromAnsi((ANSICHAR*)glGetString(GL_VERSION))	);
+	GL4ESDeviceInfof( TEXT("GL_VENDOR     : %s"), appFromAnsi((ANSICHAR*)glGetString(GL_VENDOR))	);
+	GL4ESDeviceInfof( TEXT("GL_RENDERER   : %s"), appFromAnsi((ANSICHAR*)glGetString(GL_RENDERER)) );
+	GL4ESDeviceInfof( TEXT("GL_VERSION    : %s"), appFromAnsi((ANSICHAR*)glGetString(GL_VERSION))	);
 
 	FindProcs( 1 );
-	GL4ESExtensionsLogged = 1;
 
 	if(	appStrstr(appFromAnsi((ANSICHAR*)glGetString(GL_RENDERER)),TEXT("Radeon 7000"				)) != NULL
 	||	appStrstr(appFromAnsi((ANSICHAR*)glGetString(GL_RENDERER)),TEXT("Radeon 7200"				)) != NULL
@@ -694,14 +702,14 @@ UBOOL UGL4ESRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Ful
 	glGetIntegerv( GL_BLUE_BITS,	&BlueBits		);
 	glGetIntegerv( GL_ALPHA_BITS,	&AlphaBits		 );
 
-	debugf( TEXT("GL4ES: C%i RGB%i%i%i Z%i S%i"), ColorBytes * 8, RedBits, GreenBits, BlueBits, DepthBits, StencilBits );
+	GL4ESDeviceInfof( TEXT("GL4ES: C%i RGB%i%i%i Z%i S%i"), ColorBytes * 8, RedBits, GreenBits, BlueBits, DepthBits, StencilBits );
 
 	if( SUPPORTS_GL_EXT_texture_filter_anisotropic )
 	{
 		GLfloat MaxAnisotropy;
 		glGetFloatv( GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &MaxAnisotropy );
 		LevelOfAnisotropy = Max<FLOAT>( 1.0f, Min<FLOAT>( MaxAnisotropy, LevelOfAnisotropy ) );
-		debugf( TEXT("GL4ES: Level of anisotropy is %f (max %f)."), (float) LevelOfAnisotropy, (float) MaxAnisotropy );
+		GL4ESDeviceInfof( TEXT("GL4ES: Level of anisotropy is %f (max %f)."), (float) LevelOfAnisotropy, (float) MaxAnisotropy );
 	}
 	if( GUfrontLog )
 		debugf( TEXT("GL4ES: UseHardwareGamma=%s (%s) -- the display's gamma ramp is %s"),
@@ -711,26 +719,26 @@ UBOOL UGL4ESRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Ful
 
 #ifndef WIN32
 	if( !SUPPORTS_GL_ARB_multisample )
-		debugf( TEXT("GL4ES: Not using multisample") );
+		GL4ESDeviceInfof( TEXT("GL4ES: Not using multisample") );
 	else
 	{
         INT Buffers, Samples;
 		glGetIntegerv( GL_SAMPLE_BUFFERS_ARB, &Buffers );
 		glGetIntegerv( GL_SAMPLES_ARB, &Samples );
 
-		debugf( TEXT("GL4ES: Have %d multisamples buffer%s, %d sample%s."),
+		GL4ESDeviceInfof( TEXT("GL4ES: Have %d multisamples buffer%s, %d sample%s."),
                 (int) Buffers, Buffers == 1 ? TEXT("") : TEXT("s"),
                 (int) Samples, Samples == 1 ? TEXT("") : TEXT("s") );
 
 		if( !Buffers || !Samples )
 		{
-			debugf( TEXT("GL4ES: Failed to get a multisample GL context") );
+			GL4ESDeviceInfof( TEXT("GL4ES: Failed to get a multisample GL context") );
 			SUPPORTS_GL_ARB_multisample = 0;
 			SUPPORTS_GL_NV_multisample_filter_hint = 0;
 		}
 		else
         {
-			debugf( TEXT("GL4ES: Using multisample (%d buffers, %d samples)"),
+			GL4ESDeviceInfof( TEXT("GL4ES: Using multisample (%d buffers, %d samples)"),
 			        (int) Buffers, (int) Samples );
 
 			glEnable( GL_MULTISAMPLE_ARB );
@@ -739,7 +747,7 @@ UBOOL UGL4ESRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Ful
 			{
 				TCHAR *HintString[] = { TEXT("DONT_CARE"), TEXT("FASTEST"), TEXT("NICEST") };
 				GLenum HintEnum[] = { GL_DONT_CARE, GL_FASTEST, GL_NICEST };
-				debugf( TEXT("GL4ES: Using multisample hint: GL_%s"), HintString[MultisampleHint] );
+				GL4ESDeviceInfof( TEXT("GL4ES: Using multisample hint: GL_%s"), HintString[MultisampleHint] );
 				glHint( GL_MULTISAMPLE_FILTER_HINT_NV, HintEnum[MultisampleHint] );
 			}
 		}
@@ -756,11 +764,11 @@ UBOOL UGL4ESRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Ful
     if (SUPPORTS_GL_ARB_fragment_program)
     {
         if (UsePixelShaders)
-            debugf(TEXT("GL4ES: Using GL_ARB_fragment_program for pixel shaders."));
+            GL4ESDeviceInfof(TEXT("GL4ES: Using GL_ARB_fragment_program for pixel shaders."));
         else
         {
             SUPPORTS_GL_ARB_fragment_program = 0;
-            debugf(TEXT("GL4ES: Forcibly disabled pixel shaders."));
+            GL4ESDeviceInfof(TEXT("GL4ES: Forcibly disabled pixel shaders."));
         }
     }
 
@@ -817,13 +825,13 @@ UBOOL UGL4ESRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Ful
 		// Use APPLE_VAR
 		SUPPORTS_GL_APPLE_vertex_array_object	= 0;
 		if( SUPPORTS_GL_APPLE_vertex_array_range )
-			debugf( TEXT("GL4ES: Using GL_APPLE_vertex_array_range.") );
+			GL4ESDeviceInfof( TEXT("GL4ES: Using GL_APPLE_vertex_array_range.") );
 		break;
 	case 2:
 		// Use APPLE_VAR + APPLE_VAO
 		SUPPORTS_GL_APPLE_vertex_array_range	= 0;
 		if( SUPPORTS_GL_APPLE_vertex_array_object )
-			debugf( TEXT("GL4ES: Using GL_APPLE_vertex_array_object.") );
+			GL4ESDeviceInfof( TEXT("GL4ES: Using GL_APPLE_vertex_array_object.") );
 		break;
 	}
 
@@ -852,20 +860,21 @@ UBOOL UGL4ESRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Ful
 		appErrorf(TEXT("Either GL_EXT_bgra or glDrawRangeElements not supported- bailing out."));
 
     if (!SUPPORTS_GL_EXT_framebuffer_object)
-        debugf(TEXT("GL4ES: Render-to-Texture support unavailable."));
+        GL4ESDeviceInfof(TEXT("GL4ES: Render-to-Texture support unavailable."));
     else
     {
         if (UseRenderTargets)
-            debugf(TEXT("GL4ES: Using GL_EXT_framebuffer_object for render-to-texture."));
+            GL4ESDeviceInfof(TEXT("GL4ES: Using GL_EXT_framebuffer_object for render-to-texture."));
         else
         {
             SUPPORTS_GL_EXT_framebuffer_object = 0;
-            debugf(TEXT("GL4ES: Forcibly disabled render-to-texture."));
+            GL4ESDeviceInfof(TEXT("GL4ES: Forcibly disabled render-to-texture."));
         }
     }
     SupportsRenderToTextureRGBA8888 = SUPPORTS_GL_EXT_framebuffer_object;
     SupportsRenderToTextureRGB565 = SUPPORTS_GL_EXT_framebuffer_object;
     SupportsRenderToTextureNPOT = SUPPORTS_GL_ARB_texture_non_power_of_two;
+	GL4ESDeviceInfoLogged = 1;
 
 	// Disable vsync.
 	if( SUPPORTS_WGL_EXT_swap_control )
