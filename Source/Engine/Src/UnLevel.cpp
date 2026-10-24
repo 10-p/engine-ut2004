@@ -1054,7 +1054,8 @@ void ULevel::NotifyAcceptedConnection( UNetConnection* Connection )
 	guard(ULevel::NotifyAcceptedConnection);
 	check(NetDriver!=NULL);
 	check(NetDriver->ServerConnection==NULL);
-	printf("[NET-TRAFFIC] Server: Accepted connection from %s\n", TCHAR_TO_ANSI(*Connection->LowLevelGetRemoteAddress()));
+	if( GUfrontLog )
+		printf("[NET-TRAFFIC] Server: Accepted connection from %s\n", TCHAR_TO_ANSI(*Connection->LowLevelGetRemoteAddress()));
 	debugf( NAME_NetComeGo, TEXT("Open %s %s %s"), GetName(), appTimestamp(), *Connection->LowLevelGetRemoteAddress() );
 	unguard;
 }
@@ -1130,7 +1131,8 @@ void ULevel::WelcomePlayer( UNetConnection* Connection, char* Optional )
 {
 	guard(ULevel::WelcomePlayer);
 
-	printf("[NET-TRAFFIC] Server: WelcomePlayer — sending map info to client\n");
+	if( GUfrontLog )
+		printf("[NET-TRAFFIC] Server: WelcomePlayer — sending map info to client\n");
 	Connection->PackageMap->Copy( Connection->Driver->MasterMap );
 	Connection->SendPackageMap( this );
 	if( Optional[0] )
@@ -1369,7 +1371,8 @@ void ULevel::NotifyReceivedText( UNetConnection* Connection, const TCHAR* Text )
 		{
 			INT Rate = appAtoi(Text);
 			Connection->CurrentNetSpeed = Clamp( Rate, 1800, NetDriver->MaxClientRate );
-			printf("[NET-TRAFFIC] Server: Client NETSPEED=%d\n", Connection->CurrentNetSpeed);
+			if( GUfrontLog )
+				printf("[NET-TRAFFIC] Server: Client NETSPEED=%d\n", Connection->CurrentNetSpeed);
 			debugf( TEXT("Client netspeed is %i"), Connection->CurrentNetSpeed );
 		}
 		else if( ParseCommand(&Text,TEXT("HAVE")) )
@@ -1417,7 +1420,8 @@ void ULevel::NotifyReceivedText( UNetConnection* Connection, const TCHAR* Text )
 			FString Error, FailCode;
 			Parse( Text, TEXT("URL="), Str, ARRAY_COUNT(Str) );
 			Connection->RequestURL = Str;
-			printf("[NET-TRAFFIC] Server: LOGIN request: %s\n", TCHAR_TO_ANSI(*Connection->RequestURL));
+			if( GUfrontLog )
+				printf("[NET-TRAFFIC] Server: LOGIN request: %s\n", TCHAR_TO_ANSI(*Connection->RequestURL));
 			debugf( NAME_DevNet, TEXT("Login request: %s"), *Connection->RequestURL );
 			const TCHAR* Tmp;
 			for( Tmp=Str; *Tmp && *Tmp!='?'; Tmp++ );
@@ -1477,7 +1481,8 @@ void ULevel::NotifyReceivedText( UNetConnection* Connection, const TCHAR* Text )
 			// Spawn the player-actor for this network player.
 			FString Error;
 			debugf( NAME_DevNet, TEXT("Join request: %s"), *Connection->RequestURL );
-			printf("[NET-TRAFFIC] Server: JOIN request: %s\n", TCHAR_TO_ANSI(*Connection->RequestURL));
+			if( GUfrontLog )
+				printf("[NET-TRAFFIC] Server: JOIN request: %s\n", TCHAR_TO_ANSI(*Connection->RequestURL));
 			if( !SpawnPlayActor( Connection, ROLE_AutonomousProxy, FURL(NULL,*Connection->RequestURL,TRAVEL_Absolute), Error ) )
 			{
 				// Failed to connect.
@@ -1490,7 +1495,8 @@ void ULevel::NotifyReceivedText( UNetConnection* Connection, const TCHAR* Text )
 			else
 			{
 				// Successfully in game.
-				printf("[NET-TRAFFIC] Server: JOIN SUCCEEDED — player '%s' is now in game\n", TCHAR_TO_ANSI(*Connection->Actor->PlayerReplicationInfo->PlayerName));
+				if( GUfrontLog )
+					printf("[NET-TRAFFIC] Server: JOIN SUCCEEDED — player '%s' is now in game\n", TCHAR_TO_ANSI(*Connection->Actor->PlayerReplicationInfo->PlayerName));
 				debugf( NAME_DevNet, TEXT("Join succeeded: %s"), *Connection->Actor->PlayerReplicationInfo->PlayerName );
 			}
 		}

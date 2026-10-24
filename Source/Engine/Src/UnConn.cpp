@@ -990,7 +990,8 @@ void UNetConnection::HandleClientPlayer( APlayerController *PC )
 {
 	guard(UNetConnection::HandleClientPlayer);
 
-	printf("[NET-TRAFFIC] Client: HandleClientPlayer — spawning local player, connection going OPEN\n");
+	if( GUfrontLog )
+		printf("[NET-TRAFFIC] Client: HandleClientPlayer — spawning local player, connection going OPEN\n");
 
 	// Hook up the Viewport to the new player actor.
 	UViewport* Viewport = NULL;

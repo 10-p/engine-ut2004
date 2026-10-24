@@ -207,7 +207,9 @@ the first two replacements off.
 - `-ini:<File>:[<Section>]:<Key>=<Value>` writes a config value straight after the config cache loads (`User` /
   `System` are the generic file names); one `Ini override:` log line each.
 - `-UFRONTLOG` adds the port's diagnostic and repeated log lines: `[AutoFOV]` and `[AutoFOVUI]`, the 10 s
-  `[NET-TRAFFIC]` traffic and replication windows and the `[WebRTC]` receive counts, the `[ENGINE-DBG]` boot steps,
+  `[NET-TRAFFIC]` traffic and replication windows, the `[NET-TRAFFIC]` join steps on stdout (the server's accepted
+  connection, `NETSPEED`, `LOGIN`, `WelcomePlayer`, `JOIN request` and `JOIN SUCCEEDED`; the client's `WELCOME`,
+  `Sending JOIN` and `HandleClientPlayer`), the `[WebRTC]` receive counts, the `[ENGINE-DBG]` boot steps,
   the menu-cursor handover (`SDL2: menu cursor:`), GL4ES's initialization steps, the `UseHardwareGamma=` (OpenGLDrv,
   GL4ESDrv) and `Vertex buffers:` (GL4ESDrv) lines of every mode set, OpenGLDrv's and GL4ESDrv's device information
   of every mode set after the process's first (the `GL_VENDOR`/`GL_RENDERER`/`GL_VERSION` lines, the `Device
