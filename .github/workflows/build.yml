@@ -258,11 +258,11 @@ jobs:
             echo "staged ${{ matrix.extra_dll }} ($(stat -c%s "$staged") bytes)"
           fi
 
-      # ucc-bin.exe, the console tool, carries no DLL beside it: system DLLs only.
-      - name: Assert ucc-bin.exe imports nothing but system DLLs
+      # ucc.exe, the console tool, carries no DLL beside it: system DLLs only.
+      - name: Assert ucc.exe imports nothing but system DLLs
         run: |
           set -euo pipefail
-          imports=$(${{ matrix.objdump }} -p build-${{ matrix.preset }}/Source/UCC/ucc-bin.exe | sed -n 's/^\tDLL Name: //p' | sort -u)
+          imports=$(${{ matrix.objdump }} -p build-${{ matrix.preset }}/Source/UCC/ucc.exe | sed -n 's/^\tDLL Name: //p' | sort -u)
           echo "$imports"
           allowed="ADVAPI32.dll GDI32.dll IMM32.dll KERNEL32.dll msvcrt.dll ole32.dll OLEAUT32.dll SETUPAPI.dll SHELL32.dll USER32.dll VERSION.dll WINMM.dll WS2_32.dll"
           bad=""
@@ -284,7 +284,7 @@ jobs:
           path: |
             build-${{ matrix.preset }}/Source/SDLLaunch/${{ matrix.bin }}
             build-${{ matrix.preset }}/Source/SDLLaunch/*.dll
-            build-${{ matrix.preset }}/Source/UCC/ucc-bin.exe
+            build-${{ matrix.preset }}/Source/UCC/ucc.exe
           if-no-files-found: error
           retention-days: 7
 

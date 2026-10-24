@@ -1,6 +1,6 @@
 #=============================================================================
-# UCC - the native command-line tool (dedicated server / commandlets): ucc-bin on Linux, ucc-bin.exe on
-# Windows. No ucc on the web or Android.
+# UCC - the native command-line tool (dedicated server / commandlets): ucc-bin on Linux, ucc.exe on Windows.
+# No ucc on the web or Android.
 #
 # The native build is a single static binary (no .so packages), so this static-links the full game
 # module set with --whole-archive to preserve the AUTO_INITIALIZE_REGISTRANTS_* global constructors (as
@@ -19,10 +19,11 @@ set(SRC_FILES Src/UCC.cpp)
 add_executable(${PROJECT_NAME} ${SRC_FILES})
 
 # Retail parity: the binary is `ucc-bin` (classic Linux UT ships a `ucc` wrapper script over ucc-bin), without
-# the `.bin` suffix the Linux game binaries take.
-set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME ucc-bin)
-if(NOT WIN32)
-  set_target_properties(${PROJECT_NAME} PROPERTIES SUFFIX "")
+# the `.bin` suffix the Linux game binaries take, and `ucc.exe` on Windows, the name of the game's own UCC.exe.
+if(WIN32)
+  set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME ucc)
+else()
+  set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME ucc-bin SUFFIX "")
 endif()
 
 # UCC.cpp includes headers from many modules under __STATIC_LINK. Each module exports its Inc/ dir PUBLIC,
