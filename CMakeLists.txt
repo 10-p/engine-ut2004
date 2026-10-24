@@ -165,6 +165,9 @@ if(MINGW)
   # Link GCC's runtime statically: otherwise the .exe imports libgcc_s_dw2-1.dll and libstdc++-6.dll,
   # which live in the toolchain, not in a Windows install.
   add_link_options(-static-libgcc -static-libstdc++)
+  # A posix-thread-model MinGW also pulls in libwinpthread-1.dll through libstdc++ (std::thread in GL4ES);
+  # link it statically too, or the exe does not start outside the build machine.
+  add_link_options(-Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive,-Bdynamic)
 endif()
 
 # Unicode support
