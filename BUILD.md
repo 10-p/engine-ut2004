@@ -268,6 +268,11 @@ cd Android
 - The SDK in `/usr/lib/android-sdk` is read-only, so a part the Gradle plugin would download instead fails the build
   with its name.
 
+In play the touch overlay (`GameActivity.java`, into `Source/SDL2Drv/Src/SDL2Viewport.cpp`) has a move stick on the
+left half, drag-look on the right and FIRE, ALTFIRE, JUMP, CROUCH, NEXTWEAPON and MENU buttons. The move stick tilts
+fully `MOVE_FULL_TILT_DP` (12 dp) from where the finger is held, in the drag's direction, with a dead zone of
+`MOVE_DEAD_ZONE_DP` (3 dp) for a resting finger; past full tilt the held point follows the finger. It never walks.
+
 The engine reads its game folder by path (the JNI bridge sets `UT2004_ANDROID_BASEDIR` and the cwd); the launcher
 (`MainActivity`) chooses which:
 
