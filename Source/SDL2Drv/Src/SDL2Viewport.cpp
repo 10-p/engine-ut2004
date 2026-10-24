@@ -1245,6 +1245,28 @@ void USDL2Viewport::ClosePad()
 }
 
 //
+// Use the game controller at this device index as the pad, in place of the one open (the input test channel's virtual
+// pad). Pads that arrive later are not opened while it is.
+//
+UBOOL USDL2Viewport::UsePad( INT DeviceIndex )
+{
+    guard(USDL2Viewport::UsePad);
+    ClosePad();
+    if( !GetOuterUSDL2Client()->UseJoystick )
+        return 0;
+    GPad = SDL_GameControllerOpen( DeviceIndex );
+    if( !GPad )
+    {
+        debugf( NAME_Log, TEXT("SDL2: game pad %i could not be opened: %s"), DeviceIndex, appFromAnsi(SDL_GetError()) );
+        return 0;
+    }
+    const char* Name = SDL_GameControllerName( GPad );
+    debugf( NAME_Log, TEXT("SDL2: game pad connected: %s"), Name ? appFromAnsi(Name) : TEXT("(no name)") );
+    return 1;
+    unguard;
+}
+
+//
 // Move the menu cursor by the pad's left stick (X, Y past the deadzone, -1 to 1) for this tick: linear in the stick,
 // across the viewport's width in PadCursorSeconds at full tilt. The windowed menus place the cursor at WindowsMouseX/Y,
 // the fullscreen ones add up the mouse axes, and both take the axes for hover and drags: the axes carry the step that

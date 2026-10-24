@@ -131,6 +131,7 @@ class USDL2Viewport : public UViewport
     void CloseWindow();
     void UpdateInput( UBOOL Reset, FLOAT DeltaSeconds );
     void ClosePad();
+    UBOOL UsePad( INT DeviceIndex );
     void MovePadCursor( FLOAT X, FLOAT Y, FLOAT DeltaSeconds );
     void UpdatePadCursor();
     void TakePadCursor();

@@ -113,8 +113,6 @@ UBOOL FSDL2InputTest::Execute( USDL2Viewport* Viewport, const TCHAR* Line )
             Desc.button_mask = (1u << VPAD_BUTTONS) - 1;
             Desc.axis_mask   = (1u << VPAD_AXES) - 1;
             Desc.name        = "SDL2InputTest virtual pad";
-            // The viewport opens the first pad that comes while none is open: the virtual one takes the place.
-            Viewport->ClosePad();
             INT Index = SDL_JoystickAttachVirtualEx( &Desc );
             if( Index < 0 )
             {
@@ -130,6 +128,8 @@ UBOOL FSDL2InputTest::Execute( USDL2Viewport* Viewport, const TCHAR* Line )
                 SDL_JoystickSetVirtualAxis( Virtual, SDL_CONTROLLER_AXIS_TRIGGERRIGHT, -32768 );
             }
             debugf( NAME_Log, TEXT("SDL2InputTest: virtual pad: joystick %i, game controller %i"), Index, (INT)SDL_IsGameController(Index) );
+            // The viewport takes the virtual pad in place of the one it has open, or of one whose arrival is still queued.
+            Viewport->UsePad( Index );
             return 1;
         }
         if( ParseCommand(&Cmd,TEXT("DETACH")) )
