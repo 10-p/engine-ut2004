@@ -14,6 +14,9 @@
 #include "SDL.h"
 #include "SDL_syswm.h"
 #endif
+#if defined(__linux__)
+#include <signal.h>
+#endif
 
 INT UPixoRenderDevice::STATS_NumVertsXformed = -1;
 INT UPixoRenderDevice::STATS_NumTrianglesSubmitted = -1;
@@ -158,6 +161,12 @@ UBOOL UPixoRenderDevice::Init()
 		}
 	#endif
 
+#if defined(__linux__)
+	// Pixomatic's CPU probe leaves SIGILL at the default action when it is done: the engine's own handler (the crash
+	// report appPlatformInit installs, one-shot on the alternate signal stack) is saved here and put back after it.
+	struct sigaction EngineSigIll;
+	const UBOOL SavedSigIll = sigaction( SIGILL, NULL, &EngineSigIll ) == 0;
+#endif
 	PixoStartup(PIXO_ZCLIPRANGE_0_1);
 	PixoSetBottomUpRendering(PIXO_BOTTOMUPRENDERING_ON);
 	PixoSetCullingPolarityToggle(PIXO_CULLINGPOLARITYTOGGLE_OFF);
@@ -168,6 +177,10 @@ UBOOL UPixoRenderDevice::Init()
 	// zeroes, with no performance penalty.
     PIXO_CPU_FEATURES pixo_cpu_features;
     PixoGetCPUIDFeatures(&pixo_cpu_features, 0);
+#if defined(__linux__)
+	if( SavedSigIll )
+		sigaction( SIGILL, &EngineSigIll, NULL );
+#endif
 
     cpu_features = pixo_cpu_features.features;
 
