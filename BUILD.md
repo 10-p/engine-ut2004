@@ -177,7 +177,10 @@ through OpenSL ES and is built without C++20 modules (`ALSOFT_ENABLE_MODULES=OFF
 | `-NULLRENDERER` | `Engine.NullRenderDevice` | every build |
 
 The first `-*RENDERER` switch on the command line decides; a device the build lacks is logged (`render device <X> not
-available`) and the default stays. A choice that survives `Engine->Init` is written to the ini. With no switch, the launcher replaces any `ViewportManager`,
+available`) and the default stays. A choice that survives `Engine->Init` is written to the ini. A device that gets no
+window or GL context stops the game with `Render device <X> could not start` (after the `SDL_GL_CreateContext failed`
+warning), and its switch is not written. GL4ESDrv needs an OpenGL ES context: on Windows a driver with
+`WGL_EXT_create_context_es2_profile`, or `libEGL.dll` and `libGLESv2.dll` (ANGLE) beside the exe. With no switch, the launcher replaces any `ViewportManager`,
 `RenderDevice` or `AudioDevice` the ini names but the build lacks: the viewport with `SDL2Drv.SDL2Client`, the
 render device with OpenGLDrv then GL4ESDrv, the audio device with ALAudio (or `UseSound=False`); on the web a stock
 `IpDrv.TcpNetDriver` becomes `WebRTCDrv.WebRTCNetDriver`. `-NoReplaceViewport` and `-NoReplaceRenderDevice` turn
