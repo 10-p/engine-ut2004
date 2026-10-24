@@ -684,7 +684,10 @@ void USDL2Viewport::OpenWindow( PTRINT InParentWindow, UBOOL IsTemporary, INT Ne
     if( !RenDev )
         TryRenderDevice( TEXT("ini:Engine.Engine.RenderDevice"), NewX, NewY, GIsEditor ? 0 : C->StartupFullscreen );
 
-    check(RenDev);
+    // A render device that gets no window or GL context ends the game with its name rather than running without one.
+    if( !RenDev )
+        appErrorf( TEXT("Render device %s could not start: no window or GL context for it"),
+            GConfig->GetStr( TEXT("Engine.Engine"), TEXT("RenderDevice"), TEXT("System") ) );
     RenDev->UpdateGamma( this );
     UpdateWindowFrame();
 
@@ -1132,7 +1135,7 @@ UBOOL USDL2Viewport::ResizeViewport( DWORD NewBlitFlags, INT InNewX, INT InNewY,
         GLContext = SDL_GL_CreateContext( Window );
         if( !GLContext )
         {
-            debugf( NAME_Init, TEXT("SDL_GL_CreateContext failed: %s"), appFromAnsi(SDL_GetError()) );
+            debugf( NAME_Warning, TEXT("SDL_GL_CreateContext failed: %s"), appFromAnsi(SDL_GetError()) );
             return 0;
         }
         SDL_GL_MakeCurrent( Window, GLContext );
