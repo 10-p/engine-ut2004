@@ -156,6 +156,9 @@ void UGL4ESRenderDevice::StaticConstructor()
 }
 
 
+// The "Device supports" list is logged at the first SetRes of the process, at a later one only with -UFRONTLOG.
+static UBOOL GL4ESExtensionsLogged = 0;
+
 //
 // UGL4ESRenderDevice::FindExt
 //
@@ -165,7 +168,7 @@ UBOOL UGL4ESRenderDevice::FindExt( const TCHAR* Name )
 	
 	// Can't use appStrFind as extension string might be > 1024 characters.
 	UBOOL Result = strstr( (char*) glGetString(GL_EXTENSIONS), appToAnsi(Name) ) != NULL;
-	if( Result )
+	if( Result && (!GL4ESExtensionsLogged || GUfrontLog) )
 		debugf( TEXT("GL4ES: Device supports: %s"), Name );
 	return Result;
 	
@@ -642,6 +645,7 @@ UBOOL UGL4ESRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Ful
 	debugf( TEXT("GL_VERSION    : %s"), appFromAnsi((ANSICHAR*)glGetString(GL_VERSION))	);
 
 	FindProcs( 1 );
+	GL4ESExtensionsLogged = 1;
 
 	if(	appStrstr(appFromAnsi((ANSICHAR*)glGetString(GL_RENDERER)),TEXT("Radeon 7000"				)) != NULL
 	||	appStrstr(appFromAnsi((ANSICHAR*)glGetString(GL_RENDERER)),TEXT("Radeon 7200"				)) != NULL

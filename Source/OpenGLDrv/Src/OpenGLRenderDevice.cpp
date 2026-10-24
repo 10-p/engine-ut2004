@@ -142,6 +142,9 @@ void UOpenGLRenderDevice::StaticConstructor()
 }
 
 
+// The "Device supports" list is logged at the first SetRes of the process, at a later one only with -UFRONTLOG.
+static UBOOL OpenGLExtensionsLogged = 0;
+
 //
 // UOpenGLRenderDevice::FindExt
 //
@@ -151,7 +154,7 @@ UBOOL UOpenGLRenderDevice::FindExt( const TCHAR* Name )
 	
 	// Can't use appStrFind as extension string might be > 1024 characters.
 	UBOOL Result = strstr( (char*) glGetString(GL_EXTENSIONS), appToAnsi(Name) ) != NULL;
-	if( Result )
+	if( Result && (!OpenGLExtensionsLogged || GUfrontLog) )
 		debugf( TEXT("OpenGL: Device supports: %s"), Name );
 	return Result;
 	
@@ -652,6 +655,7 @@ UBOOL UOpenGLRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Fu
 	debugf( TEXT("GL_VERSION    : %s"), appFromAnsi((ANSICHAR*)glGetString(GL_VERSION))	);
 
 	FindProcs( 1 );
+	OpenGLExtensionsLogged = 1;
 
 	if(	appStrstr(appFromAnsi((ANSICHAR*)glGetString(GL_RENDERER)),TEXT("Radeon 7000"				)) != NULL
 	||	appStrstr(appFromAnsi((ANSICHAR*)glGetString(GL_RENDERER)),TEXT("Radeon 7200"				)) != NULL
