@@ -238,8 +238,8 @@ UObject* UClassFactoryUC::FactoryCreateText
 		{
 			ScriptText.Logf( TEXT("// (cpptext)\r\n// (cpptext)\r\n")  );
 			ParseLine(&Buffer,StrLine,1);
-			ParseNext( &Str );
 			Str = *StrLine;
+			ParseNext( &Str );
 			if( *Str!='{' )
 				appErrorf( TEXT("%s: Missing '{' after cpptext."), *ClassName );
 
