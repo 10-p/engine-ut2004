@@ -133,6 +133,18 @@ UBOOL SetNonBlocking( INT Socket );
 UBOOL SetSocketReuseAddr( INT Socket, UBOOL ReUse=1 );
 UBOOL SetSocketLinger( INT Socket );
 UBOOL SetSocketRecvErr( INT Socket );
+
+// The conditions SocketReady waits for and reports: select()'s read, write and exception sets.
+enum ESocketReady
+{
+	SOCKET_Readable		= 1,
+	SOCKET_Writable		= 2,
+	SOCKET_Exception	= 4,
+};
+// Waits up to TimeoutMs for one socket to meet any of the Wanted conditions, as select() on that socket would.
+// Returns the conditions met (0 on time-out) or SOCKET_ERROR.
+INT SocketReady( SOCKET Socket, INT Wanted, INT TimeoutMs );
+
 TCHAR* SocketError( INT Code=-1 );
 TCHAR* SocketHostError( INT Code=-1 );
 UBOOL IpMatches( sockaddr_in& A, sockaddr_in& B );

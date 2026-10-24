@@ -33,7 +33,14 @@ Revision history:
 #define MUTATOR_META_INDEX (INT)(2)
 
 // Global methods for ScanDirectories() & GetCacheDirectories()
-inline UBOOL ContainsMaps( const TCHAR* Test )		{ return appStrstr( Test, (FURL::DefaultMapExt == TEXT("") ? TEXT(".ut2") : *FURL::DefaultMapExt) ) != NULL; }
+// A path holds maps when it names the map extension with its dot (MapExt is stored without one, and a folder
+// name such as "ut2004" holds the bare letters).
+inline UBOOL ContainsMaps( const TCHAR* Test )
+{
+	FString Ext = TEXT(".");
+	Ext += FURL::DefaultMapExt == TEXT("") ? TEXT("ut2") : *FURL::DefaultMapExt;
+	return appStrstr( Test, *Ext ) != NULL;
+}
 inline UBOOL ContainsPackages( const TCHAR* Test )  { return !appStrcmp(&Test[appStrlen(Test) - 3], TEXT("*.u")); }
 // Overloads
 inline UBOOL ContainsMaps( FString& Test )			{ return ContainsMaps(*Test);	  }

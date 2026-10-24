@@ -109,8 +109,6 @@ void ATcpLink::execIsConnected( FFrame& Stack, RESULT_DECL )
 	guard(ATcpLink::execIsConnected);
 	P_FINISH;
 
-	fd_set SocketSet;
-	TIMEVAL SelectTime = {0, 0};
 	INT Error;
 
 	if ( LinkState == STATE_Initialized )
@@ -121,9 +119,7 @@ void ATcpLink::execIsConnected( FFrame& Stack, RESULT_DECL )
 
 	if ( (LinkState == STATE_Listening) && (GetSocket() != INVALID_SOCKET) )
 	{
-		FD_ZERO( &SocketSet );
-		FD_SET( RemoteSocket, &SocketSet );
-		Error = select( RemoteSocket + 1, 0, &SocketSet, 0, &SelectTime );
+		Error = SocketReady( RemoteSocket, SOCKET_Writable, 0 );
 		if (( Error != SOCKET_ERROR ) && ( Error != 0 )) {
 			*(DWORD*)Result = 1;
 			return;
@@ -132,9 +128,7 @@ void ATcpLink::execIsConnected( FFrame& Stack, RESULT_DECL )
 
 	if ( GetSocket() != INVALID_SOCKET )
 	{
-		FD_ZERO( &SocketSet );
-		FD_SET( Socket, &SocketSet );
-		Error = select( Socket + 1, 0, &SocketSet, 0, &SelectTime );
+		Error = SocketReady( Socket, SOCKET_Writable, 0 );
 		if (( Error != SOCKET_ERROR ) && ( Error != 0 )) {
 			*(DWORD*)Result = 1;
 			return;
@@ -244,12 +238,7 @@ UBOOL ATcpLink::Tick( FLOAT DeltaTime, enum ELevelTick TickType )
 	if (*CheckSocket != INVALID_SOCKET)
 	{
 		// See if the socket needs to be closed.
-		TIMEVAL SelectTime = {0, 0};
-		SOCKET s;
-		fd_set SocketSet;
-		FD_ZERO(&SocketSet);
-		FD_SET( *CheckSocket, &SocketSet );
-		s = select( *CheckSocket + 1, &SocketSet, 0, 0, &SelectTime );
+		INT s = SocketReady( *CheckSocket, SOCKET_Readable, 0 );
 		if (( s != SOCKET_ERROR ) && ( s != 0 ))
 		{
 #if 1
@@ -297,16 +286,12 @@ void ATcpLink::CheckConnectionQueue()
 {
 	guard(ATcpLink::CheckConnectionQueue);
 
-	fd_set SocketSet;
-	TIMEVAL SelectTime = {0, 0};
 	INT Error;
 	INT NewSocket;
 	SOCKADDR_IN ForeignHost;
 
-	FD_ZERO( &SocketSet );
-	FD_SET( GetSocket(), &SocketSet );
 	// If listening, check for a queued connection to accept.
-	Error = select( GetSocket() + 1, &SocketSet, 0, 0, &SelectTime);
+	Error = SocketReady( GetSocket(), SOCKET_Readable, 0 );
 	if ( Error == SOCKET_ERROR ) {
 		debugf( NAME_Log, TEXT("CheckConnectionQueue: Error while checking socket status. %i"), WSAGetLastError());
 		return;
@@ -373,23 +358,14 @@ void ATcpLink::PollConnections()
 	if ( ReceiveMode == RMODE_Manual )
 	{
 		INT S;
-		fd_set SocketSet;
-		TIMEVAL SelectTime = {0, 0};
 		INT Error;
 
-		FD_ZERO( &SocketSet );
 		if ( RemoteSocket == INVALID_SOCKET )
-		{
 			S = Socket;
-			FD_SET( Socket, &SocketSet );
-		}
 		else
-		{
 			S = RemoteSocket;
-			FD_SET( RemoteSocket, &SocketSet );
-		}
 
-		Error = select( S + 1, &SocketSet, 0, 0, &SelectTime);
+		Error = SocketReady( S, SOCKET_Readable, 0 );
 
 		if (( Error == 0 ) || ( Error == SOCKET_ERROR ))
 			DataPending = 0;
@@ -521,18 +497,14 @@ void ATcpLink::CheckConnectionAttempt()
 {
 	guard(ATcpLink::CheckConnectionAttempt);
 
-	fd_set SocketSet;
-	TIMEVAL SelectTime = {0, 0};
 	INT Error;
 
 	if (GetSocket() == INVALID_SOCKET)
 		return;
 
-	FD_ZERO( &SocketSet );
-	FD_SET( GetSocket(), &SocketSet );
 	// Check for writability.  If the socket is writable, the
 	// connection attempt succeeded.
-	Error = select( GetSocket() + 1, 0, &SocketSet, 0, &SelectTime);
+	Error = SocketReady( GetSocket(), SOCKET_Writable, 0 );
 
 	if ( Error == SOCKET_ERROR ) {
 		debugf( NAME_Log, TEXT("CheckConnectionAttempt: Error while checking socket status.") );

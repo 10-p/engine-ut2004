@@ -56,6 +56,7 @@ Revision history:
 	#include <errno.h>
 	#include <pthread.h>
 	#include <fcntl.h>
+	#include <poll.h>
 
 	// Handle glibc < 2.1.3
 	#ifndef MSG_NOSIGNAL

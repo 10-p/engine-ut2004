@@ -414,6 +414,54 @@ UBOOL SetSocketRecvErr( INT Socket )
 }
 
 
+INT SocketReady( SOCKET Socket, INT Wanted, INT TimeoutMs )
+{
+	INT Ready = 0;
+#if __WINSOCK__
+	// A Winsock fd_set holds socket handles, whatever their value; select() ignores its first argument.
+	fd_set ReadSet, WriteSet, ExceptSet;
+	FD_ZERO( &ReadSet );
+	FD_ZERO( &WriteSet );
+	FD_ZERO( &ExceptSet );
+	FD_SET( Socket, &ReadSet );
+	FD_SET( Socket, &WriteSet );
+	FD_SET( Socket, &ExceptSet );
+	TIMEVAL Time = { TimeoutMs / 1000, (TimeoutMs % 1000) * 1000 };
+	if( select( 0, (Wanted & SOCKET_Readable) ? &ReadSet : NULL, (Wanted & SOCKET_Writable) ? &WriteSet : NULL,
+		(Wanted & SOCKET_Exception) ? &ExceptSet : NULL, &Time ) == SOCKET_ERROR )
+		return SOCKET_ERROR;
+	if( (Wanted & SOCKET_Readable) && FD_ISSET( Socket, &ReadSet ) )
+		Ready |= SOCKET_Readable;
+	if( (Wanted & SOCKET_Writable) && FD_ISSET( Socket, &WriteSet ) )
+		Ready |= SOCKET_Writable;
+	if( (Wanted & SOCKET_Exception) && FD_ISSET( Socket, &ExceptSet ) )
+		Ready |= SOCKET_Exception;
+#else
+	// poll() takes any descriptor (an fd_set only those below FD_SETSIZE) and skips a negative one. Its events
+	// fall into select()'s sets as Linux sorts them: hang-up and error are readable, error is writable.
+	pollfd Fd;
+	Fd.fd		= Socket;
+	Fd.events	= ((Wanted & SOCKET_Readable) ? POLLIN : 0) | ((Wanted & SOCKET_Writable) ? POLLOUT : 0)
+				| ((Wanted & SOCKET_Exception) ? POLLPRI : 0);
+	Fd.revents	= 0;
+	if( poll( &Fd, 1, TimeoutMs ) == SOCKET_ERROR )
+		return SOCKET_ERROR;
+	if( Fd.revents & POLLNVAL )
+	{
+		errno = EBADF;
+		return SOCKET_ERROR;
+	}
+	if( (Wanted & SOCKET_Readable) && (Fd.revents & (POLLIN | POLLHUP | POLLERR)) )
+		Ready |= SOCKET_Readable;
+	if( (Wanted & SOCKET_Writable) && (Fd.revents & (POLLOUT | POLLERR)) )
+		Ready |= SOCKET_Writable;
+	if( (Wanted & SOCKET_Exception) && (Fd.revents & POLLPRI) )
+		Ready |= SOCKET_Exception;
+#endif
+	return Ready;
+}
+
+
 //
 // FSocketData functions
 //
