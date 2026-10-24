@@ -18,8 +18,12 @@ set(SRC_FILES Src/UCC.cpp)
 
 add_executable(${PROJECT_NAME} ${SRC_FILES})
 
-# Retail parity: the binary is `ucc-bin` (classic Linux UT ships a `ucc` wrapper script over ucc-bin).
+# Retail parity: the binary is `ucc-bin` (classic Linux UT ships a `ucc` wrapper script over ucc-bin), without
+# the `.bin` suffix the Linux game binaries take.
 set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME ucc-bin)
+if(NOT WIN32)
+  set_target_properties(${PROJECT_NAME} PROPERTIES SUFFIX "")
+endif()
 
 # UCC.cpp includes headers from many modules under __STATIC_LINK. Each module exports its Inc/ dir PUBLIC,
 # so linking them propagates those includes; UnRender.h etc. live under Engine/Src, added explicitly (as

@@ -109,7 +109,7 @@ jobs:
       - name: Check the artifacts exist
         run: |
           test -x build-${{ matrix.preset }}/Source/SDLLaunch/${{ matrix.bin }}
-          test -x build-${{ matrix.preset }}/Source/UCC/ucc-bin.bin
+          test -x build-${{ matrix.preset }}/Source/UCC/ucc-bin
 
       # Assert the physics that was asked for is in the binary: `option()` reads an existing cache before
       # its default, so a stale build directory (or a cached CI `_deps` dir) can keep NO_KARMA silently,
@@ -148,7 +148,7 @@ jobs:
           name: ut2004-linux-${{ matrix.preset }}
           path: |
             build-${{ matrix.preset }}/Source/SDLLaunch/${{ matrix.bin }}
-            build-${{ matrix.preset }}/Source/UCC/ucc-bin.bin
+            build-${{ matrix.preset }}/Source/UCC/ucc-bin
           if-no-files-found: error
           retention-days: 7
 
