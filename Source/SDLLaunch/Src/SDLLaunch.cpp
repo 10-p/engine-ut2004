@@ -934,8 +934,8 @@ static UEngine* InitEngine()
 // Each -*RENDERER switch names a render device and, for the GL devices, the SDL2 viewport manager it runs on.
 // Only an explicit switch acts here; with none, the ini and the driver replacement in InitEngine() decide.
 // Availability is a StaticFindObject on the registered classes (no package load, so no throw). A switch whose
-// device is not in this build logs "not available" and is ignored. A choice that survives Engine->Init() is
-// written to the ini by PersistRenderChoiceIfSwitched(), so it sticks next boot.
+// device is not in this build logs "not available" and is ignored. A choice whose device has started is written
+// to the ini by PersistRenderChoiceIfStarted(), so it sticks next boot.
 struct FRenderSwitch { const TCHAR* Param; const TCHAR* Device; const TCHAR* Viewport; };
 static const FRenderSwitch GRenderSwitches[] =
 {
@@ -946,12 +946,10 @@ static const FRenderSwitch GRenderSwitches[] =
 	{ TEXT("NULLRENDERER"),     TEXT("Engine.NullRenderDevice"),      NULL                       }, // GPU-free (always available)
 };
 
-// The class a -*RENDERER switch requested (empty if none) -- persisted after a successful Init().
+// The class a -*RENDERER switch requested (empty if none). The switch's settings are session values
+// (SetSessionString) until its device has started: whatever ends the process before that, a crash or a signal
+// included, writes the ini as it was.
 static FString GRequestedRenderDevice;
-// The ini's RenderDevice and ViewportManager before the switch replaced them, and whether Engine->Init() has
-// yet to decide on the switch's device (RevertPendingRenderChoice puts them back at an error exit).
-static FString GPreviousRenderDevice, GPreviousViewportManager;
-static UBOOL GRenderChoicePending = 0;
 
 
 // The low-detail settings the software renderer needs; applied when -SOFTWARERENDERER selects PixoDrv.
@@ -959,14 +957,14 @@ static void ApplySoftwareRendererConfig()
 {
 	// Write to whichever viewport driver is active.
 	const TCHAR* ActiveVP = GConfig->GetStr(TEXT("Engine.Engine"),TEXT("ViewportManager"),TEXT("System"));
-	GConfig->SetString( ActiveVP, TEXT("Decals"			), TEXT("False"						));
-	GConfig->SetString( ActiveVP, TEXT("DecoLayers"		), TEXT("False"						));
-	GConfig->SetString( ActiveVP, TEXT("Coronas"			), TEXT("False"						));
-	GConfig->SetString( ActiveVP, TEXT("Projectors"		), TEXT("False"						));
-	GConfig->SetString( ActiveVP, TEXT("NoFractalAnim"		), TEXT("True"						));
-	GConfig->SetString( ActiveVP, TEXT("NoDynamicLights"	), TEXT("True"						));
-	GConfig->SetString( TEXT("UnrealGame.UnrealPawn"), TEXT("bPlayerShadows"	), TEXT("False"						), GUserIni );
-	GConfig->SetString( TEXT("Engine.Vehicle"		), TEXT("bVehicleShadows"	), TEXT("False"						), GUserIni );
+	GConfig->SetSessionString( ActiveVP, TEXT("Decals"			), TEXT("False"						));
+	GConfig->SetSessionString( ActiveVP, TEXT("DecoLayers"		), TEXT("False"						));
+	GConfig->SetSessionString( ActiveVP, TEXT("Coronas"			), TEXT("False"						));
+	GConfig->SetSessionString( ActiveVP, TEXT("Projectors"		), TEXT("False"						));
+	GConfig->SetSessionString( ActiveVP, TEXT("NoFractalAnim"		), TEXT("True"						));
+	GConfig->SetSessionString( ActiveVP, TEXT("NoDynamicLights"	), TEXT("True"						));
+	GConfig->SetSessionString( TEXT("UnrealGame.UnrealPawn"), TEXT("bPlayerShadows"	), TEXT("False"						), GUserIni );
+	GConfig->SetSessionString( TEXT("Engine.Vehicle"		), TEXT("bVehicleShadows"	), TEXT("False"						), GUserIni );
 }
 
 // Choose the render device from a -*RENDERER switch before Engine->Init(): sets RenderDevice and, for the GL
@@ -981,15 +979,12 @@ static void SelectRenderDevice()
 			if( IsRenderDeviceAvailable( Sw.Device ) )
 			{
 				debugf( TEXT("-%s selects render device %s"), Sw.Param, Sw.Device );
-				GPreviousRenderDevice    = GConfig->GetStr( TEXT("Engine.Engine"), TEXT("RenderDevice"), TEXT("System") );
-				GPreviousViewportManager = GConfig->GetStr( TEXT("Engine.Engine"), TEXT("ViewportManager"), TEXT("System") );
-				GRenderChoicePending     = 1;
-				GConfig->SetString( TEXT("Engine.Engine"), TEXT("RenderDevice"), Sw.Device );
+				GConfig->SetSessionString( TEXT("Engine.Engine"), TEXT("RenderDevice"), Sw.Device );
 				if( Sw.Viewport )
-					GConfig->SetString( TEXT("Engine.Engine"), TEXT("ViewportManager"), Sw.Viewport );
+					GConfig->SetSessionString( TEXT("Engine.Engine"), TEXT("ViewportManager"), Sw.Viewport );
 				if( appStricmp( Sw.Param, TEXT("SOFTWARERENDERER") )==0 )
 					ApplySoftwareRendererConfig();
-				GRequestedRenderDevice = Sw.Device; // persist iff it survives Init (PersistRenderChoiceIfSwitched)
+				GRequestedRenderDevice = Sw.Device;
 			}
 			else
 			{
@@ -1000,35 +995,28 @@ static void SelectRenderDevice()
 	}
 }
 
-// After Engine->Init(): persist a -*RENDERER choice when the engine did not replace it during Init (the device
-// itself initialises later, at level bring-up). Flush(0) writes the ini (the web host persists it).
-static void PersistRenderChoiceIfSwitched()
+// After Engine->Init(): once the switch's device has started (the client's viewport has it, its first mode set
+// done), the switch's settings become saved ones and the ini is written now (the web host persists it).
+static void PersistRenderChoiceIfStarted( UEngine* Engine )
 {
-	GRenderChoicePending = 0;
 	if( GRequestedRenderDevice.Len()==0 )
 		return;
 	const TCHAR* Active = GConfig->GetStr( TEXT("Engine.Engine"), TEXT("RenderDevice"), TEXT("System") );
-	if( appStricmp( Active, *GRequestedRenderDevice )==0 )
-	{
-		GConfig->Flush( 0 );
-		debugf( TEXT("persisted render device %s as the default (sticks next boot)"), *GRequestedRenderDevice );
-	}
-	else
+	if( appStricmp( Active, *GRequestedRenderDevice )!=0 )
 	{
 		debugf( NAME_Warning, TEXT("render device changed from %s to %s during init -> not persisted"), *GRequestedRenderDevice, Active );
-	}
-}
-
-// At an error exit before Engine->Init() returned: the ini gets back the render device and viewport manager it had
-// before the -*RENDERER switch, so the exit's ini flush does not make a device that failed to start the default.
-static void RevertPendingRenderChoice()
-{
-	if( !GRenderChoicePending )
 		return;
-	GRenderChoicePending = 0;
-	GConfig->SetString( TEXT("Engine.Engine"), TEXT("RenderDevice"), *GPreviousRenderDevice );
-	GConfig->SetString( TEXT("Engine.Engine"), TEXT("ViewportManager"), *GPreviousViewportManager );
-	debugf( NAME_Warning, TEXT("render device %s did not start -> not persisted; %s stays the default"), *GRequestedRenderDevice, *GPreviousRenderDevice );
+	}
+	UClient* Client = Engine ? Engine->Client : NULL;
+	URenderDevice* Started = Client && Client->Viewports.Num() ? Client->Viewports(0)->RenDev : NULL;
+	if( !Started || appStricmp( Started->GetClass()->GetPathName(), *GRequestedRenderDevice )!=0 )
+	{
+		debugf( NAME_Warning, TEXT("render device %s has not started -> not persisted"), *GRequestedRenderDevice );
+		return;
+	}
+	GConfig->CommitSessionStrings();
+	GConfig->Flush( 0 );
+	debugf( TEXT("persisted render device %s as the default (sticks next boot)"), *GRequestedRenderDevice );
 }
 
 //
@@ -1392,9 +1380,9 @@ extern BYTE GLoadedALAudio; snprintf(&blah, 1, "%d", (int) GLoadedALAudio);
 		if (!GIsRequestingExit)
 			Engine = InitEngine();
 
-		// Persist a -*RENDERER choice that survived Engine->Init().
+		// Persist a -*RENDERER choice whose device has started.
 		if( Engine )
-			PersistRenderChoiceIfSwitched();
+			PersistRenderChoiceIfStarted( Engine );
 
 #ifdef __EMSCRIPTEN__
 		GEngineForExec = Engine;
@@ -1468,7 +1456,6 @@ extern BYTE GLoadedALAudio; snprintf(&blah, 1, "%d", (int) GLoadedALAudio);
 	{
 		// Crashed.
 		ErrorLevel = 1;
-		RevertPendingRenderChoice();
 		Error.HandleError();
 	}
 #endif

@@ -285,7 +285,8 @@ void UNetPendingLevel::NotifyReceivedText( UNetConnection* Connection, const TCH
 	else if( ParseCommand( &Text, TEXT("WELCOME") ) )
 	{
 		// Server accepted connection.
-		printf("[NET-TRAFFIC] Client: Received WELCOME from server\n");
+		if( GUfrontLog )
+			printf("[NET-TRAFFIC] Client: Received WELCOME from server\n");
 
 		// Parse welcome message.
 		Parse( Text, TEXT("LEVEL="), URL.Map );
@@ -336,8 +337,9 @@ void UNetPendingLevel::NotifyReceivedText( UNetConnection* Connection, const TCH
 		ReceiveNextFile( Connection, 0 );
 #endif
 		// We have successfully connected.
-		printf("[NET-TRAFFIC] Client: WELCOME handshake complete — map='%s', files needed=%d\n",
-			TCHAR_TO_ANSI(*URL.Map), FilesNeeded);
+		if( GUfrontLog )
+			printf("[NET-TRAFFIC] Client: WELCOME handshake complete — map='%s', files needed=%d\n",
+				TCHAR_TO_ANSI(*URL.Map), FilesNeeded);
 		Success = 1;
 	}
 	else
@@ -386,7 +388,8 @@ void UNetPendingLevel::Tick( FLOAT DeltaTime )
 void UNetPendingLevel::SendJoin()
 {
 	guard(UNetPendingLevel::SendJoin);
-	printf("[NET-TRAFFIC] Client: Sending JOIN to server\n");
+	if( GUfrontLog )
+		printf("[NET-TRAFFIC] Client: Sending JOIN to server\n");
 	SentJoin = 1;
 	NetDriver->ServerConnection->Logf( TEXT("JOIN") );
 	NetDriver->ServerConnection->FlushNet();

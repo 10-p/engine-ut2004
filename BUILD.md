@@ -87,6 +87,9 @@ Every Linux and Windows preset also builds the command-line tool, headless (no r
 ones (no Editor target is built); it reads `UT2004.ini` and writes `ucc.log`. SIGTERM (Linux) or the console's
 Ctrl-C (Windows) asks a server to exit cleanly.
 
+The Linux binaries carry the RUNPATH `.` and nothing else (CMake's build RPATH is off): they find `libopenal.so` and
+anything else shipped beside them from their `System/` folder.
+
 ## Options
 
 | Option | Default | Effect |
@@ -177,9 +180,10 @@ through OpenSL ES and is built without C++20 modules (`ALSOFT_ENABLE_MODULES=OFF
 | `-NULLRENDERER` | `Engine.NullRenderDevice` | every build |
 
 The first `-*RENDERER` switch on the command line decides; a device the build lacks is logged (`render device <X> not
-available`) and the default stays. A choice that survives `Engine->Init` is written to the ini. A device that gets no
-window or GL context stops the game with `Render device <X> could not start` (after the `SDL_GL_CreateContext failed`
-warning), and its switch is not written. GL4ESDrv needs an OpenGL ES context: on Windows a driver with
+available`) and the default stays. The switch's settings are session values until its device has started (the
+client's viewport has it after `Engine->Init`, its first mode set done); then they are written to the ini. Whatever
+ends the game before that, an error, a crash or a signal, leaves the ini as it was. A device that gets no window or GL
+context stops the game with `Render device <X> could not start` (after the `SDL_GL_CreateContext failed` warning). GL4ESDrv needs an OpenGL ES context: on Windows a driver with
 `WGL_EXT_create_context_es2_profile`, or `libEGL.dll` and `libGLESv2.dll` (ANGLE) beside the exe. With no switch, the launcher replaces any `ViewportManager`,
 `RenderDevice` or `AudioDevice` the ini names but the build lacks: the viewport with `SDL2Drv.SDL2Client`, the
 render device with OpenGLDrv then GL4ESDrv, the audio device with ALAudio (or `UseSound=False`); on the web a stock
@@ -206,7 +210,9 @@ the first two replacements off.
 - `-ini:<File>:[<Section>]:<Key>=<Value>` writes a config value straight after the config cache loads (`User` /
   `System` are the generic file names); one `Ini override:` log line each.
 - `-UFRONTLOG` adds the port's diagnostic and repeated log lines: `[AutoFOV]` and `[AutoFOVUI]`, the 10 s
-  `[NET-TRAFFIC]` traffic and replication windows and the `[WebRTC]` receive counts, the `[ENGINE-DBG]` boot steps,
+  `[NET-TRAFFIC]` traffic and replication windows, the `[NET-TRAFFIC]` join steps on stdout (the server's accepted
+  connection, `NETSPEED`, `LOGIN`, `WelcomePlayer`, `JOIN request` and `JOIN SUCCEEDED`; the client's `WELCOME`,
+  `Sending JOIN` and `HandleClientPlayer`), the `[WebRTC]` receive counts, the `[ENGINE-DBG]` boot steps,
   the menu-cursor handover (`SDL2: menu cursor:`), GL4ES's initialization steps, the `UseHardwareGamma=` (OpenGLDrv,
   GL4ESDrv) and `Vertex buffers:` (GL4ESDrv) lines of every mode set, OpenGLDrv's and GL4ESDrv's device information
   of every mode set after the process's first (the `GL_VENDOR`/`GL_RENDERER`/`GL_VERSION` lines, the `Device
@@ -221,6 +227,10 @@ the first two replacements off.
 - `WHEREAMI` / `TELEPORT <x> <y> <z> [<yaw> [<pitch>]]`: allowed in a standalone game and for a listen server's
   host; `[Engine.GameEngine] AllowNetCheats=True` (test harnesses only) opens them elsewhere.
 - `FLUSHCONFIG`: write the config cache to disk now.
+- `RELAUNCH [<arguments>]` (Epic's command; the menus' restart and a mod's activation, `-mod=<folder>`, use it): the
+  game exits and its running executable starts again with the arguments (Linux and Windows; Android and the web only
+  exit). With `-server` (Host Game's Dedicated button: `<url> -server`) the UCC takes over instead: `./ucc-bin server
+  <url>` on Linux (in an `xterm` when one is installed), `ucc.exe server <url>` on Windows.
 - `[SDL2Drv.SDL2Client] UseJoystick` (on by default): game pads, one pad (the first connected), the shared button
   map, sticks sent as rates. In play the left stick is the move stick: its deadzone is radial (0.12, rescaled from its
   edge), so every direction between the axes keeps both parts, and a tilt out of it but below

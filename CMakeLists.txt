@@ -455,6 +455,13 @@ if(NOT EMSCRIPTEN AND NOT ANDROID AND UE_PTR_BYTES EQUAL 4)
   add_link_options(-m32)
 endif()
 
+# Linux run trees and release packages take the binaries straight from the build tree, so CMake's build RPATH (the
+# link directories, such as libsamplerate's complib below, and the directories of libraries linked by full path)
+# would ship this machine's paths. It is off: the binaries carry only their own -Wl,-rpath,. (SDLLaunch, UCC).
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID)
+  set(CMAKE_SKIP_BUILD_RPATH ON)
+endif()
+
 #-----------------------------------------------------------------------------
 # Dependencies
 #-----------------------------------------------------------------------------

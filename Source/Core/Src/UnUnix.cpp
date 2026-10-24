@@ -1163,6 +1163,25 @@ void USystem::StaticConstructor()
 
 static bool FindBinaryInPath(FString &cmd);
 
+// The running executable's full path; empty where a process cannot start itself again (Android, the web).
+static FString RunningExecutablePath()
+{
+#if defined(__ANDROID__) || defined(__EMSCRIPTEN__)
+	return FString();
+#elif defined(_WIN32)
+	ANSICHAR Path[MAXPATHLEN];
+	const DWORD Len = GetModuleFileNameA( NULL, Path, ARRAY_COUNT(Path) );
+	return Len > 0 && Len < ARRAY_COUNT(Path) ? FString( appFromAnsi(Path) ) : FString();
+#else
+	ANSICHAR Path[MAXPATHLEN];
+	const ssize_t Len = readlink( "/proc/self/exe", Path, ARRAY_COUNT(Path) - 1 );
+	if( Len <= 0 )
+		return FString();
+	Path[Len] = 0;
+	return FString( appFromAnsi(Path) );
+#endif
+}
+
 UBOOL USystem::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 {
 	if( ParseCommand(&Cmd,TEXT("MEMSTAT")) )
@@ -1188,13 +1207,20 @@ UBOOL USystem::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 		debugf( TEXT("Relaunch: %s"), Cmd );
 		GConfig->Flush( 0 );
 
-        if ((GIsClient) && (appStrlen(Cmd) == 0))  // just restarting client?
-        {
-            GUnixSpawnOnExit = new TCHAR[128];
-            appStrcpy(GUnixSpawnOnExit, TEXT("./ut2004-bin"));  // !!! FIXME
-            appRequestExit( 0 );
-            return 1;
-        }
+		// The game again (a restart the menus ask for; a mod's activation, "-mod=<folder>"): the running executable,
+		// by its own path in quotes, with the command's arguments. A dedicated server ("-server") goes to the UCC below.
+		if( GIsClient && !ParseParam( Cmd, TEXT("server") ) )
+		{
+			const FString Self = RunningExecutablePath();
+			if( Self.Len() )
+			{
+				const FString Line = FString::Printf( TEXT("\"%s\" %s"), *Self, Cmd );
+				GUnixSpawnOnExit = new TCHAR[Line.Len() + 1];
+				appStrcpy( GUnixSpawnOnExit, *Line );
+			}
+			appRequestExit( 0 );
+			return 1;
+		}
 
 		// Fork out a new process using Cmd as arguments.
 		TCHAR* EndArg0 = appStrstr( Cmd, TEXT(" ") );
@@ -3440,6 +3466,14 @@ void appPlatformExit()
 #ifdef _WIN32
         // The "respawn the game after exit" path (GUnixSpawnOnExit): fork-then-execv is one _spawnv, and the
         // parent then exits.
+        // _spawnv joins the arguments with spaces as they are, so one holding a space (a path) goes in quotes.
+        for (int i = 0; i < args.Num(); i++)
+            if (strchr(ansiargs[i], ' '))
+            {
+                char *quoted = new char[strlen(ansiargs[i]) + 3];
+                sprintf(quoted, "\"%s\"", ansiargs[i]);
+                ansiargs[i] = quoted;
+            }
         _spawnv( _P_NOWAIT, cmd, ansiargs );
         _exit(0);
 #else
