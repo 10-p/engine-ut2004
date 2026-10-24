@@ -172,6 +172,7 @@ CORE_API UBOOL					GIsGarbageCollecting=0;			/* Whether we are inside garbage co
 CORE_API UBOOL					GIsSlowTask=0;					/* Whether there is a slow task in progress */
 CORE_API UBOOL					GIsRequestingExit=0;			/* Indicates that MainLoop() should be exited at the end of the current iteration */
 CORE_API UBOOL					GIsStrict=0;					/* Causes all UnrealScript execution warnings to be fatal errors */
+CORE_API UBOOL					GUfrontLog=0;					/* -UFRONTLOG: the port's diagnostic and repeated log lines are written too */
 CORE_API UBOOL					GScriptEntryTag=0;				/* Number of recursive UnrealScript calls currently on the stack */
 CORE_API UBOOL					GLazyLoad=0;					/* Whether TLazyLoad arrays should be lazy-loaded or not */
 CORE_API UBOOL					GShowBuildLabel=1;				/* Used to show/hide the build label from private builds */

@@ -550,7 +550,8 @@ UBOOL UGL4ESRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Ful
 		static bool gl4es_initialized = false;
 		if( !gl4es_initialized )
 		{
-			debugf( TEXT("GL4ES: Configuring GL4ES environment...") );
+			if( GUfrontLog )
+				debugf( TEXT("GL4ES: Configuring GL4ES environment...") );
 
 			// Configure GL4ES before initialization. Every LIBGL_* value is fixed here; the
 			// user's environment is not passed through.
@@ -621,7 +622,8 @@ UBOOL UGL4ESRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Ful
 #endif
 
 			// Initialize GL4ES translation layer.
-			debugf( TEXT("GL4ES: Calling initialize_gl4es()...") );
+			if( GUfrontLog )
+				debugf( TEXT("GL4ES: Calling initialize_gl4es()...") );
 			initialize_gl4es();
 
 			// Resolve basic GL function pointers through gl4es_GetProcAddress.
@@ -630,7 +632,8 @@ UBOOL UGL4ESRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Ful
 				appErrorf(TEXT("GL4ES: Missing basic GL symbols after initialization."));
 
 			gl4es_initialized = true;
-			debugf( TEXT("GL4ES: Initialization complete.") );
+			if( GUfrontLog )
+				debugf( TEXT("GL4ES: Initialization complete.") );
 		}
 	}
 
@@ -696,10 +699,11 @@ UBOOL UGL4ESRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Ful
 		LevelOfAnisotropy = Max<FLOAT>( 1.0f, Min<FLOAT>( MaxAnisotropy, LevelOfAnisotropy ) );
 		debugf( TEXT("GL4ES: Level of anisotropy is %f (max %f)."), (float) LevelOfAnisotropy, (float) MaxAnisotropy );
 	}
-	debugf( TEXT("GL4ES: UseHardwareGamma=%s (%s) -- the display's gamma ramp is %s"),
-		UseHardwareGamma ? TEXT("True") : TEXT("False"),
-		ParseParam(appCmdLine(),TEXT("NOGAMMA")) ? TEXT("-NOGAMMA forces off") : TEXT("[GL4ESDrv.GL4ESRenderDevice]"),
-		(UseHardwareGamma && !ParseParam(appCmdLine(),TEXT("NOGAMMA"))) ? TEXT("set and restored by the game") : TEXT("left alone") );
+	if( GUfrontLog )
+		debugf( TEXT("GL4ES: UseHardwareGamma=%s (%s) -- the display's gamma ramp is %s"),
+			UseHardwareGamma ? TEXT("True") : TEXT("False"),
+			ParseParam(appCmdLine(),TEXT("NOGAMMA")) ? TEXT("-NOGAMMA forces off") : TEXT("[GL4ESDrv.GL4ESRenderDevice]"),
+			(UseHardwareGamma && !ParseParam(appCmdLine(),TEXT("NOGAMMA"))) ? TEXT("set and restored by the game") : TEXT("left alone") );
 
 #ifndef WIN32
 	if( !SUPPORTS_GL_ARB_multisample )
@@ -781,9 +785,10 @@ UBOOL UGL4ESRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Ful
 	// Log which vertex path won and both of its inputs: "off" because the device lacks the extension
 	// and "off" because the config said so need different fixes. DeviceHasVBO is taken above because
 	// the else branch clears the flag.
-	debugf( TEXT("GL4ES: Vertex buffers: %s (UseVBO=%i, device GL_ARB_vertex_buffer_object=%i)"),
-		SUPPORTS_GL_ARB_vertex_buffer_object ? TEXT("VBO") : TEXT("CLIENT-SIDE ARRAYS (slow on WebGL)"),
-		(INT)UseVBO, (INT)DeviceHasVBO );
+	if( GUfrontLog )
+		debugf( TEXT("GL4ES: Vertex buffers: %s (UseVBO=%i, device GL_ARB_vertex_buffer_object=%i)"),
+			SUPPORTS_GL_ARB_vertex_buffer_object ? TEXT("VBO") : TEXT("CLIENT-SIDE ARRAYS (slow on WebGL)"),
+			(INT)UseVBO, (INT)DeviceHasVBO );
 
 	// Only enable VAR if VAR2 is exposed as well.
 	SUPPORTS_GL_NV_vertex_array_range &= SUPPORTS_GL_NV_vertex_array_range2;

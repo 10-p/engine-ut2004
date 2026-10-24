@@ -1269,7 +1269,8 @@ void USDL2Viewport::UpdatePadCursor()
     {
         bPadCursor = Shown;
         SDL_ShowCursor( bPadCursor ? SDL_DISABLE : SDL_ENABLE );
-        debugf( NAME_Log, TEXT("SDL2: menu cursor: %s"), bPadCursor ? TEXT("pad") : TEXT("system") );
+        if( GUfrontLog )
+            debugf( NAME_Log, TEXT("SDL2: menu cursor: %s"), bPadCursor ? TEXT("pad") : TEXT("system") );
     }
     unguard;
 }

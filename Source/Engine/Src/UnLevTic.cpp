@@ -1429,7 +1429,7 @@ INT ULevel::ServerTickClients( FLOAT DeltaSeconds )
 		DOUBLE RepElapsed = RepNow - UfrontRepWinStart;
 		if( RepElapsed >= 10.0 )
 		{
-			if( UfrontRepPasses > 0 )
+			if( GUfrontLog && UfrontRepPasses > 0 )
 				// The prefix is kept verbatim: the E2E's REPLICATING milestone matches it (see UnConn.cpp).
 				printf("[NET-TRAFFIC] Server: Replicated %d actors to %d clients  [%.0fs window: %d passes, avg %.1f/pass, peak %d]\n",
 					UfrontRepActors, NetDriver->ClientConnections.Num(),

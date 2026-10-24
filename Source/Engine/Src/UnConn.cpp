@@ -897,17 +897,18 @@ void UNetConnection::Tick()
 			DOUBLE LogElapsed = LogNow - UfrontLogWinStart;
 			if( LogElapsed >= 10.0 && UfrontLogSamples > 0 )
 			{
-				printf("[NET-TRAFFIC] %s: In=%.0fB/s/%.0fpkt/s Out=%.0fB/s/%.0fpkt/s Loss=%.0f%%/%.0f%% Channels=%d Lag=%.0fms  [%.0fs window: peak, avg In=%.0f Out=%.0f, lag avg=%.0fms peak=%.0fms, samples=%d nonzero=%d]\n",
-					Driver->ServerConnection ? "Client" : "Server",
-					UfrontLogPeakIn, UfrontLogInPkts/UfrontLogSamples,
-					UfrontLogPeakOut, UfrontLogOutPkts/UfrontLogSamples,
-					UfrontLogWorstLoss, UfrontLogWorstLoss,
-					OpenChannels.Num(),
-					UfrontLogLagPeak,
-					LogElapsed,
-					UfrontLogInRate/UfrontLogSamples, UfrontLogOutRate/UfrontLogSamples,
-					UfrontLogLagSum/UfrontLogSamples, UfrontLogLagPeak,
-					UfrontLogSamples, UfrontLogNonzeroIn);
+				if( GUfrontLog )
+					printf("[NET-TRAFFIC] %s: In=%.0fB/s/%.0fpkt/s Out=%.0fB/s/%.0fpkt/s Loss=%.0f%%/%.0f%% Channels=%d Lag=%.0fms  [%.0fs window: peak, avg In=%.0f Out=%.0f, lag avg=%.0fms peak=%.0fms, samples=%d nonzero=%d]\n",
+						Driver->ServerConnection ? "Client" : "Server",
+						UfrontLogPeakIn, UfrontLogInPkts/UfrontLogSamples,
+						UfrontLogPeakOut, UfrontLogOutPkts/UfrontLogSamples,
+						UfrontLogWorstLoss, UfrontLogWorstLoss,
+						OpenChannels.Num(),
+						UfrontLogLagPeak,
+						LogElapsed,
+						UfrontLogInRate/UfrontLogSamples, UfrontLogOutRate/UfrontLogSamples,
+						UfrontLogLagSum/UfrontLogSamples, UfrontLogLagPeak,
+						UfrontLogSamples, UfrontLogNonzeroIn);
 				UfrontLogWinStart = LogNow;
 				UfrontLogSamples = 0;
 				UfrontLogNonzeroIn = 0;

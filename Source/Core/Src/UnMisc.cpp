@@ -2200,6 +2200,7 @@ CORE_API void appInit( const TCHAR* InPackage, const TCHAR* InCmdLine, FMalloc* 
 	debugf( NAME_Init, TEXT("Command line: %s"), appCmdLine() );
 	// Parameters.
 	GIsStrict = ParseParam( appCmdLine(), TEXT("STRICT") );
+	GUfrontLog = ParseParam( appCmdLine(), TEXT("UFRONTLOG") );
 
 	// make sure logfile notes if this is a platform-specific patch over the usual revision... --ryan.
 	#ifdef PLATFORM_VERSION_BUMP

@@ -709,10 +709,11 @@ UBOOL UOpenGLRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Fu
 		LevelOfAnisotropy = Max<FLOAT>( 1.0f, Min<FLOAT>( MaxAnisotropy, LevelOfAnisotropy ) );
 		debugf( TEXT("OpenGL: Level of anisotropy is %f (max %f)."), (float) LevelOfAnisotropy, (float) MaxAnisotropy );
 		// Say which gamma path won: the option is invisible when it works.
-		debugf( TEXT("OpenGL: UseHardwareGamma=%s (%s) -- the display's gamma ramp is %s"),
-			UseHardwareGamma ? TEXT("True") : TEXT("False"),
-			ParseParam(appCmdLine(),TEXT("NOGAMMA")) ? TEXT("-NOGAMMA forces off") : TEXT("[OpenGLDrv.OpenGLRenderDevice]"),
-			(UseHardwareGamma && !ParseParam(appCmdLine(),TEXT("NOGAMMA"))) ? TEXT("OURS to set and restore") : TEXT("left alone") );
+		if( GUfrontLog )
+			debugf( TEXT("OpenGL: UseHardwareGamma=%s (%s) -- the display's gamma ramp is %s"),
+				UseHardwareGamma ? TEXT("True") : TEXT("False"),
+				ParseParam(appCmdLine(),TEXT("NOGAMMA")) ? TEXT("-NOGAMMA forces off") : TEXT("[OpenGLDrv.OpenGLRenderDevice]"),
+				(UseHardwareGamma && !ParseParam(appCmdLine(),TEXT("NOGAMMA"))) ? TEXT("OURS to set and restore") : TEXT("left alone") );
 	}
 
 #ifndef UE_OPENGLDRV_WGL

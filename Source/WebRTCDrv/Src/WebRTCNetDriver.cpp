@@ -264,9 +264,10 @@ static void UfrontAccumRecv( FUfrontRecvWindow& W, const char* From, INT ConnId,
 
 	if( W.Packets > 0 )
 	{
-		printf( "[WebRTC] TickDispatch: Recv from %s connId=%d — %.1fs: %d packets, %d bytes (%.1f KB/s, %.0f pkt/s, over %d ticks)\n",
-			From, ConnId, Elapsed, W.Packets, W.Bytes,
-			W.Bytes / 1024.0 / Elapsed, W.Packets / Elapsed, W.Ticks );
+		if( GUfrontLog )
+			printf( "[WebRTC] TickDispatch: Recv from %s connId=%d — %.1fs: %d packets, %d bytes (%.1f KB/s, %.0f pkt/s, over %d ticks)\n",
+				From, ConnId, Elapsed, W.Packets, W.Bytes,
+				W.Bytes / 1024.0 / Elapsed, W.Packets / Elapsed, W.Ticks );
 		W.SilenceReported = 0;
 	}
 	else if( !W.SilenceReported )

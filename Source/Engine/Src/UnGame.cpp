@@ -190,13 +190,15 @@ void UGameEngine::Init()
 
 	// Add code to load Packages.MD5
 
-	printf("[ENGINE-DBG] About to load Packages.md5\n");
+	if( GUfrontLog )
+		printf("[ENGINE-DBG] About to load Packages.md5\n");
 
 #ifdef __EMSCRIPTEN__
 	// Skip MD5 package validation on the web: the host serves the packages, and the validation file is
 	// not loaded through the web file system.
 	MD5Package = NULL;
-	printf("[ENGINE-DBG] Skipped Packages.md5 on Emscripten\n");
+	if( GUfrontLog )
+		printf("[ENGINE-DBG] Skipped Packages.md5 on Emscripten\n");
 #else
 	MD5Package = LoadPackage( NULL, TEXT("Packages.md5"), 0 );
 #endif
@@ -206,7 +208,8 @@ void UGameEngine::Init()
 #ifndef __EMSCRIPTEN__
         appErrorf(LocalizeError(TEXT("FailedMD5Load"),TEXT("Engine")), TEXT("Packages.md5"));
 #else
-        printf("[ENGINE-DBG] MD5Package is NULL (expected on Emscripten)\n");
+        if( GUfrontLog )
+            printf("[ENGINE-DBG] MD5Package is NULL (expected on Emscripten)\n");
 #endif
 	}
     else
@@ -238,13 +241,15 @@ void UGameEngine::Init()
 
 	if( Client )
 	{
-		printf("[ENGINE-DBG] Loading Entry map...\n");
+		if( GUfrontLog )
+			printf("[ENGINE-DBG] Loading Entry map...\n");
 		if( !LoadMap( FURL(TEXT("Entry")), NULL, NULL, Error ) )
 		{
 			printf("[ENGINE-DBG] Entry map failed: %s\n", TCHAR_TO_ANSI(*Error));
 			appErrorf( LocalizeError(TEXT("FailedBrowse"),TEXT("Engine")), TEXT("Entry"), *Error );
 		}
-		printf("[ENGINE-DBG] Entry map loaded OK\n");
+		if( GUfrontLog )
+			printf("[ENGINE-DBG] Entry map loaded OK\n");
 		Exchange( GLevel, GEntry );
 	}
 

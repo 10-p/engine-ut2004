@@ -1481,8 +1481,9 @@ static void ufrontParseAutoFov()
 	GAutoFovUi      = Clamp( Ui, 0, 1 );
 	GAutoFovUiScale = Clamp( UiSc, 0.1f, 4.0f );
 
-	debugf( NAME_Log, TEXT("[AutoFOV] mode=%i referenceAspect=%f weaponScale=%f ui=%i uiScale=%f"),
-		GAutoFovMode, GAutoFovRef, GAutoFovWeapon, GAutoFovUi, GAutoFovUiScale );
+	if( GUfrontLog )
+		debugf( NAME_Log, TEXT("[AutoFOV] mode=%i referenceAspect=%f weaponScale=%f ui=%i uiScale=%f"),
+			GAutoFovMode, GAutoFovRef, GAutoFovWeapon, GAutoFovUi, GAutoFovUiScale );
 	unguard;
 }
 
@@ -1510,8 +1511,9 @@ ENGINE_API FLOAT ufrontEffectiveFov( FLOAT BaseFov, INT SizeX, INT SizeY, UBOOL 
 		GAutoFovLastX    = SizeX;
 		GAutoFovLastY    = SizeY;
 		GAutoFovLastBase = Base;
-		debugf( NAME_Log, TEXT("[AutoFOV] viewport=%ix%i aspect=%f base=%f effective=%f"),
-			SizeX, SizeY, Aspect, Base, Eff );
+		if( GUfrontLog )
+			debugf( NAME_Log, TEXT("[AutoFOV] viewport=%ix%i aspect=%f base=%f effective=%f"),
+				SizeX, SizeY, Aspect, Base, Eff );
 	}
 	return Eff;
 	unguard;
@@ -1559,7 +1561,8 @@ ENGINE_API FLOAT ufrontHudScaleFactor( INT SizeX, INT SizeY )
 	if( Abs(Factor - GAutoFovUiLastLog) > 0.001f )
 	{
 		GAutoFovUiLastLog = Factor;
-		debugf( NAME_Log, TEXT("[AutoFOVUI] viewport=%ix%i aspect=%f hudScale x%f"), SizeX, SizeY, Aspect, Factor );
+		if( GUfrontLog )
+			debugf( NAME_Log, TEXT("[AutoFOVUI] viewport=%ix%i aspect=%f hudScale x%f"), SizeX, SizeY, Aspect, Factor );
 	}
 	return Factor;
 	unguard;

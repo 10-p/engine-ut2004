@@ -1525,7 +1525,8 @@ void UALAudioSubsystem::SetEAXEffect()
 	}
 	else if( Listener->EAXEffect && !LoggedRoom )
 	{
-		debugf( TEXT("ALAudio: EAX %i.0 room effect applied (%s)"), EAXVersion, Listener->EAXEffect->GetName() );
+		if( GUfrontLog )
+			debugf( TEXT("ALAudio: EAX %i.0 room effect applied (%s)"), EAXVersion, Listener->EAXEffect->GetName() );
 		LoggedRoom = 1;
 	}
 #endif
