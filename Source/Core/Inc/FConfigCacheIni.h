@@ -58,6 +58,10 @@ class FConfigFile : public TMap<FString,FConfigSection>
 {
 public:
 	UBOOL Dirty, NoSave, Quotes;
+	// Keys set for this session only (FConfigCacheIni::SetSessionString), named "<Section>]<Key>": SessionOld holds the
+	// value the file had, which Write saves in place of the session value; SessionNew the keys the file did not have,
+	// which Write leaves out. CommitSessionStrings, or SetString of another value, makes the value a saved one.
+	TMap<FString,FString> SessionOld, SessionNew;
 	FConfigFile()
 	: Dirty( 0 )
 	, NoSave( 0 )
@@ -213,7 +217,18 @@ public:
             #endif
 			Text += FString::Printf( TEXT("[%s]%s"), *It.Key(), newline );
 			for( FConfigSection::TIterator It2(It.Value()); It2; ++It2 )
-				Text += FString::Printf( TEXT("%s=%s%s%s%s"), *It2.Key(), Quotes ? TEXT("\"") : TEXT(""), *It2.Value(), Quotes ? TEXT("\"") : TEXT(""), newline );
+			{
+				const FString* Value = &It2.Value();
+				if( SessionOld.Num() || SessionNew.Num() )
+				{
+					const FString Id = It.Key() + TEXT("]") + It2.Key();
+					if( SessionNew.Find( Id ) )
+						continue;
+					if( const FString* Old = SessionOld.Find( Id ) )
+						Value = Old;
+				}
+				Text += FString::Printf( TEXT("%s=%s%s%s%s"), *It2.Key(), Quotes ? TEXT("\"") : TEXT(""), **Value, Quotes ? TEXT("\"") : TEXT(""), newline );
+			}
 			Text += FString::Printf( newline );
 		}
 		return appSaveStringToFile( Text, Filename, GFileManager, 0, 1 );
@@ -352,6 +367,18 @@ public:
 	{
 		guard(FConfigCacheIni::SetString);
 		FConfigFile* File = Find( Filename, 1 );
+		if( File->SessionOld.Num() || File->SessionNew.Num() )
+		{
+			// A value other than the session one is a setting of its own: saved from now on.
+			const FString Id = FString(Section) + TEXT("]") + Key;
+			const FString* Now = File->Find( Section ) ? File->Find( Section )->Find( Key ) : NULL;
+			if( (File->SessionOld.Find( Id ) || File->SessionNew.Find( Id )) && !(Now && appStrcmp( **Now, Value )==0) )
+			{
+				File->SessionOld.Remove( *Id );
+				File->SessionNew.Remove( *Id );
+				File->Dirty = 1;
+			}
+		}
 		FConfigSection* Sec  = File->Find( Section );
 		if( !Sec )
 			Sec = &File->Set( Section, FConfigSection() );
@@ -442,6 +469,42 @@ public:
 		guard(FConfigCacheIni::Init);
 		SystemIni = InSystem;
 		UserIni   = InUser;
+		unguard;
+	}
+	// A value for this session only: read back at once, while the file keeps the value it had (or not the key) until
+	// CommitSessionStrings, whatever ends the process before that.
+	void SetSessionString( const TCHAR* Section, const TCHAR* Key, const TCHAR* Value, const TCHAR* Filename )
+	{
+		guard(FConfigCacheIni::SetSessionString);
+		FConfigFile* File = Find( Filename, 1 );
+		const FString Id = FString(Section) + TEXT("]") + Key;
+		// The file's value: the one recorded by an earlier call, else the one there now.
+		FString Old;
+		UBOOL Had = 0;
+		if( const FString* Saved = File->SessionOld.Find( Id ) )
+			{ Old = *Saved; Had = 1; }
+		else if( !File->SessionNew.Find( Id ) && File->Find( Section ) && File->Find( Section )->Find( Key ) )
+			{ Old = *File->Find( Section )->Find( Key ); Had = 1; }
+		SetString( Section, Key, Value, Filename );
+		File->SessionOld.Remove( *Id );
+		File->SessionNew.Remove( *Id );
+		if( Had )
+			File->SessionOld.Set( *Id, *Old );
+		else
+			File->SessionNew.Set( *Id, TEXT("") );
+		unguard;
+	}
+	// Every session value becomes a saved one.
+	void CommitSessionStrings()
+	{
+		guard(FConfigCacheIni::CommitSessionStrings);
+		for( TIterator It(*this); It; ++It )
+			if( It.Value().SessionOld.Num() || It.Value().SessionNew.Num() )
+			{
+				It.Value().SessionOld.Empty();
+				It.Value().SessionNew.Empty();
+				It.Value().Dirty = 1;
+			}
 		unguard;
 	}
 	void Exit()

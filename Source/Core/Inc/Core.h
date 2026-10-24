@@ -410,6 +410,9 @@ public:
 	virtual void SetInt( const TCHAR* Section, const TCHAR* Key, INT Value, const TCHAR* Filename=NULL )=0;
 	virtual void SetFloat( const TCHAR* Section, const TCHAR* Key, FLOAT Value, const TCHAR* Filename=NULL )=0;
 	virtual void SetString( const TCHAR* Section, const TCHAR* Key, const TCHAR* Value, const TCHAR* Filename=NULL, UBOOL UniqueKey = 1 )=0; // gam
+	// A value for this session only: the file keeps its own value until CommitSessionStrings.
+	virtual void SetSessionString( const TCHAR* Section, const TCHAR* Key, const TCHAR* Value, const TCHAR* Filename=NULL )=0;
+	virtual void CommitSessionStrings()=0;
 	virtual void Flush( UBOOL Read, const TCHAR* Filename=NULL )=0;
 	virtual void UnloadFile( const TCHAR* Filename )=0;
 	virtual void Detach( const TCHAR* Filename )=0;
