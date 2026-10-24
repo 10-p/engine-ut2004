@@ -211,7 +211,11 @@ the first two replacements off.
   host; `[Engine.GameEngine] AllowNetCheats=True` (test harnesses only) opens them elsewhere.
 - `FLUSHCONFIG`: write the config cache to disk now.
 - `[SDL2Drv.SDL2Client] UseJoystick` (on by default): game pads, one pad (the first connected), the shared button
-  map, sticks sent as rates. While a menu is up, any pad button or a stick leaving its rest position takes the
+  map, sticks sent as rates. In play the left stick is the move stick: its deadzone is radial (0.12, rescaled from its
+  edge), so every direction between the axes keeps both parts, and a tilt out of it but below
+  `[SDL2Drv.SDL2Client] PadWalkTilt` (0.5 of the stick's travel; 0 never) walks, as the Walking button does: the stick
+  keeps a bit of its own set in the player's `bRun` (the Walking key writes the whole byte; the stick sets its bit
+  again the next update), and the moves a client sends to its server carry `bRun`. While a menu is up, any pad button or a stick leaving its rest position takes the
   cursor until the mouse moves: the GUI draws it and the system cursor is hidden. Only while the pad has the cursor
   (that press included) do its controls act on the menu; in play and while the mouse has the cursor they give their
   game keys and axes. The left stick moves the cursor, linear past the deadzone, across the viewport's width in
@@ -269,6 +273,11 @@ cd Android
 - The SDK in `/usr/lib/android-sdk` is read-only, so a part the Gradle plugin would download instead fails the build
   with its name.
 
+In play the touch overlay (`GameActivity.java`, into `Source/SDL2Drv/Src/SDL2Viewport.cpp`) has a move stick on the
+left half, drag-look on the right and FIRE, ALTFIRE, JUMP, CROUCH, NEXTWEAPON and MENU buttons. The move stick tilts
+fully `MOVE_FULL_TILT_DP` (12 dp) from where the finger is held, in the drag's direction, with a dead zone of
+`MOVE_DEAD_ZONE_DP` (3 dp) for a resting finger; past full tilt the held point follows the finger. It never walks.
+
 The engine reads its game folder by path (the JNI bridge sets `UT2004_ANDROID_BASEDIR` and the cwd); the launcher
 (`MainActivity`) chooses which:
 
@@ -305,6 +314,14 @@ python3 -c "import json;print(json.load(open('build-wasm-perf/Source/SDLLaunch/m
 CI (`.github/workflows/build.yml`) builds the native, Windows, Android and web presets on every push and asserts the
 physics each binary carries, the Windows imports, the packaged Android ABIs and the web descriptor.
 
+## Input test channel
+
+`-INPUTTEST=<file>` opens the input test channel (`Source/SDL2Drv/Src/SDL2InputTest.h`): commands appended to the file
+drive a virtual SDL game controller that takes the pad's place, run console commands and watch the view and the pawn
+once per input update. `tools/dev/inputtest/run.sh <run-tree> <scenario> <out-dir> [<args>]` runs the native build
+under Xvfb with it and feeds it a scenario (`move.scen`: the move stick's speed against tilt and its directions on
+DM-Rankin); `rate.py` gives the turn rate, the speed, the move direction and the walking share from the log.
+
 ## Layout
 
 | Dir | What |
@@ -315,3 +332,4 @@ physics each binary carries, the Windows imports, the packaged Android ABIs and 
 | `vendor/glue/` | the ABI header and shims the web build bakes in |
 | `Android/` | the Gradle/NDK project |
 | `cmake/` | CMake modules and the MinGW toolchain file |
+| `tools/dev/inputtest/` | the input test channel's runner, its scenarios and `rate.py` |

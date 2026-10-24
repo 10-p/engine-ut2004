@@ -12,6 +12,7 @@
 #endif
 
 #include "SDL2Drv.h"
+#include "SDL2InputTest.h"
 #if defined(__EMSCRIPTEN__)
 #include <emscripten/em_asm.h>   // WebPadPressed (a pad's first press)
 #endif
@@ -220,6 +221,7 @@ Java_com_ut2004_android_GameActivity_nativeTouchButton( JNIEnv*, jclass, jint Bu
 -----------------------------------------------------------------------------*/
 
 static const FLOAT GPadDeadzone     = 0.12f;  // stick deadzone (engine ini also deadzones)
+static const BYTE  GPadWalkBit      = 0x40;   // the move stick's bit of the player's bRun (UpdateInput)
 static const FLOAT GPadTriggerPress = 0.35f;  // trigger press threshold
 
 // SDL_CONTROLLER_BUTTON_* -> EInputKey. The actions are DefUser.ini's [Engine.Input] defaults (remappable); the layout
@@ -293,6 +295,8 @@ static inline FLOAT PadAxis( FLOAT V )
 static SDL_GameController* GPad          = NULL;   // the pad in use (the first connected)
 static FLOAT               GPadMoveX     = 0.f;    // left stick  -> IK_JoyX / IK_JoyY (held-absolute)
 static FLOAT               GPadMoveY     = 0.f;
+static FLOAT               GPadStickX    = 0.f;    // the left stick as read, -1 to 1, before any deadzone
+static FLOAT               GPadStickY    = 0.f;
 static FLOAT               GPadLastMoveX = 0.f;
 static FLOAT               GPadLastMoveY = 0.f;
 static FLOAT               GPadYaw       = 0.f;    // right stick -> IK_JoyV / IK_JoySlider1
@@ -466,6 +470,10 @@ USDL2Viewport::USDL2Viewport()
     GLContext           = NULL;
     BlitFlags           = 0;
     ViewportButtonFlags = 0;
+    InputTest           = NULL;
+    FString InputTestFile;
+    if( Parse( appCmdLine(), TEXT("INPUTTEST="), InputTestFile ) )
+        InputTest = new FSDL2InputTest( *InputTestFile );
     unguard;
 }
 
@@ -476,6 +484,8 @@ void USDL2Viewport::Destroy()
 {
     guard(USDL2Viewport::Destroy);
     CloseWindow();
+    delete InputTest;
+    InputTest = NULL;
     Super::Destroy();
     unguard;
 }
@@ -1229,6 +1239,7 @@ void USDL2Viewport::ClosePad()
     if( GPadRT != IK_None ) { CauseInputEvent( GPadRT, IST_Release ); GPadRT = IK_None; }
     if( GPadLT != IK_None ) { CauseInputEvent( GPadLT, IST_Release ); GPadLT = IK_None; }
     GPadMoveX = GPadMoveY = GPadYaw = GPadPitch = 0.f;
+    GPadStickX = GPadStickY = 0.f;
     GPadCursor = GPadLeftOff = GPadRightOff = 0;
     unguard;
 }
@@ -1304,6 +1315,9 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
     // control gives its game key.
     const UBOOL Menu = GUIController && GUIController->bActive;
     const UBOOL PadMenu = Menu && !(Client->InteractionMaster && Client->InteractionMaster->bRequireRawJoystick);
+
+    if( InputTest )
+        InputTest->Tick( this );
 
     SDL_Event Ev;
     // Last tick's held-at-connect presses end now (a tap; GPadHeldTap).
@@ -1615,8 +1629,10 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
     if( GPad )
     {
         const FLOAT Scale = 1.f / 32767.f;
-        GPadMoveX = PadAxis( SDL_GameControllerGetAxis( GPad, SDL_CONTROLLER_AXIS_LEFTX ) * Scale );  // -> IK_JoyX (strafe)
-        GPadMoveY = PadAxis( SDL_GameControllerGetAxis( GPad, SDL_CONTROLLER_AXIS_LEFTY ) * Scale );  // -> IK_JoyY (move)
+        GPadStickX = Clamp( SDL_GameControllerGetAxis( GPad, SDL_CONTROLLER_AXIS_LEFTX ) * Scale, -1.f, 1.f );
+        GPadStickY = Clamp( SDL_GameControllerGetAxis( GPad, SDL_CONTROLLER_AXIS_LEFTY ) * Scale, -1.f, 1.f );
+        GPadMoveX = PadAxis( GPadStickX );  // -> IK_JoyX (strafe)
+        GPadMoveY = PadAxis( GPadStickY );  // -> IK_JoyY (move)
         GPadYaw   = PadAxis( SDL_GameControllerGetAxis( GPad, SDL_CONTROLLER_AXIS_RIGHTX ) * Scale ); // -> IK_JoyV (turn)
         GPadPitch = PadAxis( SDL_GameControllerGetAxis( GPad, SDL_CONTROLLER_AXIS_RIGHTY ) * Scale ); // -> IK_JoySlider1
         const UBOOL RT = SDL_GameControllerGetAxis( GPad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT ) * Scale > GPadTriggerPress;
@@ -1638,11 +1654,33 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
         TakePadCursor();
     GPadLeftOff = LeftOff;
     GPadRightOff = RightOff;
+    UBOOL PadWalk = 0;
     if( PadMenu && GPadCursor )
     {
         if( LeftOff )
             MovePadCursor( GPadMoveX, GPadMoveY, DeltaSeconds );
         GPadMoveX = GPadMoveY = 0.f;
+    }
+    else
+    {
+        // The move stick's deadzone is radial, so a direction between the axes keeps both parts (rescaled from the
+        // deadzone's edge, as PadAxis does); out of it, a tilt below PadWalkTilt walks.
+        const FLOAT Tilt = Min( appSqrt( GPadStickX * GPadStickX + GPadStickY * GPadStickY ), 1.f );
+        const UBOOL Out = Tilt > 0.f && Tilt >= GPadDeadzone;
+        const FLOAT Scale = Out ? ( Tilt - GPadDeadzone ) / ( 1.f - GPadDeadzone ) / Tilt : 0.f;
+        GPadMoveX = GPadStickX * Scale;
+        GPadMoveY = GPadStickY * Scale;
+        PadWalk = Out && Tilt < Client->PadWalkTilt;
+    }
+    // The move stick's walk is one bit of the player's walk button (bRun), apart from the 1 the Walking key sets:
+    // that key's press and release overwrite the byte, and the stick sets its bit again on the next update. The moves
+    // a client sends to its server carry bRun.
+    if( Actor )
+    {
+        if( PadWalk )
+            Actor->bRun |= GPadWalkBit;
+        else
+            Actor->bRun &= ~GPadWalkBit;
     }
 
     // Game pad sticks -> joystick axes, held-absolute (re-sent every tick while nonzero, plus one trailing 0).
