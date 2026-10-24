@@ -82,7 +82,7 @@ The binary name says what it contains beyond the base set: `-legacykarma` or `-n
 for Pixomatic. The web keeps the `SDLLaunch` name; Android builds `libUT2004.so`.
 
 Every Linux and Windows preset also builds the command-line tool, headless (no render device, viewport or audio):
-`build-<preset>/Source/UCC/ucc-bin` on Linux, `ucc-bin.exe` on Windows. It runs the dedicated server
+`build-<preset>/Source/UCC/ucc-bin` on Linux, `ucc.exe` on Windows. It runs the dedicated server
 (`./ucc-bin server "DM-Rankin?game=XGame.xDeathMatch" -port=7777`) and the commandlets but `make` and the editor
 ones (no Editor target is built); it reads `UT2004.ini` and writes `ucc.log`. SIGTERM (Linux) or the console's
 Ctrl-C (Windows) asks a server to exit cleanly.
@@ -243,8 +243,8 @@ The MinGW-w64 cross build uses `cmake/toolchain-mingw-w64.cmake` (the presets se
 platform layer there too (LoadLibrary/GetProcAddress with `--export-all-symbols`); the C++ runtime and winpthread
 are linked statically, so the exe needs only system DLLs plus `OpenAL32.dll` (and `pixomatic.dll` on the 32-bit
 preset, a load-time import). A hardware fault, `std::terminate` and `abort` print the image base and raw addresses
-for `addr2line -e ut2004.exe`. `ucc-bin.exe` imports system DLLs only; it reads its arguments as `ucc-bin` does
-(the ones after the commandlet's name), and a SIGINT to the wine process reaches it as Ctrl-C.
+for `addr2line -e ut2004.exe`. `ucc.exe`, the retail UCC's name, imports system DLLs only; it reads its arguments as
+`ucc-bin` does (the ones after the commandlet's name), and a SIGINT to the wine process reaches it as Ctrl-C.
 
 ## Android
 
