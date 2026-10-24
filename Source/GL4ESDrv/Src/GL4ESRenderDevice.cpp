@@ -404,8 +404,10 @@ UBOOL UGL4ESRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Ful
 	SDL_GL_SetAttribute( SDL_GL_MULTISAMPLEBUFFERS, NumAASamples > 1 ? 1 : 0 );
 	SDL_GL_SetAttribute( SDL_GL_MULTISAMPLESAMPLES, NumAASamples > 1 ? NumAASamples : 0 );
 
-	// Change window size.
-	Viewport->ResizeViewport( Fullscreen ? (BLIT_Fullscreen|BLIT_OpenGL) : (BLIT_OpenGL), NewX, NewY );
+	// Change window size. Without an OpenGL ES context (no ES driver) the mode set fails here, before gl4es
+	// would resolve its functions from a context that does not exist.
+	if( !Viewport->ResizeViewport( Fullscreen ? (BLIT_Fullscreen|BLIT_OpenGL) : (BLIT_OpenGL), NewX, NewY ) )
+		return 0;
 
 #elif (defined WIN32)
 

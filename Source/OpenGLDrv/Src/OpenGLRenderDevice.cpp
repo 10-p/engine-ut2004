@@ -506,8 +506,9 @@ UBOOL UOpenGLRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Fu
 	SDL_GL_SetAttribute( SDL_GL_MULTISAMPLEBUFFERS, NumAASamples > 1 ? 1 : 0 );
 	SDL_GL_SetAttribute( SDL_GL_MULTISAMPLESAMPLES, NumAASamples > 1 ? NumAASamples : 0 );
 
-	// Change window size.
-	Viewport->ResizeViewport( Fullscreen ? (BLIT_Fullscreen|BLIT_OpenGL) : (BLIT_OpenGL), NewX, NewY );
+	// Change window size. Without a GL context the mode set fails here, before any GL function is bound.
+	if( !Viewport->ResizeViewport( Fullscreen ? (BLIT_Fullscreen|BLIT_OpenGL) : (BLIT_OpenGL), NewX, NewY ) )
+		return 0;
 
 #elif (defined UE_OPENGLDRV_WGL)
 

@@ -948,6 +948,10 @@ static const FRenderSwitch GRenderSwitches[] =
 
 // The class a -*RENDERER switch requested (empty if none) -- persisted after a successful Init().
 static FString GRequestedRenderDevice;
+// The ini's RenderDevice and ViewportManager before the switch replaced them, and whether Engine->Init() has
+// yet to decide on the switch's device (RevertPendingRenderChoice puts them back at an error exit).
+static FString GPreviousRenderDevice, GPreviousViewportManager;
+static UBOOL GRenderChoicePending = 0;
 
 
 // The low-detail settings the software renderer needs; applied when -SOFTWARERENDERER selects PixoDrv.
@@ -977,6 +981,9 @@ static void SelectRenderDevice()
 			if( IsRenderDeviceAvailable( Sw.Device ) )
 			{
 				debugf( TEXT("-%s selects render device %s"), Sw.Param, Sw.Device );
+				GPreviousRenderDevice    = GConfig->GetStr( TEXT("Engine.Engine"), TEXT("RenderDevice"), TEXT("System") );
+				GPreviousViewportManager = GConfig->GetStr( TEXT("Engine.Engine"), TEXT("ViewportManager"), TEXT("System") );
+				GRenderChoicePending     = 1;
 				GConfig->SetString( TEXT("Engine.Engine"), TEXT("RenderDevice"), Sw.Device );
 				if( Sw.Viewport )
 					GConfig->SetString( TEXT("Engine.Engine"), TEXT("ViewportManager"), Sw.Viewport );
@@ -997,6 +1004,7 @@ static void SelectRenderDevice()
 // itself initialises later, at level bring-up). Flush(0) writes the ini (the web host persists it).
 static void PersistRenderChoiceIfSwitched()
 {
+	GRenderChoicePending = 0;
 	if( GRequestedRenderDevice.Len()==0 )
 		return;
 	const TCHAR* Active = GConfig->GetStr( TEXT("Engine.Engine"), TEXT("RenderDevice"), TEXT("System") );
@@ -1009,6 +1017,18 @@ static void PersistRenderChoiceIfSwitched()
 	{
 		debugf( NAME_Warning, TEXT("render device changed from %s to %s during init -> not persisted"), *GRequestedRenderDevice, Active );
 	}
+}
+
+// At an error exit before Engine->Init() returned: the ini gets back the render device and viewport manager it had
+// before the -*RENDERER switch, so the exit's ini flush does not make a device that failed to start the default.
+static void RevertPendingRenderChoice()
+{
+	if( !GRenderChoicePending )
+		return;
+	GRenderChoicePending = 0;
+	GConfig->SetString( TEXT("Engine.Engine"), TEXT("RenderDevice"), *GPreviousRenderDevice );
+	GConfig->SetString( TEXT("Engine.Engine"), TEXT("ViewportManager"), *GPreviousViewportManager );
+	debugf( NAME_Warning, TEXT("render device %s did not start -> not persisted; %s stays the default"), *GRequestedRenderDevice, *GPreviousRenderDevice );
 }
 
 //
@@ -1448,6 +1468,7 @@ extern BYTE GLoadedALAudio; snprintf(&blah, 1, "%d", (int) GLoadedALAudio);
 	{
 		// Crashed.
 		ErrorLevel = 1;
+		RevertPendingRenderChoice();
 		Error.HandleError();
 	}
 #endif
