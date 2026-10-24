@@ -2806,6 +2806,30 @@ static void appWinAbort( int )
 	}
 	_exit( 3 );
 }
+
+// The console's Ctrl-C, Ctrl-Break and close request a clean exit, as SIGTERM does on the other targets. The
+// handler runs on a thread of its own; a further event is reported and ignored.
+static BOOL WINAPI appWinConsoleCtrl( DWORD CtrlType )
+{
+	static volatile LONG Events = 0;
+	const char* Name;
+	if( CtrlType == CTRL_C_EVENT )
+		Name = "Signal: Ctrl-C";
+	else if( CtrlType == CTRL_BREAK_EVENT )
+		Name = "Signal: Ctrl-Break";
+	else if( CtrlType == CTRL_CLOSE_EVENT )
+		Name = "Signal: console closed";
+	else
+		return FALSE;
+	if( InterlockedIncrement( &Events ) == 1 )
+	{
+		printf( "%s\nRequesting Exit.\n", Name );
+		GIsRequestingExit = 1;
+	}
+	else printf( "%s\nSignal: exit already requested; this one is ignored.\n", Name );
+	fflush( stdout );
+	return TRUE;
+}
 #endif // _WIN32
 
 void appPlatformInit()
@@ -3103,6 +3127,7 @@ void appPlatformInit()
 	// abort() bypass it, and the engine throws for a living (appThrowf is how a failed load unwinds).
 	std::set_terminate( appWinTerminate );
 	signal( SIGABRT, appWinAbort );
+	SetConsoleCtrlHandler( appWinConsoleCtrl, TRUE );
 #endif
 #ifndef _WIN32
 	struct sigaction SigAction;
