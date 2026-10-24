@@ -221,6 +221,10 @@ the first two replacements off.
 - `WHEREAMI` / `TELEPORT <x> <y> <z> [<yaw> [<pitch>]]`: allowed in a standalone game and for a listen server's
   host; `[Engine.GameEngine] AllowNetCheats=True` (test harnesses only) opens them elsewhere.
 - `FLUSHCONFIG`: write the config cache to disk now.
+- `RELAUNCH [<arguments>]` (Epic's command; the menus' restart and a mod's activation, `-mod=<folder>`, use it): the
+  game exits and its running executable starts again with the arguments (Linux and Windows; Android and the web only
+  exit). With `-server` (Host Game's Dedicated button: `<url> -server`) the UCC takes over instead: `./ucc-bin server
+  <url>` on Linux (in an `xterm` when one is installed), `ucc.exe server <url>` on Windows.
 - `[SDL2Drv.SDL2Client] UseJoystick` (on by default): game pads, one pad (the first connected), the shared button
   map, sticks sent as rates. In play the left stick is the move stick: its deadzone is radial (0.12, rescaled from its
   edge), so every direction between the axes keeps both parts, and a tilt out of it but below
