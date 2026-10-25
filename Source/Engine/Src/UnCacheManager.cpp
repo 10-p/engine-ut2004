@@ -37,7 +37,7 @@ static UCacheManager* Cache=NULL;
 
 /** Defined with the quick-screenshot block above ParseMap; called from RefreshCache. */
 void FlushQuickScreenshotSet();
-/** Fills the quick-screenshot cache before any record is parsed. See its comment. */
+/** Lists the quick-screenshot set before any record is parsed. See its comment. */
 void PrimeQuickScreenshots();
 
 static bool bReverseSort = false;
@@ -1096,7 +1096,8 @@ void UCacheManager::IntegrateNewPackages( const TCHAR* CacheKey )
 	map would come up empty. `<Map>-Screenshot` cannot collide with anything.
 
 	Optional by construction: with no quick package the record is left byte-identical and the stock
-	path runs, so a missing, partial or stale set never breaks the menu.
+	path runs, so a missing, partial or stale set never breaks the menu. The same holds for an ini whose
+	`Paths=` has no QuickScreenshots entry (a retail one): the loader could not find the package there.
 
 	Only a ref that names the map itself is redirected: records that point at a shared texture
 	package are cheap and are left alone.
@@ -1106,13 +1107,12 @@ void UCacheManager::IntegrateNewPackages( const TCHAR* CacheKey )
 #define QUICKSHOT_DIR		TEXT("QuickScreenshots")
 
 /**
- * Cache of "does <Package>-Screenshot exist?", keyed by lower-cased package name. NULL = not built yet.
- * A BYTE value of 1 means present, 0 means absent; both are remembered, because absent is a common
- * answer and re-asking is the cost this cache avoids.
+ * The quick screenshot packages on the package search path, keyed by lower-cased package name (value 1).
+ * NULL = not listed yet.
  */
 static TMap<FString,BYTE>* GQuickScreenshots = NULL;
 
-/** Drop the cache so the next browse re-probes. Called from RefreshCache alongside the record arrays. */
+/** Drop the set so the next browse lists it again. Called from RefreshCache alongside the record arrays. */
 void FlushQuickScreenshotSet()
 {
 	if( GQuickScreenshots )
@@ -1123,49 +1123,30 @@ void FlushQuickScreenshotSet()
 }
 
 /**
- * Is there a quick screenshot package for this map?
+ * Is there a quick screenshot package for this map that the package loader can find?
  *
- * One `FileSize` probe per distinct package name, memoised. Not `appFindPackageFile`, which walks
- * every `GSys->Paths` entry and tries a language variant of each: hundreds of records through that is
- * thousands of filesystem stats before the menu draws, and on the web every one crosses the JS/wasm
- * VFS boundary. The path is composed directly, which is sound because the directory name is a
- * constant of this feature on both sides (the generator writes `QuickScreenshots/`, `Default.ini` adds
- * the matching `Paths=` line so the load can find it). Paths are relative to the System directory,
- * hence the `../`, the same convention `GSys->Paths` uses.
- *
- * Normally no filesystem work at all on the ParseMap path: `PrimeQuickScreenshots` has already
- * answered every question.
+ * Answered from the set `PrimeQuickScreenshots` lists out of the QuickScreenshots `Paths=` entries, the
+ * directories `appFindPackageFile` searches, so a redirect never names a package the load cannot open. An
+ * in-memory lookup: no filesystem work on the ParseMap path. Before the set is listed the answer is no.
  */
 static UBOOL HaveQuickScreenshot( const TCHAR* PackageName )
 {
 	guard(HaveQuickScreenshot);
 
 	if( !GQuickScreenshots )
-		GQuickScreenshots = new TMap<FString,BYTE>;
+		return 0;
 
 	FString Key = FString(PackageName).Locs();
 	// TMap<FString,BYTE> keys initialise from `const TCHAR*` (TTypeInfo<FString>::ConstInitType), not
 	// from an FString, hence the `*`.
-	if( BYTE* Cached = GQuickScreenshots->Find( *Key ) )
-		return *Cached != 0;
-
-	// `+=`, never `+`: FString::operator+ is a non-const member, so on anything const it falls back to
-	// operator UBOOL() and becomes pointer arithmetic. See RedirectToQuickScreenshot.
-	FString File = TEXT("../");
-	File += QUICKSHOT_DIR;
-	File += TEXT("/");
-	File += PackageName;
-	File += TEXT(".utx");
-
-	const UBOOL Exists = GFileManager->FileSize( *File ) >= 0;
-	GQuickScreenshots->Set( *Key, Exists ? (BYTE)1 : (BYTE)0 );
-	return Exists;
+	return GQuickScreenshots->Find( *Key ) != NULL;
 
 	unguard;
 }
 
 /**
- * Populate the cache once, from one directory listing, before record parsing starts.
+ * List the packages of every `Paths=` entry whose directory is QuickScreenshots, once, before record parsing
+ * starts. With no such entry the set is empty and every map keeps its own screenshot.
  *
  * The listing is kept out of `UCacheManager::ParseMap`: done lazily from inside it, the web build
  * crashed at boot (memory access out of bounds inside ParseMap's own `Parse()` buffers), correlated
@@ -1228,7 +1209,7 @@ static void RedirectToQuickScreenshot( const FString& MapName, FString& Ref )
 	FString Quick = MapName;
 	Quick += QUICKSHOT_SUFFIX;
 	if( !HaveQuickScreenshot( *Quick ) )
-		return;											// none generated — stock path, byte-identical
+		return;											// none on the search path — stock path, byte-identical
 
 	Quick += Ref.Mid( Dot );
 	Ref = Quick;
