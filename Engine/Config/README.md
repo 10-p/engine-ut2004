@@ -27,7 +27,9 @@ leaves out the derived `UT2004.ini` / `User.ini` so an install copy cannot shado
 
 ## Departures from the retail values
 
-- `[Core.System] Paths` adds `../QuickScreenshots/*.utx`.
+- `[Core.System] Paths` adds `../QuickScreenshots/*.utx`. The map lists draw a map's preview from its quick package
+  only when a `Paths=` entry lists that folder; with an ini that has none (a retail one; Android reads the game
+  folder's own inis) they load it from the map, as retail does.
 - `[IpDrv.TcpNetDriver]` `NetServerMaxTickRate` / `LanServerMaxTickRate` are 120 (retail 20 / 35).
 - `[IpDrv.MasterServerLink] MasterServerList` names the community master servers; retail's
   `ut2004master1|2.epicgames.com` do not resolve. Every entry must be live: `GetMasterServer` picks one at random per
