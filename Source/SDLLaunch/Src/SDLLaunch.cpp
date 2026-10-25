@@ -685,7 +685,11 @@ extern "C" char* EMSCRIPTEN_KEEPALIVE ue_exec_command( const char* Cmd )
 	if( GEngineForExec && Cmd )
 	{
 		FStringOutputDevice Out;
-		GEngineForExec->Exec( Cmd, Out );
+		// What the engine itself does not take goes to the first viewport, as a line typed on the console would
+		// (the render device's commands, the player's exec functions); a viewport runs commands once it has a player.
+		UClient* Client = GEngineForExec->Client;
+		if( !GEngineForExec->Exec( Cmd, Out ) && Client && Client->Viewports.Num() && Client->Viewports(0)->Actor )
+			Client->Viewports(0)->Exec( Cmd, Out );
 		Captured = Out;
 	}
 	return (char*)(*Captured);
