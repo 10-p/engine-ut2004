@@ -303,6 +303,11 @@ speed), saved with the launcher's other settings and handed to the game when it 
 (`GameActivity.EXTRA_MOVE_FULL_TILT_DP`, `EXTRA_MOVE_DEAD_ZONE_DP`); past full tilt the held point follows the finger.
 It never walks.
 
+The launcher's renderer selection, at the bottom of its page (the game's choice, then GL4ES; Null for debugging),
+adds that render device's `-*RENDERER` switch after any command line the launcher was started with. The game keeps
+the device it last started with, also under "The game's choice": a device whose GPU draws the default wrong is
+switched once.
+
 The engine reads its game folder by path (the JNI bridge sets `UT2004_ANDROID_BASEDIR` and the cwd); the launcher
 (`MainActivity`) chooses which:
 
