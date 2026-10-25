@@ -32,6 +32,8 @@ import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.Switch;
@@ -229,6 +231,7 @@ public class MainActivity extends Activity {
         });
 
         buildMoveStickRows(col);
+        buildRendererRow(col);
 
         TextView hint = new TextView(this);
         hint.setTextColor(0xFF6E747C);
@@ -474,9 +477,11 @@ public class MainActivity extends Activity {
         // only route an `adb shell am start` has into the game process.
         String extraArgs = getIntent() != null
                 ? getIntent().getStringExtra(GameActivity.EXTRA_ARGS) : null;
-        if (extraArgs != null && !extraArgs.trim().isEmpty()) {
-            i.putExtra(GameActivity.EXTRA_ARGS, extraArgs);
-            Log.i(TAG, "forwarding engine arguments: " + extraArgs);
+        // The renderer chosen below goes after them (an adb command line's own -*RENDERER switch comes first).
+        String args = ((extraArgs != null ? extraArgs.trim() : "") + " " + prefs().getString(PREF_RENDERER, "")).trim();
+        if (!args.isEmpty()) {
+            i.putExtra(GameActivity.EXTRA_ARGS, args);
+            Log.i(TAG, "forwarding engine arguments: " + args);
         }
         startActivity(i);
         // Deliberately not finish() -- Back from the game returns to this launcher.
@@ -786,5 +791,46 @@ public class MainActivity extends Activity {
         }
         Log.i(TAG, msg);
         Toast.makeText(this, msg, Toast.LENGTH_LONG).show();
+    }
+
+    // ---- the renderer ---------------------------------------------------------------------------
+
+    private static final String PREF_RENDERER = "renderer";
+
+    /**
+     * The render devices of this build, as the engine's -*RENDERER switches. The first, no switch, leaves the choice
+     * to the game: its default, or the device it last started with (a switch is remembered by the game).
+     */
+    private static final String[][] RENDERERS = {
+            { "", "The game's choice" },
+            { "-GL4ESRENDERER", "GL4ES (OpenGL ES through gl4es)" },
+            { "-NULLRENDERER", "Null (draws nothing: for debugging)" }
+    };
+
+    private void buildRendererRow(LinearLayout col) {
+        label(col, "Renderer", 14f, 0xFFB8BCC2, 20);
+        RadioGroup group = new RadioGroup(this);
+        String current = prefs().getString(PREF_RENDERER, "");
+        int checked = -1;
+        for (int k = 0; k < RENDERERS.length; k++) {
+            RadioButton b = new RadioButton(this);
+            b.setId(View.generateViewId());
+            b.setText(RENDERERS[k][1]);
+            b.setTextColor(0xFFECEFF3);
+            b.setTag(RENDERERS[k][0]);
+            group.addView(b);
+            if (RENDERERS[k][0].equals(current)) checked = b.getId();
+        }
+        if (checked != -1) group.check(checked);
+        group.setOnCheckedChangeListener(new RadioGroup.OnCheckedChangeListener() {
+            @Override public void onCheckedChanged(RadioGroup g, int id) {
+                cancelCountdown(true);
+                View b = g.findViewById(id);
+                if (b != null) prefs().edit().putString(PREF_RENDERER, (String) b.getTag()).apply();
+            }
+        });
+        col.addView(group);
+        label(col, "For a device whose GPU draws the game wrong with the usual renderer. The game keeps the renderer "
+                + "it last started with, also with \"The game's choice\".", 12f, 0xFF9AA0A8, 2);
     }
 }
