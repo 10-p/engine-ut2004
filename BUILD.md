@@ -303,6 +303,14 @@ speed), saved with the launcher's other settings and handed to the game when it 
 (`GameActivity.EXTRA_MOVE_FULL_TILT_DP`, `EXTRA_MOVE_DEAD_ZONE_DP`); past full tilt the held point follows the finger.
 It never walks.
 
+In the background (the home screen, the recent apps, another app on top) the game is suspended. SDL's activity
+pauses on `onStop`, and its event pump then blocks the game thread until the app returns, so nothing ticks; ALAudio
+pauses its OpenAL device (`alcDevicePauseSOFT`, ALC_SOFT_pause_device) on SDL's `SDL_APP_DIDENTERBACKGROUND`, just
+before the block, so openal-soft's mixer and the OpenSL ES output stop and no sound plays, and resumes it on
+`SDL_APP_WILLENTERFOREGROUND`; the overlay stops redrawing while it cannot be seen. Back in the foreground SDL
+restores the GL context on the new surface and the game goes on where it was (`ALAudio: output paused (the app is in
+the background)` / `output resumed` in the log).
+
 The launcher's renderer selection, at the bottom of its page (the game's choice, then GL4ES; Null for debugging),
 adds that render device's `-*RENDERER` switch after any command line the launcher was started with. The game keeps
 the device it last started with, also under "The game's choice": a device whose GPU draws the default wrong is

@@ -134,8 +134,8 @@ public class GameActivity extends SDLActivity {
 
         // Keep the screen awake during play: a match can run for long stretches with no touch input
         // (spectating, watching bots). FLAG_KEEP_SCREEN_ON while this activity is foreground; cleared
-        // automatically when it isn't. (Background suspend: stock SDL parks the engine thread on pause;
-        // the resume delta is clamped by ULevel::Tick.)
+        // automatically when it isn't. (In the background SDL's event pump parks the engine thread and ALAudio
+        // pauses its OpenAL device; ULevel::Tick clamps the resume delta.)
         getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         // The whole screen is the game's: the window draws under the system bars, with no bar backgrounds of its
@@ -307,13 +307,18 @@ public class GameActivity extends SDLActivity {
             iconCrouch = loadIcon("touch_overlay/crouch.png");
             iconNext = loadIcon("touch_overlay/next-weapon.png");
             iconMenu = loadIcon("touch_overlay/menu.png");
-            postDelayed(redrawRunnable, 66L);
         }
 
-        // Periodic invalidate so the overlay shows/hides promptly when menu state flips.
+        // Periodic invalidate while the overlay can be seen, so it shows/hides promptly when menu state flips.
         private final Runnable redrawRunnable = new Runnable() {
             @Override public void run() { invalidate(); postDelayed(this, 66L); }
         };
+
+        @Override public void onVisibilityAggregated(boolean isVisible) {
+            super.onVisibilityAggregated(isVisible);
+            removeCallbacks(redrawRunnable);
+            if (isVisible) postDelayed(redrawRunnable, 66L);
+        }
 
         private Bitmap loadIcon(String assetPath) {
             try {

@@ -15,6 +15,9 @@ Revision history:
 	Audio includes.
 ------------------------------------------------------------------------------------*/
 
+#if defined(__ANDROID__)
+#include "SDL.h"		// before the engine's headers, whose macros (clock) its system headers would meet
+#endif
 #include "ALAudioPrivate.h"
 
 #if SUPPORTS_PRAGMA_PACK
@@ -44,6 +47,48 @@ Revision history:
 #undef ALC_EXT
 #undef AL_PROC
 #undef ALC_PROC
+#endif
+
+#if defined(__ANDROID__)
+// The app in the background: SDL's event pump blocks the game thread until it returns, and the output device is
+// paused (ALC_SOFT_pause_device), so nothing plays and openal-soft's mixer thread stops. SDL sends both events
+// from that pump, on the game thread: the first just before it blocks, the second right after it wakes.
+typedef void (CDECL *FALCDeviceFunc)( ALCdevice* Device );	// alcDevicePauseSOFT, alcDeviceResumeSOFT
+static FALCDeviceFunc AlcDevicePause  = NULL;
+static FALCDeviceFunc AlcDeviceResume = NULL;
+
+static int SDLCALL PauseInBackground( void* Device, SDL_Event* Event )
+{
+	if( Event->type == SDL_APP_DIDENTERBACKGROUND )
+	{
+		AlcDevicePause( (ALCdevice*)Device );
+		debugf( TEXT("ALAudio: output paused (the app is in the background)") );
+	}
+	else if( Event->type == SDL_APP_WILLENTERFOREGROUND )
+	{
+		AlcDeviceResume( (ALCdevice*)Device );
+		debugf( TEXT("ALAudio: output resumed") );
+	}
+	return 1;
+}
+
+static void WatchAppBackground( ALCdevice* Device, UBOOL On )
+{
+	if( !On )
+	{
+		SDL_DelEventWatch( PauseInBackground, Device );
+		return;
+	}
+	AlcDevicePause  = UALAudioSubsystem::alcIsExtensionPresent( Device, (ALubyte*)"ALC_SOFT_pause_device" )
+		? (FALCDeviceFunc)UALAudioSubsystem::alcGetProcAddress( Device, (ALubyte*)"alcDevicePauseSOFT" ) : NULL;
+	AlcDeviceResume = AlcDevicePause ? (FALCDeviceFunc)UALAudioSubsystem::alcGetProcAddress( Device, (ALubyte*)"alcDeviceResumeSOFT" ) : NULL;
+	if( AlcDevicePause && AlcDeviceResume )
+		SDL_AddEventWatch( PauseInBackground, Device );
+	else
+		debugf( NAME_Warning, TEXT("ALAudio: this OpenAL cannot pause its device (no ALC_SOFT_pause_device): sound plays on in the background") );
+}
+#else
+static void WatchAppBackground( ALCdevice* Device, UBOOL On ) {}
 #endif
 
 #if SUPPORTS_EAX
@@ -192,6 +237,7 @@ void UALAudioSubsystem::Shutdown()
 		alcProcessContext( SoundContext );
 		alcMakeContextCurrent( NULL );
 		alcDestroyContext( SoundContext );
+		WatchAppBackground( SoundDevice, 0 );
 		alcCloseDevice( SoundDevice );
 
 		SetViewport(NULL);
@@ -529,6 +575,7 @@ UBOOL UALAudioSubsystem::Init()
 	LastVoiceTime	= GCurrentTime;
 	Listener		= new FListener();
 	USound::Audio	= this;
+	WatchAppBackground( SoundDevice, 1 );
 
 	debugf(NAME_Init,TEXT("ALAudio: subsystem initialized."));
 	return 1;
