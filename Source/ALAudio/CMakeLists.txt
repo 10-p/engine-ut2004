@@ -35,3 +35,7 @@ if(EMSCRIPTEN)
   # Compile against openal-soft's headers (its include dir precedes the Emscripten sysroot's <AL/al.h>).
   target_link_libraries(${PROJECT_NAME} PRIVATE OpenAL)
 endif()
+if(ANDROID)
+  # SDL's application events pause the output device while the app is in the background.
+  target_link_libraries(${PROJECT_NAME} PRIVATE SDL2::SDL2-static)
+endif()
