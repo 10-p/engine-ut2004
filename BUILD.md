@@ -245,7 +245,7 @@ the first two replacements off.
   fire the right; A clicks the control under the pad's cursor as primary fire does, and with no control there (or
   before the pad's cursor shows) is Enter, which activates the focused control; B is Escape (back), and the D-pad the
   arrow keys, an arrow no control uses moving the focus as Tab does (down and right to the next control, up and left
-  to the previous one). A key-binding page waiting for a key gets the pad's own keys.
+  to the previous one). A key-binding page waiting for a key gets the pad's own keys. The right stick's click is `Joy9`, Use (entering a vehicle); the left stick's click is `Joy8`, Duck.
 - `-usehomedir`: user files under `~/.ut2004` instead of beside the game (the default).
 - A key-less install generates its CD key (63 bits of OS entropy) and saves it to `System/cdkey`.
 - `UT_NO_FAULT_HANDLER=1` (Android: `adb shell setprop debug.ut2004.nofault 1`): leave hardware faults to the OS's

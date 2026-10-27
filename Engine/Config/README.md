@@ -43,7 +43,7 @@ leaves out the derived `UT2004.ini` / `User.ini` so an install copy cannot shado
   1 repeats and rescales movements by the frame time); `ConfiguredInternetSpeed` / `ConfiguredLanSpeed` 1000000;
   `[XInterface.GUIController] MaxSimultaneousPings=35` (without it the server browser pings nothing at that
   netspeed); pad bindings
-  `Joy5`–`Joy16` for an SDL game controller; `[UnrealGame.UnrealPawn]` real player shadows; `[XGame.xPlayer]
+  `Joy5`–`Joy16` for an SDL game controller (`Joy9`, the right stick's click, is Use); `[UnrealGame.UnrealPawn]` real player shadows; `[XGame.xPlayer]
   InputClass=Engine.PlayerInput`; `[GUI2K4.UT2K4ServerLoading] Backgrounds` lists loading screens 1 to 4 (retail
   lists 2 twice and never 3, which `2K4Menus.utx` has). Web: `[GUI2K4.UT2k4ServerBrowser] bHideNetworkMessage=True`
   (no first-run network-options prompt).

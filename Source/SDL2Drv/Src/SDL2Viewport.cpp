@@ -237,7 +237,7 @@ static const BYTE GPadButtonMap[SDL_CONTROLLER_BUTTON_MAX] =
     /* GUIDE         */ IK_None,
     /* START         */ IK_Escape,  // menu
     /* LEFTSTICK     */ IK_Joy8,    // Duck
-    /* RIGHTSTICK    */ IK_Joy9,    // (unbound)
+    /* RIGHTSTICK    */ IK_Joy9,    // Use (enter a vehicle)
     /* LEFTSHOULDER  */ IK_Joy11,   // AltFire
     /* RIGHTSHOULDER */ IK_Joy12,   // Fire
     /* DPAD_UP       */ IK_Joy13,   // InventoryPrevious
