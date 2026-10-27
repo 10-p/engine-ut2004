@@ -13,6 +13,25 @@ if (ueSigningPath) {
     signingFile.withInputStream { ueSigning.load(it) }
 }
 
+// What the APK installs into the game folder's System/ before each start (GameActivity): the Android Default.ini and
+// DefUser.ini, generated from the native ones by tools/dev/sync-android-ini.py.
+abstract class UtSystemOverlay extends DefaultTask {
+    @InputDirectory abstract DirectoryProperty getConfigDir()
+    @OutputDirectory abstract DirectoryProperty getOutputDir()
+    @TaskAction void run() {
+        def out = new File(outputDir.get().asFile, 'system')
+        out.deleteDir()
+        out.mkdirs()
+        ['Default.ini', 'DefUser.ini'].each { name ->
+            java.nio.file.Files.copy(new File(configDir.get().asFile, name).toPath(), new File(out, name).toPath())
+        }
+    }
+}
+def utSystemOverlay = tasks.register('utSystemOverlay', UtSystemOverlay) {
+    configDir.set(file("${rootDir}/../Engine/Config/android"))
+    outputDir.set(layout.buildDirectory.dir('generated/ut2004/assets'))
+}
+
 android {
     namespace = 'com.ut2004.android'
     // Android 16 (platform 36); the app keeps Android 14's behaviour (targetSdk).
@@ -117,5 +136,11 @@ android {
     buildTypes {
         release { signingConfig = ueSigning ? signingConfigs.release : signingConfigs.debug }
         debug { if (ueSigning) signingConfig = signingConfigs.release }
+    }
+}
+
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(utSystemOverlay, { it.outputDir })
     }
 }

@@ -1,12 +1,17 @@
 package com.ut2004.android;
 
 import android.content.ContentResolver;
+import android.content.Context;
+import android.content.res.AssetManager;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.StatFs;
 import android.provider.DocumentsContract;
 import android.provider.DocumentsContract.Document;
+import android.util.Log;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -14,6 +19,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 
@@ -111,7 +117,7 @@ final class Storage {
     }
 
     /** Writes {@code in} to {@code dst} through a {@code .part} sibling, then renames it over {@code dst}. */
-    private static void copyStream(InputStream in, File dst) throws IOException {
+    static void copyStream(InputStream in, File dst) throws IOException {
         File tmp = new File(dst.getAbsolutePath() + ".part");
         OutputStream out = new FileOutputStream(tmp);
         try {
@@ -319,5 +325,44 @@ final class Storage {
         double mb = kb / 1024.0;
         if (mb < 1024) return String.format(Locale.US, "%.1f MB", mb);
         return String.format(Locale.US, "%.2f GB", mb / 1024.0);
+    }
+
+    /**
+     * Installs the APK's System files (assets/system: the Android Default.ini and DefUser.ini) into the folder's
+     * System, each only where it differs, so a folder without User.ini and UT2004.ini derives them from these.
+     * Returns how many files were written.
+     */
+    static int installSystemFiles(Context ctx, File root) {
+        File system = new File(root, "System");
+        AssetManager assets = ctx.getAssets();
+        int written = 0;
+        try {
+            String[] names = assets.list("system");
+            if (names == null) return 0;
+            for (String name : names) {
+                byte[] data = readAll(assets.open("system/" + name));
+                File dst = new File(system, name);
+                if (dst.isFile() && dst.length() == data.length && Arrays.equals(readAll(new FileInputStream(dst)), data))
+                    continue;
+                copyStream(new ByteArrayInputStream(data), dst);
+                written++;
+                Log.i("UT2004", "installed " + dst + " from the APK");
+            }
+        } catch (IOException e) {
+            Log.e("UT2004", "could not install the APK's System files into " + system, e);
+        }
+        return written;
+    }
+
+    private static byte[] readAll(InputStream in) throws IOException {
+        try {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] buf = new byte[1 << 14];
+            int n;
+            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+            return out.toByteArray();
+        } finally {
+            in.close();
+        }
     }
 }

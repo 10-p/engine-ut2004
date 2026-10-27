@@ -125,6 +125,7 @@ public class GameActivity extends SDLActivity {
         // Must run before super.onCreate(): super.onCreate() spins up the SDL thread that calls
         // SDL_main, and the engine's appBaseDir()/appInit() read the env + cwd set here.
         File dataRoot = resolveDataRoot();
+        Storage.installSystemFiles(this, dataRoot);
         File homeDir = new File(getFilesDir(), "home");
         if (bridgeLoaded) {
             boolean ok = nativePrepareProcess(dataRoot.getAbsolutePath(), homeDir.getAbsolutePath());
