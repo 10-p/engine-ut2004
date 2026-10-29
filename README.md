@@ -18,7 +18,7 @@ Requires assets from a retail UT2004 install. Every preset, option and driver: [
 * 64-bit and ARM support: x86-64, arm64 and armv7 builds.
 * Windows build: MinGW-w64 cross builds, 32-bit (with Pixomatic) and 64-bit.
 * UCC on every desktop build: `ucc-bin` (Linux) and `ucc.exe` (Windows), 32- and 64-bit, beside the game: the dedicated server and the commandlets.
-* Android build: a Gradle/NDK project for Android 7.0 and later, with touch controls (hidden while a real pad is used, back on a touch) and a suspended game in the background (no tick, the OpenAL device paused); the game folder is copied into the app's storage from a folder chosen with Android's folder picker, or read in place.
+* Android build: a Gradle/NDK project for Android 7.0 and later, with touch controls (hidden while a real pad is used, back on a touch), gyro aiming (a launcher switch, off by default, with horizontal and vertical sensitivities; slowed by the zoom as the mouse is) and a suspended game in the background (no tick, the OpenAL device paused); the game folder is copied into the app's storage from a folder chosen with Android's folder picker, or read in place.
 * GCC/Clang portability: builds with current GCC, Clang (Emscripten, NDK) and MinGW.
 * Save games: the stock `SAVEGAME`/`LOADGAME`, saved in the game folder's `Save` directory (on the web, persisted by the host).
 * Languages: the stock `[Engine.Engine] Language` key, also settable from the command line with `-ini:`.

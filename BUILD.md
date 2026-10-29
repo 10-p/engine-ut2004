@@ -310,6 +310,21 @@ It never walks. A real pad's button, or a stick, trigger or hat pushed half way 
 `GameActivity.dispatchKeyEvent`/`dispatchGenericMotionEvent`), hides the overlay; a touch on the screen shows it again
 (in play that touch does nothing else; in a menu it is still the menu's mouse click).
 
+Gyro aiming is the launcher's "Gyro aiming" switch (off by default) and its horizontal and vertical sensitivities (0.1
+to 5, 1 by default), saved with the other settings and handed to the game when it starts (`GyroAim.EXTRA_GYRO_AIM`,
+`EXTRA_GYRO_YAW_SCALE`, `EXTRA_GYRO_PITCH_SCALE`). A sensitivity is view degrees per device degree: at 1 the view
+turns as far as the device. `GyroAim.java` reads the gyroscope and gravity while the game is in front, in either
+landscape: tilting the device's top edge towards the player looks up; left and right is the turn about the world's
+vertical ("player space": turning the device, and twisting it like a wheel once it is tilted back), never more than
+the device's own turn and twist. In play `USDL2Viewport::UpdateInput` adds the turn to the player's `aTurn` and
+`aLookUp` in whole rotation units (65536 a turn, the rest carried to the next tick), past ReadInput's and
+PlayerInput's scales, so the mouse's sensitivity, smoothing and inversion do not change it. The zoom slows it as it
+slows the mouse: the turn is times `DesiredFOV / DefaultFOV` (the lightning gun's and the sniper rifle's zoom; 1
+unzoomed, at any aspect ratio, since AutoFOV widens only the drawn view). While a menu is up, or over a load (the game
+not ticking for half a second), it is dropped. There is no smoothing, acceleration or dead zone. With `-UFRONTLOG` the
+log has the totals once the gyro rests (`Gyro: <yaw> degrees right and <pitch> up in play in all, <n> yaw and <n> pitch
+units (zoom <z>)`: the degrees before the zoom, the units after it, the zoom of the last turn).
+
 In the background (the home screen, the recent apps, another app on top) the game is suspended. SDL's activity
 pauses on `onStop`, and its event pump then blocks the game thread until the app returns, so nothing ticks; ALAudio
 pauses its OpenAL device (`alcDevicePauseSOFT`, ALC_SOFT_pause_device) on SDL's `SDL_APP_DIDENTERBACKGROUND`, just
