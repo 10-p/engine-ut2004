@@ -39,6 +39,20 @@ static UBOOL ufrontCanvasDevicePixelSize( INT& OutW, INT& OutH )
 }
 #endif
 
+#if !defined(__EMSCRIPTEN__) && !defined(__ANDROID__)
+// The size borderless fullscreen gives the window: the desktop mode of its display (the first display before the
+// window exists). X and Y stay as they are when SDL cannot tell.
+static void BorderlessSize( SDL_Window* Window, INT& X, INT& Y )
+{
+    SDL_DisplayMode Desktop;
+    if( SDL_GetDesktopDisplayMode( Window ? SDL_GetWindowDisplayIndex( Window ) : 0, &Desktop ) == 0 )
+    {
+        X = Desktop.w;
+        Y = Desktop.h;
+    }
+}
+#endif
+
 #if defined(__ANDROID__)
 // Android touch overlay glue. The Java on-screen overlay runs on the UI
 // thread and cannot touch the engine directly; it writes intent through the JNI
@@ -610,12 +624,29 @@ UBOOL USDL2Viewport::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
                 ColorBytes = 4;
                 break;
             }
-            UBOOL Result = RenDev->SetRes( this, X, Y, Fullscreen || FullscreenOnly, ColorBytes );
-            if( !Result )
+            UBOOL Borderless = 0;
+            INT DeviceX = X, DeviceY = Y;
+#if !defined(__EMSCRIPTEN__) && !defined(__ANDROID__)
+            USDL2Client* C = GetOuterUSDL2Client();
+            Borderless = Fullscreen && C->BorderlessFullscreen;
+            if( Borderless )
+                BorderlessSize( Window, DeviceX, DeviceY );
+            else if( IsFullscreen() && C->BorderlessFullscreen && X == SizeX && Y == SizeY )
+            {
+                // Leaving borderless fullscreen at its own size (the Display page's Full Screen box) gives the
+                // window back its size, as Alt+Enter does.
+                DeviceX = X = C->WindowedViewportX;
+                DeviceY = Y = C->WindowedViewportY;
+            }
+#endif
+            // Borderless fullscreen keeps the display's size, and the GUI gets that size.
+            if( Borderless && IsFullscreen() )
+                debugf( NAME_Log, TEXT("SETRES %ix%i not applied: borderless fullscreen stays at %ix%i"), X, Y, SizeX, SizeY );
+            else if( !RenDev->SetRes( this, DeviceX, DeviceY, Fullscreen || FullscreenOnly, ColorBytes ) )
                 EndFullscreen();
 
             if ( GUIController )
-                GUIController->ResolutionChanged(X, Y);
+                GUIController->ResolutionChanged( Borderless ? SizeX : X, Borderless ? SizeY : Y );
         }
         return 1;
     }
@@ -799,6 +830,11 @@ UBOOL USDL2Viewport::TryRenderDevice( const TCHAR* ClassName, INT NewX, INT NewY
         NewX = (Fullscreen || FullscreenOnly) ? C->FullscreenViewportX : C->WindowedViewportX;
     if( NewY==INDEX_NONE )
         NewY = (Fullscreen || FullscreenOnly) ? C->FullscreenViewportY : C->WindowedViewportY;
+#if !defined(__EMSCRIPTEN__) && !defined(__ANDROID__)
+    // A borderless fullscreen device is made at the size the window will have.
+    if( Fullscreen && C->BorderlessFullscreen )
+        BorderlessSize( Window, NewX, NewY );
+#endif
 
     // Find device driver.
     UClass* RenderClass = UObject::StaticLoadClass( URenderDevice::StaticClass(), NULL, ClassName, NULL, 0, NULL );
@@ -951,12 +987,21 @@ UBOOL USDL2Viewport::ResizeViewport( DWORD NewBlitFlags, INT InNewX, INT InNewY,
         // BLASTBufferQueue rejects the buffer). A landscape-only hint makes the surface match the engine.
         SDL_SetHint( SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight" );
 #endif
+        INT OpenX = NewX, OpenY = NewY;
+#if !defined(__EMSCRIPTEN__) && !defined(__ANDROID__)
+        // A window opened for fullscreen opens at the windowed size, the one it returns to.
+        if( (NewBlitFlags & BLIT_Fullscreen) && Client->WindowedViewportX > 0 && Client->WindowedViewportY > 0 )
+        {
+            OpenX = Client->WindowedViewportX;
+            OpenY = Client->WindowedViewportY;
+        }
+#endif
         Window = SDL_CreateWindow(
             "Unreal Tournament 2004",
             SDL_WINDOWPOS_CENTERED,
             SDL_WINDOWPOS_CENTERED,
-            NewX,
-            NewY,
+            OpenX,
+            OpenY,
 #if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
             // No SDL GL window: SDL_WINDOW_OPENGL brings up SDL's EGL path, Emscripten proxies EGL to the
             // browser main thread, and the canvas has been transferred to this worker, so getContext() there
@@ -977,7 +1022,7 @@ UBOOL USDL2Viewport::ResizeViewport( DWORD NewBlitFlags, INT InNewX, INT InNewY,
             SDL_GL_SetAttribute( SDL_GL_MULTISAMPLEBUFFERS, 0 );
             SDL_GL_SetAttribute( SDL_GL_MULTISAMPLESAMPLES, 0 );
             Window = SDL_CreateWindow( "Unreal Tournament 2004", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                NewX, NewY, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE );
+                OpenX, OpenY, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE );
         }
 #endif
         if( !Window )
@@ -1010,12 +1055,14 @@ UBOOL USDL2Viewport::ResizeViewport( DWORD NewBlitFlags, INT InNewX, INT InNewY,
         }
 #endif
     }
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
     else
     {
         SDL_SetWindowSize( Window, NewX, NewY );
     }
+#endif
 
-    // Handle fullscreen -- desktop fullscreen, no mode changes.
+    // Handle fullscreen.
 #if defined(__ANDROID__)
     // Android: always immersive fullscreen. A phone has no windowed mode, and requesting
     // FULLSCREEN_DESKTOP makes SDL call SDLActivity.setWindowStyle(true), which applies
@@ -1023,7 +1070,7 @@ UBOOL USDL2Viewport::ResizeViewport( DWORD NewBlitFlags, INT InNewX, INT InNewY,
     // navigation/home slider so the game uses the whole display (the surface grows to the full display;
     // WINDOWEVENT_RESIZED then re-runs the drawable-size SetRes below).
     SDL_SetWindowFullscreen( Window, SDL_WINDOW_FULLSCREEN_DESKTOP );
-#else
+#elif defined(__EMSCRIPTEN__)
     if( NewBlitFlags & BLIT_Fullscreen )
     {
         SDL_SetWindowFullscreen( Window, SDL_WINDOW_FULLSCREEN_DESKTOP );
@@ -1031,6 +1078,30 @@ UBOOL USDL2Viewport::ResizeViewport( DWORD NewBlitFlags, INT InNewX, INT InNewY,
     else
     {
         SDL_SetWindowFullscreen( Window, 0 );
+    }
+#else
+    if( !(NewBlitFlags & BLIT_Fullscreen) )
+    {
+        // Windowed: out of fullscreen first, so the size is the window's and no display mode follows it.
+        SDL_SetWindowFullscreen( Window, 0 );
+        SDL_SetWindowSize( Window, NewX, NewY );
+    }
+    else if( Client->BorderlessFullscreen )
+    {
+        // Borderless: SDL's desktop fullscreen. The display keeps its mode and the viewport takes the window's
+        // size; the size asked for and the profile's fullscreen size are left as they are.
+        SDL_SetWindowFullscreen( Window, SDL_WINDOW_FULLSCREEN_DESKTOP );
+        SDL_GetWindowSize( Window, &NewX, &NewY );
+        SizeX     = NewX;
+        SizeY     = NewY;
+        bSaveSize = 0;
+        debugf( NAME_Log, TEXT("SDL2Viewport: borderless fullscreen at %ix%i"), SizeX, SizeY );
+    }
+    else
+    {
+        // Exclusive: the display changes to the mode nearest the window's size.
+        SDL_SetWindowSize( Window, NewX, NewY );
+        SDL_SetWindowFullscreen( Window, SDL_WINDOW_FULLSCREEN );
     }
 #endif
 
