@@ -32,6 +32,8 @@ void USDL2Client::StaticConstructor()
 {
     guard(USDL2Client::StaticConstructor);
     new(GetClass(),TEXT("StartupFullscreen"), RF_Public)UBoolProperty(CPP_PROPERTY(StartupFullscreen), TEXT("Display"), CPF_Config );
+    // Native desktop fullscreen: borderless at the display's own mode, or exclusive (USDL2Viewport::ResizeViewport).
+    new(GetClass(),TEXT("BorderlessFullscreen"), RF_Public)UBoolProperty(CPP_PROPERTY(BorderlessFullscreen), TEXT("Display"), CPF_Config );
     // The retail key the game's own "Enable Joystick" option writes (GUI2K4: `set ini:Engine.Engine.ViewportManager
     // UseJoystick`); on by default.
     new(GetClass(),TEXT("UseJoystick"),       RF_Public)UBoolProperty(CPP_PROPERTY(UseJoystick),       TEXT("Joystick"), CPF_Config );
@@ -66,6 +68,7 @@ void USDL2Client::StaticConstructor()
     ReportDynamicUploads    = 0;
     WeatherEffects          = 1;
     StartupFullscreen       = 0;
+    BorderlessFullscreen    = 1;
     UseJoystick             = 1;
     WebGLVersion            = 1;
     PadCursorSeconds        = 3.0f;

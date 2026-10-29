@@ -231,6 +231,15 @@ the first two replacements off.
   game exits and its running executable starts again with the arguments (Linux and Windows; Android and the web only
   exit). With `-server` (Host Game's Dedicated button: `<url> -server`) the UCC takes over instead: `./ucc-bin server
   <url>` on Linux (in an `xterm` when one is installed), `ucc.exe server <url>` on Windows.
+- Fullscreen: Alt+Enter and `TOGGLEFULLSCREEN` switch between the window and fullscreen, and `[SDL2Drv.SDL2Client]
+  StartupFullscreen` starts in fullscreen. On the native desktop, with `BorderlessFullscreen` (True) fullscreen is
+  SDL's desktop fullscreen: the window covers its display at the display's own resolution, the game renders at that
+  size (`SDL2Viewport: borderless fullscreen at <w>x<h>`), `FullscreenViewportX/Y` are left as they are, and a
+  fullscreen `SETRES` (the Display settings' resolution) is not applied there (`SETRES <w>x<h> not applied: borderless
+  fullscreen stays at <w>x<h>`); a windowed `SETRES` at the borderless size (the Display settings' Full Screen box)
+  leaves fullscreen as Alt+Enter does. With `False` fullscreen is exclusive: the display changes to the mode nearest
+  `FullscreenViewportX/Y`, and `SETRES` changes the mode and keeps its size there. Leaving fullscreen gives the window
+  back `WindowedViewportX/Y`. The web and Android builds do not read the key.
 - `[SDL2Drv.SDL2Client] UseJoystick` (on by default): game pads, one pad (the first connected), the shared button
   map, sticks sent as rates. In play the left stick is the move stick: its deadzone is radial (0.12, rescaled from its
   edge), so every direction between the axes keeps both parts, and a tilt out of it but below
