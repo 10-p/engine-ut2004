@@ -55,7 +55,8 @@ import java.util.Locale;
  * All files access (Android 11 and later; the storage permission before that): starting from there
  * without it asks to allow it or to copy the game to internal storage instead. "Clear internal storage"
  * deletes the internal copy; "Copy settings and saves" writes the internal copy's inis and saves back to
- * the chosen folder.
+ * the chosen folder. The touch move stick's distances and gyro aiming (on or off, and its sensitivities:
+ * {@link GyroAim}) are the player's too.
  *
  * The storage choice is conveyed to the separate ":game" process via an Intent extra
  * ({@link GameActivity#EXTRA_STORAGE_MODE}); default-mode SharedPreferences would not be multi-process
@@ -75,6 +76,9 @@ public class MainActivity extends Activity {
     private static final String PREF_FOLDER = "folderUri";
     private static final String PREF_MOVE_FULL_TILT = "moveFullTiltDp";
     private static final String PREF_MOVE_DEAD_ZONE = "moveDeadZoneDp";
+    private static final String PREF_GYRO_AIM = "gyroAim";
+    private static final String PREF_GYRO_YAW = "gyroYawScale";
+    private static final String PREF_GYRO_PITCH = "gyroPitchScale";
     // The game's own settings and saves, relative to the game folder.
     private static final String[] SETTINGS_AND_SAVES = { "System/UT2004.ini", "System/User.ini", "Save" };
 
@@ -231,6 +235,7 @@ public class MainActivity extends Activity {
         });
 
         buildMoveStickRows(col);
+        buildGyroRows(col);
         buildRendererRow(col);
 
         TextView hint = new TextView(this);
@@ -307,6 +312,37 @@ public class MainActivity extends Activity {
     /** The touch move stick's dead zone as saved, in its range and below full tilt. */
     private float savedMoveDeadZone() {
         return GameActivity.moveDeadZone(prefs().getFloat(PREF_MOVE_DEAD_ZONE, GameActivity.MOVE_DEAD_ZONE_DP), savedMoveFullTilt());
+    }
+
+    // ---- gyro aiming ----------------------------------------------------------------------------
+
+    private Switch gyroSwitch;
+
+    private void buildGyroRows(LinearLayout col) {
+        label(col, "Gyro aiming", 14f, 0xFFB8BCC2, 20);
+        gyroSwitch = new Switch(this);
+        gyroSwitch.setTextColor(0xFFECEFF3);
+        gyroSwitch.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f);
+        gyroSwitch.setChecked(prefs().getBoolean(PREF_GYRO_AIM, false));
+        gyroSwitch.setText(gyroSwitch.isChecked() ? "On" : "Off");
+        gyroSwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override public void onCheckedChanged(CompoundButton b, boolean checked) {
+                gyroSwitch.setText(checked ? "On" : "Off");
+                prefs().edit().putBoolean(PREF_GYRO_AIM, checked).apply();
+            }
+        });
+        col.addView(gyroSwitch);
+        label(col, "In play, turning or twisting the device turns the view, and tilting it looks up and down.", 12f, 0xFF9AA0A8, 2);
+        new NumberRow(col, "Horizontal sensitivity", PREF_GYRO_YAW, GyroAim.SCALE_MIN, GyroAim.SCALE_MAX, 0.05f, GyroAim.SCALE_DEFAULT) {
+            @Override String describe(float v) {
+                return String.format(Locale.US, "The view turns %.2f degrees for each degree the device turns", v);
+            }
+        };
+        new NumberRow(col, "Vertical sensitivity", PREF_GYRO_PITCH, GyroAim.SCALE_MIN, GyroAim.SCALE_MAX, 0.05f, GyroAim.SCALE_DEFAULT) {
+            @Override String describe(float v) {
+                return String.format(Locale.US, "The view tilts %.2f degrees for each degree the device tilts", v);
+            }
+        };
     }
 
     /**
@@ -396,8 +432,10 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** Up to two decimals, without trailing zeros. */
     private static String format(float v) {
-        return v == Math.rint(v) ? String.format(Locale.US, "%.0f", v) : String.format(Locale.US, "%.1f", v);
+        String s = String.format(Locale.US, "%.2f", v);
+        return s.replaceAll("0+$", "").replaceAll("\\.$", "");
     }
 
     private TextView label(LinearLayout col, String text, float sp, int color, int top) {
@@ -472,6 +510,9 @@ public class MainActivity extends Activity {
         i.putExtra(GameActivity.EXTRA_STORAGE_MODE, mode);
         i.putExtra(GameActivity.EXTRA_MOVE_FULL_TILT_DP, fullTilt);
         i.putExtra(GameActivity.EXTRA_MOVE_DEAD_ZONE_DP, deadZone);
+        i.putExtra(GyroAim.EXTRA_GYRO_AIM, prefs().getBoolean(PREF_GYRO_AIM, false));
+        i.putExtra(GyroAim.EXTRA_GYRO_YAW_SCALE, GyroAim.scale(prefs().getFloat(PREF_GYRO_YAW, GyroAim.SCALE_DEFAULT)));
+        i.putExtra(GyroAim.EXTRA_GYRO_PITCH_SCALE, GyroAim.scale(prefs().getFloat(PREF_GYRO_PITCH, GyroAim.SCALE_DEFAULT)));
         // Forward an extra engine command line (a travel URL) if this launcher was itself started
         // with one — see GameActivity.EXTRA_ARGS. GameActivity is not exported, so this hop is the
         // only route an `adb shell am start` has into the game process.

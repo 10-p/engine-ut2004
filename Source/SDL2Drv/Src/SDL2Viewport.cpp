@@ -101,6 +101,10 @@ const BYTE USDL2Viewport::MouseButtonMap[6] =
       JUMP/CROUCH   -> IK_Space / IK_C
       NEXTWEAPON    -> IK_MouseWheelDown (momentary press+release)
       MENU          -> IK_Escape
+
+    Gyro aiming (GyroAim.java, the launcher's switch and sensitivities) sends the view's turn in degrees; in play
+    UpdateInput makes it the player's turn and look-up axes in rotation units, apart from the mouse's sensitivity,
+    smoothing and inversion; while a menu is up, or over a load, it drops it.
 -----------------------------------------------------------------------------*/
 
 // Semantic button ids -- keep in sync with GameActivity.Ut2004TouchOverlayView.
@@ -134,6 +138,11 @@ static float                           GAndroidLastMoveY = 0.f;
 // the player's own mouse sensitivity binding. 1.0 == "a screen pixel is a mouse count".
 static const float                     GAndroidLookScale = 1.0f;
 
+// Gyro aiming's turn in view degrees, to the right and up: the UI thread adds, the engine thread takes and clears it
+// each tick.
+static std::atomic<float>              GAndroidGyroYaw( 0.f );
+static std::atomic<float>              GAndroidGyroPitch( 0.f );
+
 // Pending button edges. A queue (not a level) so a tap that presses AND releases
 // between two engine ticks still fires. Low volume; a plain mutex is ample.
 struct FAndroidButtonEdge { INT Key; BYTE Action; };
@@ -153,6 +162,57 @@ static inline void AndroidAtomicAddF( std::atomic<float>& A, float V )
 {
     float Old = A.load( std::memory_order_relaxed );
     while( !A.compare_exchange_weak( Old, Old + V, std::memory_order_relaxed ) ) {}
+}
+
+// The gyro's degrees waiting for the player's tick and the fractions of a rotation unit not applied yet (yaw, pitch),
+// and with -UFRONTLOG its totals in play.
+static FLOAT                           GAndroidGyroPending[2] = { 0.f, 0.f };
+static FLOAT                           GAndroidGyroCarry[2] = { 0.f, 0.f };
+static DOUBLE                          GAndroidGyroDegrees[2] = { 0.0, 0.0 };
+static INT                             GAndroidGyroUnits[2] = { 0, 0 };
+static DOUBLE                          GAndroidGyroLastTime = 0.0;
+static UBOOL                           GAndroidGyroUnlogged = 0;
+// The last update's time: the turn sent while the game did not tick for half a second (a load) is not aim.
+static DOUBLE                          GAndroidGyroTickTime = 0.0;
+
+// Degrees as whole rotation units (65536 a turn, toward zero), the fraction carried to the next tick.
+static INT AndroidGyroUnits( FLOAT Degrees, FLOAT& Carry )
+{
+    const FLOAT Units = Degrees * ( 65536.f / 360.f ) + Carry;
+    const INT Whole = (INT)Units;
+    Carry = Units - (FLOAT)Whole;
+    return Whole;
+}
+
+// The axis value that turns exactly Units when the script turns UnitsPerAxis times the axis, cut to whole units: half
+// a unit past it, so the cut lands on it.
+static FLOAT AndroidGyroAxis( INT Units, FLOAT UnitsPerAxis )
+{
+    if( Units == 0 )
+        return 0.f;
+    return ( (FLOAT)Units + ( Units > 0 ? 0.5f : -0.5f ) ) / UnitsPerAxis;
+}
+
+// With -UFRONTLOG, the totals applied in play once the gyro has rested for a quarter of a second.
+static void AndroidGyroNote( FLOAT YawDegrees, FLOAT PitchDegrees, INT YawUnits, INT PitchUnits )
+{
+    const DOUBLE Now = appSeconds();
+    if( YawDegrees != 0.f || PitchDegrees != 0.f )
+    {
+        GAndroidGyroDegrees[0] += YawDegrees;
+        GAndroidGyroDegrees[1] += PitchDegrees;
+        GAndroidGyroUnits[0] += YawUnits;
+        GAndroidGyroUnits[1] += PitchUnits;
+        GAndroidGyroLastTime = Now;
+        GAndroidGyroUnlogged = 1;
+    }
+    else if( GAndroidGyroUnlogged && Now - GAndroidGyroLastTime >= 0.25 )
+    {
+        GAndroidGyroUnlogged = 0;
+        if( GUfrontLog )
+            debugf( NAME_Log, TEXT("Gyro: %.3f degrees right and %.3f up in play in all, %i yaw and %i pitch units"),
+                GAndroidGyroDegrees[0], GAndroidGyroDegrees[1], GAndroidGyroUnits[0], GAndroidGyroUnits[1] );
+    }
 }
 
 extern "C" {
@@ -178,6 +238,13 @@ Java_com_ut2004_android_GameActivity_nativeTouchLook( JNIEnv*, jclass, jfloat DX
 {
     AndroidAtomicAddF( GAndroidLookX, DX );
     AndroidAtomicAddF( GAndroidLookY, DY );
+}
+
+JNIEXPORT void JNICALL
+Java_com_ut2004_android_GameActivity_nativeGyroLook( JNIEnv*, jclass, jfloat YawDegrees, jfloat PitchDegrees )
+{
+    AndroidAtomicAddF( GAndroidGyroYaw, YawDegrees );
+    AndroidAtomicAddF( GAndroidGyroPitch, PitchDegrees );
 }
 
 JNIEXPORT void JNICALL
@@ -1767,6 +1834,39 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
             CauseInputEvent( IK_JoyY, IST_Axis, MoveY );
         GAndroidLastMoveX = MoveX;
         GAndroidLastMoveY = MoveY;
+    }
+
+    // Gyro aiming, in play (no menu, the game ticking): whole rotation units as the turn and look-up axes, which no mouse
+    // setting scales, once a tick: from the player's tick (DeltaSeconds > 0), just before ReadInput, so the half unit is
+    // added once. The player turns 32 * DeltaTime * aTurn units a tick (PlayerController.UpdateRotation) after
+    // ReadInput's 20 / DeltaTime and PlayerInput's FOV scale (DesiredFOV * 0.01111), aLookUp the same: 640 units per unit
+    // of the axis at FOV 90.
+    {
+        GAndroidGyroPending[0] += GAndroidGyroYaw.exchange( 0.f, std::memory_order_relaxed );
+        GAndroidGyroPending[1] += GAndroidGyroPitch.exchange( 0.f, std::memory_order_relaxed );
+        const DOUBLE Now = appSeconds();
+        const UBOOL Ticking = Now - GAndroidGyroTickTime < 0.5;
+        GAndroidGyroTickTime = Now;
+        const UBOOL InPlay = Ticking && Actor && !Menu && !bShowWindowsMouse && Actor->DesiredFOV > 0.f;
+        FLOAT Yaw = 0.f, Pitch = 0.f;
+        INT YawUnits = 0, PitchUnits = 0;
+        if( !InPlay )
+        {
+            GAndroidGyroPending[0] = GAndroidGyroPending[1] = 0.f;
+            GAndroidGyroCarry[0] = GAndroidGyroCarry[1] = 0.f;
+        }
+        else if( DeltaSeconds > 0.f )
+        {
+            const FLOAT UnitsPerAxis = 32.f * 20.f * Actor->DesiredFOV * 0.01111f;
+            Yaw = GAndroidGyroPending[0];
+            Pitch = GAndroidGyroPending[1];
+            GAndroidGyroPending[0] = GAndroidGyroPending[1] = 0.f;
+            YawUnits = AndroidGyroUnits( Yaw, GAndroidGyroCarry[0] );
+            PitchUnits = AndroidGyroUnits( Pitch, GAndroidGyroCarry[1] );
+            Actor->aTurn += AndroidGyroAxis( YawUnits, UnitsPerAxis );
+            Actor->aLookUp += AndroidGyroAxis( PitchUnits, UnitsPerAxis );
+        }
+        AndroidGyroNote( Yaw, Pitch, YawUnits, PitchUnits );
     }
 
 #endif // __ANDROID__
