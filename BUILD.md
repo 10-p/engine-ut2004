@@ -232,7 +232,8 @@ the first two replacements off.
   exit). With `-server` (Host Game's Dedicated button: `<url> -server`) the UCC takes over instead: `./ucc-bin server
   <url>` on Linux (in an `xterm` when one is installed), `ucc.exe server <url>` on Windows.
 - Fullscreen: Alt+Enter and `TOGGLEFULLSCREEN` switch between the window and fullscreen, and `[SDL2Drv.SDL2Client]
-  StartupFullscreen` starts in fullscreen. On the native desktop, with `BorderlessFullscreen` (True) fullscreen is
+  StartupFullscreen` starts in fullscreen. Alt+Enter switches once per press (held, its key repeat switches nothing),
+  and its Enter never reaches the menus, the console or the game, also when Alt is let go first. On the native desktop, with `BorderlessFullscreen` (True) fullscreen is
   SDL's desktop fullscreen: the window covers its display at the display's own resolution, the game renders at that
   size (`SDL2Viewport: borderless fullscreen at <w>x<h>`), `FullscreenViewportX/Y` are left as they are, and a
   fullscreen `SETRES` (the Display settings' resolution) is not applied there (`SETRES <w>x<h> not applied: borderless

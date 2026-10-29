@@ -93,6 +93,10 @@ const BYTE USDL2Viewport::MouseButtonMap[6] =
     /* SDL_BUTTON_X2     */ IK_Mouse5
 };
 
+// The Enter of Alt+Enter is held: it toggled the full screen, so its auto-repeat and its release go nowhere (the
+// menus and the console act on Enter).
+static UBOOL GToggleEnterHeld = 0;
+
 #if defined(__ANDROID__)
 /*-----------------------------------------------------------------------------
     Android touch input glue.
@@ -1566,11 +1570,22 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
             if( Key == 0 )
                 break;
 
-            // Alt+Enter toggles fullscreen.
+            // Alt+Enter toggles fullscreen, once per press: the key's auto-repeat while it is held toggles nothing.
             if( (Ev.key.keysym.mod & KMOD_ALT) && Key == IK_Enter )
             {
-                ToggleFullscreen();
+                if( !Ev.key.repeat )
+                {
+                    GToggleEnterHeld = 1;
+                    ToggleFullscreen();
+                }
                 break;
+            }
+            if( Key == IK_Enter && GToggleEnterHeld )
+            {
+                // The toggle's Enter still held (Alt let go first) repeats nothing; a fresh press is a press.
+                if( Ev.key.repeat )
+                    break;
+                GToggleEnterHeld = 0;
             }
 
             CauseInputEvent( Key, IST_Press );
@@ -1585,6 +1600,11 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
             BYTE Key = KeyMap[Ev.key.keysym.scancode];
             if( Key == 0 )
                 break;
+            if( Key == IK_Enter && GToggleEnterHeld )
+            {
+                GToggleEnterHeld = 0;
+                break;
+            }
 
             CauseInputEvent( Key, IST_Release );
             break;
