@@ -3909,7 +3909,8 @@ UClass* UObject::StaticLoadClass( UClass* BaseClass, UObject* InOuter, const TCH
 	{
 		UClass* Class = LoadObject<UClass>( InOuter, InName, Filename, LoadFlags | LOAD_Throw, Sandbox );
 		if( Class && !Class->IsChildOf(BaseClass) )
-			appThrowf( LocalizeError(TEXT("LoadClassMismatch"),TEXT("Core")), Class->GetFullName(), BaseClass->GetFullName() );
+			// The message is "%s is not a child class of %s.%s": the class, then the base class's package and name.
+			appThrowf( LocalizeError(TEXT("LoadClassMismatch"),TEXT("Core")), Class->GetFullName(), BaseClass->GetOuter()->GetName(), BaseClass->GetName() );
 		return Class;
 	}
 	catch( const TCHAR* Error )
