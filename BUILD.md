@@ -230,7 +230,8 @@ the first two replacements off.
 - `RELAUNCH [<arguments>]` (Epic's command; the menus' restart and a mod's activation, `-mod=<folder>`, use it): the
   game exits and its running executable starts again with the arguments (Linux and Windows; Android and the web only
   exit). With `-server` (Host Game's Dedicated button: `<url> -server`) the UCC takes over instead: `./ucc-bin server
-  <url>` on Linux (in an `xterm` when one is installed), `ucc.exe server <url>` on Windows.
+  <url>` on Linux (in an `xterm` when one is installed), `ucc.exe server <url>` on Windows; on the web it is a fatal
+  error, `Failed to launch process. Relaunch: <arguments>`.
 - Fullscreen: Alt+Enter and `TOGGLEFULLSCREEN` switch between the window and fullscreen, and `[SDL2Drv.SDL2Client]
   StartupFullscreen` starts in fullscreen. Alt+Enter switches once per press (held, its key repeat switches nothing),
   and its Enter never reaches the menus, the console or the game, also when Alt is let go first. On the native desktop, with `BorderlessFullscreen` (True) fullscreen is
