@@ -9,6 +9,10 @@
 #include "EnginePrivate.h"
 #include "UnNet.h"
 
+// The viewport a SHOT command asked a shot of, and the command's text; its next Unlock takes the shot.
+static UViewport* GPendingShotViewport = NULL;
+static FString GPendingShotCmd;
+
 /*-----------------------------------------------------------------------------
 	URenderDevice.
 -----------------------------------------------------------------------------*/
@@ -184,6 +188,9 @@ void UViewport::Destroy()
 {
 	guard(UViewport::Destroy);
 
+	if( GPendingShotViewport == this )
+		GPendingShotViewport = NULL;
+
 	// Temporary for editor!!
 	if( GetOuterUClient()->Engine->Audio && GetOuterUClient()->Engine->Audio->GetViewport()==this )
 		GetOuterUClient()->Engine->Audio->SetViewport( NULL );
@@ -297,6 +304,58 @@ UBOOL UViewport::Lock( BYTE* HitData, INT* HitSize )
 }
 
 //
+// SHOT: the frame read back into ShotDir (User.ini [Screenshots]), named by ShotMask or the command's token.
+// A SHOT command asks for it; Unlock takes it.
+//
+static void TakeScreenshot( UViewport* Viewport, const TCHAR* Cmd )
+{
+	guard(TakeScreenshot);
+	FMemMark Mark(GMem);
+	FColor* Buf = new(GMem,Viewport->SizeX*Viewport->SizeY)FColor;
+	Viewport->RenDev->ReadPixels( Viewport, Buf );
+
+	FString ShotDir;
+	if ( !GConfig->GetString( TEXT("Screenshots"), TEXT("Location"), ShotDir, TEXT("User.ini")) )
+		ShotDir = TEXT("..\\ScreenShots");
+
+	GFileManager->MakeDirectory( *ShotDir );
+
+	FString ShotName;
+
+	if( !ParseToken( Cmd, ShotName, 0 ) )
+	{
+		if ( !GConfig->GetString( TEXT("Screenshots"), TEXT("ShotMask"), ShotName, TEXT("user.ini")) )
+			ShotName=TEXT("Shot%c");
+	}
+
+	ShotName = ShotName.Replace(TEXT("%m"),*Viewport->Actor->Level->Title);
+
+	INT Year, Month, DayOfWeek, Day, Hour, Min,Sec,MSec;
+	appSystemTime(Year, Month, DayOfWeek, Day, Hour, Min,Sec,MSec);
+
+	ShotName = ShotName.Replace(TEXT("%td"), *FString::Printf(TEXT("%i-%i-%i-%i"),Year,Month,Day,((Hour*3600)+(Min*60)+Sec)*1000+MSec));
+	ShotName = ShotName.Replace(TEXT("%d"),  *FString::Printf(TEXT("%i-%i-%i"),Month,Day,Year));
+	ShotName = ShotName.Replace(TEXT("%t"),  *FString::Printf(TEXT("%i"),((Hour*3600)+(Min*60)+Sec)*1000+MSec));
+
+	if ( Viewport->Actor && Viewport->Actor->PlayerReplicationInfo )
+		ShotName = ShotName.Replace(TEXT("%p"), *Viewport->Actor->PlayerReplicationInfo->PlayerName);
+
+	INT ShotCount=0;
+	GConfig->GetInt(TEXT("Screenshots"),TEXT("ShotCount"),ShotCount,TEXT("User.ini"));
+
+	ShotName = ShotName.Replace(TEXT("%c"), *FString::Printf(TEXT("%05i"),ShotCount));
+	ShotName = FString::Printf(TEXT("%s\\%s"),*ShotDir,*ShotName);
+
+	appCreateBitmap( *ShotName, Viewport->SizeX, Viewport->SizeY, (DWORD*) Buf, GFileManager );
+
+	ShotCount++;
+	GConfig->SetInt(TEXT("Screenshots"),TEXT("ShotCount"),ShotCount,TEXT("User.ini"));
+
+	Mark.Pop();
+	unguard;
+}
+
+//
 // Unlock the viewport.
 //
 void UViewport::Unlock()
@@ -310,6 +369,14 @@ void UViewport::Unlock()
 	RenDev->Unlock( RI );
 
 	PendingFrame = 1;
+
+	// The finished frame (not a precache pass), before it is presented: UGameEngine::Draw presents a frame at the
+	// start of the next one, and by then a browser has shown the WebGL drawing buffer and cleared it.
+	if( GPendingShotViewport == this && !Precaching )
+	{
+		GPendingShotViewport = NULL;
+		TakeScreenshot( this, *GPendingShotCmd );
+	}
 
 	unguard;
 }
@@ -438,53 +505,10 @@ UBOOL UViewport::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 	}
 	else if( ParseCommand(&Cmd,TEXT("SHOT")) )
 	{
-#if 1 
-		FMemMark Mark(GMem);
-		FColor* Buf = new(GMem,SizeX*SizeY)FColor;
-		RenDev->ReadPixels( this, Buf );
-
-		FString ShotDir;
-		if ( !GConfig->GetString( TEXT("Screenshots"), TEXT("Location"), ShotDir, TEXT("User.ini")) )
-			ShotDir = TEXT("..\\ScreenShots");
-
-		GFileManager->MakeDirectory( *ShotDir );
-
-		FString ShotName;
-
-		if( !ParseToken( Cmd, ShotName, 0 ) )
-		{
-			if ( !GConfig->GetString( TEXT("Screenshots"), TEXT("ShotMask"), ShotName, TEXT("user.ini")) )
-				ShotName=TEXT("Shot%c");
-		}
-
-		ShotName = ShotName.Replace(TEXT("%m"),*Actor->Level->Title);
-
-		INT Year, Month, DayOfWeek, Day, Hour, Min,Sec,MSec;
-		appSystemTime(Year, Month, DayOfWeek, Day, Hour, Min,Sec,MSec);
-
-		ShotName = ShotName.Replace(TEXT("%td"), *FString::Printf(TEXT("%i-%i-%i-%i"),Year,Month,Day,((Hour*3600)+(Min*60)+Sec)*1000+MSec));
-		ShotName = ShotName.Replace(TEXT("%d"),  *FString::Printf(TEXT("%i-%i-%i"),Month,Day,Year));
-		ShotName = ShotName.Replace(TEXT("%t"),  *FString::Printf(TEXT("%i"),((Hour*3600)+(Min*60)+Sec)*1000+MSec));
-
-		if ( Actor && Actor->PlayerReplicationInfo )
-			ShotName = ShotName.Replace(TEXT("%p"), *Actor->PlayerReplicationInfo->PlayerName);
-
-		INT ShotCount=0;
-		GConfig->GetInt(TEXT("Screenshots"),TEXT("ShotCount"),ShotCount,TEXT("User.ini"));
-
-		ShotName = ShotName.Replace(TEXT("%c"), *FString::Printf(TEXT("%05i"),ShotCount));
-		ShotName = FString::Printf(TEXT("%s\\%s"),*ShotDir,*ShotName);
-
-		appCreateBitmap( *ShotName, SizeX, SizeY, (DWORD*) Buf, GFileManager );
-
-		ShotCount++;
-		GConfig->SetInt(TEXT("Screenshots"),TEXT("ShotCount"),ShotCount,TEXT("User.ini"));
-
-		Mark.Pop();
-#else
-        QueueScreenShot = 1;
-#endif
-        return 1;
+		// Taken when the viewport's next frame is finished (Unlock), before it goes to the screen.
+		GPendingShotViewport = this;
+		GPendingShotCmd = Cmd;
+		return 1;
 	}
 	else if( ParseCommand(&Cmd,TEXT("SHOWACTORS")) )
 	{
