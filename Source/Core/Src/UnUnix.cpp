@@ -1222,6 +1222,10 @@ UBOOL USystem::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 			return 1;
 		}
 
+#ifdef __EMSCRIPTEN__
+		// A page cannot start a dedicated server: a fatal error that names the command's arguments.
+		appErrorf( TEXT("Failed to launch process. Relaunch: %s"), Cmd );
+#else
 		// Fork out a new process using Cmd as arguments.
 		TCHAR* EndArg0 = appStrstr( Cmd, TEXT(" ") );
 		INT CmdLen = appStrlen( Cmd );
@@ -1294,6 +1298,7 @@ UBOOL USystem::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 		} else {
 			appRequestExit( 0 );
 		}
+#endif
 #endif
 		return 1;
 	}
