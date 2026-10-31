@@ -46,6 +46,17 @@ void UWebRTCNetDriver::StaticConstructor()
 	unguard;
 }
 
+// Read and drop every datagram queued on the client slot (glue conn 0).
+static void DiscardQueuedClientData()
+{
+	BYTE Data[WEBRTC_MAX_PACKET];
+	INT Discarded = 0;
+	while( ue_net_recv( 0, Data, sizeof(Data) ) > 0 )
+		Discarded++;
+	if( Discarded )
+		debugf( NAME_DevNet, TEXT("[WebRTC] InitConnect: discarded %i datagram(s) queued for the previous client connection"), Discarded );
+}
+
 UBOOL UWebRTCNetDriver::InitConnect( FNetworkNotify* InNotify, FURL& ConnectURL, FString& Error )
 {
 	guard(UWebRTCNetDriver::InitConnect);
@@ -103,6 +114,9 @@ UBOOL UWebRTCNetDriver::InitConnect( FNetworkNotify* InNotify, FURL& ConnectURL,
 	}
 	GClientDriver = this;
 	ue_net_connect( TCHAR_TO_ANSI(*ServerPeerId) );
+	// The new session's pipe opens later, so every datagram already queued on the client slot belongs to an
+	// earlier connection; the pending connection must not parse it as its own.
+	DiscardQueuedClientData();
 
 	// Create server connection in pending state.
 	ServerConnection = new UWebRTCConnection( 0, this, USOCK_Pending, 1, ConnectURL );
