@@ -827,6 +827,10 @@ CORE_API void VARARGS appThrowf( const TCHAR* Fmt, ... )
 {
 	static TCHAR TempStr[4096];
 	GET_VARARGS(TempStr,ARRAY_COUNT(TempStr),Fmt,Fmt);
+	// Echo the reason to stdout first, as "[appThrowf] <reason>", so a throw that nothing catches still names
+	// its cause.
+	printf("[appThrowf] %s\n", TempStr);
+	fflush(stdout);
 	throw( (const TCHAR*)TempStr );
 }
 
