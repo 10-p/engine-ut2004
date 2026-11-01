@@ -157,6 +157,9 @@ FGL4ESMaterialStateStage::FGL4ESMaterialStateStage()
 	UseTexGenMatrix				= 0;
 	TexCoordIndex				= TCS_NoChange;
 	TexCoordCount				= TCN_2DCoords;
+	IsLightmap					= 0;
+	TexGenModeApplied			= 0;
+	TexGenCountApplied			= 0;
 	TextureAddressU				= GL_CLAMP_TO_EDGE;
 	TextureAddressV				= GL_CLAMP_TO_EDGE;
 	TextureAddressW				= GL_CLAMP_TO_EDGE;
@@ -282,6 +285,7 @@ void FGL4ESRenderInterface::HandleLightmap_SP( FGL4ESMaterialStateStage& Stage, 
 	Stage.ColorOp					= GL_MODULATE;
 	Stage.ColorScale				= CurrentState->LightingModulate2X ? 2.0f : 1.0f;
 	Stage.Texture					= Lightmap;
+	Stage.IsLightmap				= 1;
 	Stage.TextureAddressU			= GL_CLAMP_TO_EDGE; 
 	Stage.TextureAddressV			= GL_CLAMP_TO_EDGE; 
 	Stage.TexCoordIndex				= TCS_Stream1;
@@ -370,6 +374,7 @@ void FGL4ESRenderInterface::HandleLighting_MP( FGL4ESMaterialStateStage& Stage, 
 	}
 
 	Stage.Texture			= Lightmap;
+	Stage.IsLightmap		= Lightmap != NULL;
 	Stage.TextureAddressU	= GL_REPEAT;
 	Stage.TextureAddressV	= GL_REPEAT;
 	

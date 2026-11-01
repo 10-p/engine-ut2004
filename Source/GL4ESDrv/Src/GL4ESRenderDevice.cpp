@@ -73,6 +73,10 @@ UGL4ESRenderDevice::UGL4ESRenderDevice() :
 	ValidContext		= 0;
 	WasFullscreen		= 0;
 
+	BicubicLightmapsSupported	= 0;
+	BilinearLightmapPrograms	= 0;
+	appMemzero( &LightmapProgramOptions, sizeof(LightmapProgramOptions) );
+
 	unguard;
 }
 
@@ -99,6 +103,7 @@ void UGL4ESRenderDevice::StaticConstructor()
 	new(GetClass(),TEXT("UseHardwareGamma"),	RF_Public)UBoolProperty ( CPP_PROPERTY(UseHardwareGamma    ), TEXT("Options"), CPF_Config );
 	new(GetClass(),TEXT("UseRenderTargets"),	RF_Public)UBoolProperty	( CPP_PROPERTY(UseRenderTargets    ), TEXT("Options"), CPF_Config );
 	new(GetClass(),TEXT("UsePixelShaders"),		RF_Public)UBoolProperty ( CPP_PROPERTY(UsePixelShaders     ), TEXT("Options"), CPF_Config );
+	new(GetClass(),TEXT("UseBicubicLightmaps"),	RF_Public)UBoolProperty ( CPP_PROPERTY(UseBicubicLightmaps ), TEXT("Options"), CPF_Config );
 
 	GIsOpenGL						= 1;
 	GIsPixomatic					= 0;
@@ -129,6 +134,10 @@ void UGL4ESRenderDevice::StaticConstructor()
 
 	// Off: UpdateGamma reprograms the display's ramp, not the game's (as OpenGLDrv's UseHardwareGamma).
 	UseHardwareGamma				= 0;
+
+	// On: the passes that carry a lightmap draw through GLSL programs that read the lightmap as a cubic
+	// B-spline (FixedFunctionPrograms.h). False keeps every pass on the fixed-function path.
+	UseBicubicLightmaps				= 1;
 
 	// Not raised:
 	//   UsePixelShaders   0 - the fixed-function path is the one this device actually implements.
@@ -876,6 +885,23 @@ UBOOL UGL4ESRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Ful
     SupportsRenderToTextureRGBA8888 = SUPPORTS_GL_EXT_framebuffer_object;
     SupportsRenderToTextureRGB565 = SUPPORTS_GL_EXT_framebuffer_object;
     SupportsRenderToTextureNPOT = SUPPORTS_GL_ARB_texture_non_power_of_two;
+
+	// The lightmap passes' GLSL programs, which gl4es converts to GLSL ES. They need highp floats in the fragment
+	// stage (the filter's texel arithmetic). gl4es does not apply a unit's LOD bias to a program's lookups, and
+	// its own fixed-function shaders reflect per fragment: the programs add the bias and reflect the same way.
+	BicubicLightmapsSupported = SUPPORTS_GL_ARB_shader_objects && SUPPORTS_GL_ARB_vertex_shader && SUPPORTS_GL_ARB_fragment_shader;
+	if( BicubicLightmapsSupported && SUPPORTS_GL_ARB_ES2_compatibility )
+	{
+		GLint Range[2] = { 0, 0 }, Precision = 0;
+		glGetShaderPrecisionFormat( GL_FRAGMENT_SHADER, GL_HIGH_FLOAT, Range, &Precision );
+		if( !Precision )
+			BicubicLightmapsSupported = 0;
+	}
+	LightmapProgramOptions.Gl4es				= 1;
+	LightmapProgramOptions.ShaderLodBias		= SUPPORTS_GL_EXT_texture_lod_bias;
+	LightmapProgramOptions.FragmentReflection	= 1;
+	LightmapProgramOptions.GradLookups			= 1;
+	GL4ESDeviceInfof( TEXT("GL4ES: Lightmap filter: %s"), LightmapFilterName() );
 	GL4ESDeviceInfoLogged = 1;
 
 	// Disable vsync.
@@ -1106,6 +1132,11 @@ void UGL4ESRenderDevice::Flush(UViewport* Viewport)
 		delete PixelShaders;
 	unguard;
 
+	if( ValidContext )
+		LightmapPrograms.Flush( this );
+	else
+		LightmapPrograms.Empty();
+
 	VARIndex = 0;
 
 	PrecacheOnFlip = 1;//UsePrecaching;
@@ -1258,6 +1289,26 @@ UBOOL UGL4ESRenderDevice::Exec(const TCHAR* Cmd,FOutputDevice& Ar)
 	{
 		if (appStrcmp(Cmd,TEXT("")) != 0)
 			NEAR_CLIPPING_PLANE = appAtof(Cmd);
+		return 1;
+	}
+	// BICUBICLIGHTMAPS [0|1|2]: sets UseBicubicLightmaps for this session (no argument toggles it) and names the
+	// lightmap filter; 2 keeps the programs but reads the lightmap bilinear, the fixed-function result through the
+	// program path. BICUBICLIGHTMAPS EDGES: what the filter reads past the lightmaps of the current level.
+	else if( ParseCommand(&Cmd,TEXT("BICUBICLIGHTMAPS")) )
+	{
+		if( ParseCommand(&Cmd,TEXT("EDGES")) )
+		{
+			FFLogLightmapEdges( UseCompressedLightmaps, Ar );
+			return 1;
+		}
+		while( *Cmd == ' ' )
+			Cmd++;
+		UseBicubicLightmaps			= *Cmd ? (appAtoi(Cmd) != 0) : !UseBicubicLightmaps;
+		BilinearLightmapPrograms	= *Cmd && appAtoi(Cmd) == 2;
+		FString Answer = FString::Printf( TEXT("BICUBICLIGHTMAPS: lightmap filter %s"), LightmapFilterName() );
+		debugf( TEXT("%s"), *Answer );
+		if( &Ar != GLog )
+			Ar.Log( *Answer );
 		return 1;
 	}
 	else if( ParseCommand(&Cmd,TEXT("SUPPORTEDRESOLUTION")) )
@@ -1533,6 +1584,17 @@ public:
 	{}
 };
 
+
+const TCHAR* UGL4ESRenderDevice::LightmapFilterName()
+{
+	if( !UseBicubicLightmaps )
+		return TEXT("bilinear (fixed function)");
+	if( BicubicLightmapsSupported && BilinearLightmapPrograms )
+		return TEXT("bilinear (GLSL programs)");
+	if( !BicubicLightmapsSupported )
+		return TEXT("bilinear (fixed function: UseBicubicLightmaps needs GLSL and highp fragment floats)");
+	return TEXT("bicubic (cubic B-spline, GLSL programs)");
+}
 
 FGL4ESPixelShader* UGL4ESRenderDevice::GetPixelShader(EGL4ESPixelShader Type)
 {

@@ -565,6 +565,30 @@ GL_PROC(_GL_EXT_framebuffer_object,void,glGenerateMipmapEXT,(GLenum))
 // non-power-of-two texture support...needed by some mods for render-to-texture stuff.  --ryan.
 GL_EXT(_GL_ARB_texture_non_power_of_two)
 
+// GLSL programs for the passes that carry a lightmap (FixedFunctionPrograms.h), through the OpenGL 2.0 entry points.
+GL_EXT(_GL_ARB_shader_objects)
+GL_PROC(_GL_ARB_shader_objects,GLuint,glCreateShader,(GLenum))
+GL_PROC(_GL_ARB_shader_objects,void,glShaderSource,(GLuint,GLsizei,const ANSICHAR**,const GLint*))
+GL_PROC(_GL_ARB_shader_objects,void,glCompileShader,(GLuint))
+GL_PROC(_GL_ARB_shader_objects,void,glGetShaderiv,(GLuint,GLenum,GLint*))
+GL_PROC(_GL_ARB_shader_objects,void,glGetShaderInfoLog,(GLuint,GLsizei,GLsizei*,ANSICHAR*))
+GL_PROC(_GL_ARB_shader_objects,void,glDeleteShader,(GLuint))
+GL_PROC(_GL_ARB_shader_objects,GLuint,glCreateProgram,(void))
+GL_PROC(_GL_ARB_shader_objects,void,glAttachShader,(GLuint,GLuint))
+GL_PROC(_GL_ARB_shader_objects,void,glLinkProgram,(GLuint))
+GL_PROC(_GL_ARB_shader_objects,void,glGetProgramiv,(GLuint,GLenum,GLint*))
+GL_PROC(_GL_ARB_shader_objects,void,glGetProgramInfoLog,(GLuint,GLsizei,GLsizei*,ANSICHAR*))
+GL_PROC(_GL_ARB_shader_objects,void,glDeleteProgram,(GLuint))
+GL_PROC(_GL_ARB_shader_objects,void,glUseProgram,(GLuint))
+GL_PROC(_GL_ARB_shader_objects,GLint,glGetUniformLocation,(GLuint,const ANSICHAR*))
+GL_PROC(_GL_ARB_shader_objects,void,glUniform1i,(GLint,GLint))
+GL_PROC(_GL_ARB_shader_objects,void,glUniform4f,(GLint,GLfloat,GLfloat,GLfloat,GLfloat))
+GL_EXT(_GL_ARB_vertex_shader)
+GL_EXT(_GL_ARB_fragment_shader)
+// The GL ES fragment stage's float precision: the bicubic filter needs highp.
+GL_EXT(_GL_ARB_ES2_compatibility)
+GL_PROC(_GL_ARB_ES2_compatibility,void,glGetShaderPrecisionFormat,(GLenum,GLenum,GLint*,GLint*))
+
 /*-----------------------------------------------------------------------------
 	The End.
 -----------------------------------------------------------------------------*/

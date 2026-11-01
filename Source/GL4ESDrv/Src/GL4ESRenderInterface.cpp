@@ -756,11 +756,13 @@ void FGL4ESRenderInterface::SetMaterialBlending( FGL4ESMaterialState* NewMateria
 		FLOAT		TexFPlaneFloat[4];
 		FPlane&		TexFPlane = *((FPlane*) &TexFPlaneFloat);
 		UBOOL		Transpose = 0;
+		GLenum		TexGenGLMode = 0;
 
 		switch( Stage.TexGenMode )
 		{
 		case TCS_WorldCoords:
 			{
+				TexGenGLMode = GL_OBJECT_LINEAR;
 				for( INT i=0; i<TexCoordCount; i++ )
 				{
 					appMemzero( TexFPlaneFloat, sizeof(TexFPlaneFloat) );
@@ -779,6 +781,7 @@ void FGL4ESRenderInterface::SetMaterialBlending( FGL4ESMaterialState* NewMateria
 			}
 		case TCS_WorldEnvMapCoords:
 			{
+				TexGenGLMode = GL_REFLECTION_MAP;
 				for( INT i=0; i<TexCoordCount; i++ )
 				{
 					RenDev->glTexGeni( GL_S + i, GL_TEXTURE_GEN_MODE, GL_REFLECTION_MAP );
@@ -798,6 +801,7 @@ void FGL4ESRenderInterface::SetMaterialBlending( FGL4ESMaterialState* NewMateria
 		case TCS_CameraCoords:
 			{
 				FMatrix LocalToCamera = CurrentState->LocalToWorld * CurrentState->WorldToCamera;
+				TexGenGLMode = GL_OBJECT_LINEAR;
 		
 				for( INT i=0; i<TexCoordCount; i++ )
 				{
@@ -817,6 +821,7 @@ void FGL4ESRenderInterface::SetMaterialBlending( FGL4ESMaterialState* NewMateria
 			}
 		case TCS_CameraEnvMapCoords:			
 			{
+				TexGenGLMode = GL_REFLECTION_MAP;
 				for( INT i=0; i<TexCoordCount; i++ )
 				{
 					RenDev->glTexGeni( GL_S + i, GL_TEXTURE_GEN_MODE, GL_REFLECTION_MAP );
@@ -829,6 +834,7 @@ void FGL4ESRenderInterface::SetMaterialBlending( FGL4ESMaterialState* NewMateria
 			}
 		case TCS_ProjectorCoords:
 			{
+				TexGenGLMode = GL_NORMAL_MAP;
 				for( INT i=0; i<TexCoordCount; i++ )
 				{
 					RenDev->glTexGeni( GL_S + i, GL_TEXTURE_GEN_MODE, GL_NORMAL_MAP );
@@ -848,6 +854,8 @@ void FGL4ESRenderInterface::SetMaterialBlending( FGL4ESMaterialState* NewMateria
 		// Disable unwanted texgen.		
 		for( INT i=TexCoordCount; i<4; i++ )
 			RenDev->glDisable( GL_TEXTURE_GEN_S + i );
+		Stage.TexGenModeApplied		= TexCoordCount ? TexGenGLMode : 0;
+		Stage.TexGenCountApplied	= TexCoordCount;
 		
 		// Convert D3D matrix to OpenGL and also handle 'PROJECTED'.
     	if( Stage.TexGenProjected || Stage.TextureTransformsEnabled )
@@ -896,6 +904,62 @@ void FGL4ESRenderInterface::SetMaterialBlending( FGL4ESMaterialState* NewMateria
 	}
 
 	CurrentState->CurrentMaterialState = NewMaterialState;
+
+	unguard;
+}
+
+
+//
+//	FGL4ESRenderInterface::SetLightmapProgram
+//
+// With UseBicubicLightmaps on, a pass with a lightmap stage draws through the GLSL program that does what its
+// texture stages do (FixedFunctionPrograms.h), the lightmap read bicubic; the fixed-function state stays set
+// under it. Every other pass, and one the programs do not reproduce (hardware lighting, an ARB fragment
+// program, NV_texture_env_combine4), draws fixed function.
+//
+void FGL4ESRenderInterface::SetLightmapProgram( FGL4ESMaterialState* State )
+{
+	guard(FGL4ESRenderInterface::SetLightmapProgram);
+
+	FFFProgram*	Program			= NULL;
+	INT			LightmapStage	= -1;
+
+	if( RenDev->UseBicubicLightmaps && RenDev->BicubicLightmapsSupported && State->PixelShader == GL4ES_PS_None
+	&&	!CurrentState->UseDynamicLighting && State->StagesUsed <= FF_MAX_STAGES )
+	{
+		UBOOL Combine4 = RenDev->SUPPORTS_GL_NV_texture_env_combine4 && !RenDev->SUPPORTS_GL_ATI_texture_env_combine3;
+		for( INT s=0; s<State->StagesUsed; s++ )
+		{
+			FGL4ESMaterialStateStage& Stage = State->Stages[s];
+			if( Stage.IsLightmap && Stage.Texture && !Stage.Texture->IsCubemap )
+				LightmapStage = s;
+			if( Combine4 && Stage.UseNVCombine4 )
+			{
+				LightmapStage = -1;
+				break;
+			}
+		}
+
+		if( LightmapStage >= 0 )
+		{
+			FFFProgramKey Key;
+			appMemzero( &Key, sizeof(Key) );
+			Key.NumStages	= State->StagesUsed;
+			Key.Fog			= CurrentState->DistanceFogEnabled ? 1 : 0;
+			for( INT s=0; s<State->StagesUsed; s++ )
+				FFKeyStage( Key.Stages[s], State->Stages[s], s == LightmapStage && !RenDev->BilinearLightmapPrograms, RenDev->LightmapProgramOptions.ShaderLodBias );
+			Program = RenDev->LightmapPrograms.Find( RenDev, Key, RenDev->LightmapProgramOptions, TEXT("GL4ES") );
+		}
+	}
+
+	if( Program && Program->Program )
+	{
+		RenDev->LightmapPrograms.Use( RenDev, Program->Program );
+		FGL4ESTexture* Lightmap = State->Stages[LightmapStage].Texture;
+		RenDev->LightmapPrograms.SetLightmapSize( RenDev, Program, Lightmap->CachedWidth, Lightmap->CachedHeight );
+	}
+	else
+		RenDev->LightmapPrograms.Use( RenDev, 0 );
 
 	unguard;
 }
@@ -1705,6 +1769,7 @@ void FGL4ESRenderInterface::DrawPrimitive(EPrimitiveType PrimitiveType,INT First
 	for( INT Pass=0; Pass<CurrentState->NumMaterialPasses; Pass++ )
 	{
 		SetMaterialBlending( CurrentState->MaterialPasses[Pass] );
+		SetLightmapProgram( CurrentState->MaterialPasses[Pass] );
 
 		// Fog hacks needed for translucent objects.
 		UBOOL RestoreFogColor = 0;

@@ -45,6 +45,7 @@
 
 #include "Engine.h"
 
+#include "FixedFunctionPrograms.h"
 #include "OpenGLResource.h"
 #include "OpenGLRenderInterface.h"
 #include "OpenGLRenderDevice.h"

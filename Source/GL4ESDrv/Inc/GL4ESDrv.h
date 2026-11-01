@@ -45,6 +45,9 @@
 // Engine headers.
 #include "Engine.h"
 
+// The lightmap passes' GLSL programs, shared with OpenGLDrv.
+#include "../../OpenGLDrv/Inc/FixedFunctionPrograms.h"
+
 // Module headers.
 #include "GL4ESResource.h"
 #include "GL4ESRenderInterface.h"

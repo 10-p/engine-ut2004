@@ -73,6 +73,10 @@ UOpenGLRenderDevice::UOpenGLRenderDevice() :
 	ValidContext		= 0;
 	WasFullscreen		= 0;
 
+	BicubicLightmapsSupported	= 0;
+	BilinearLightmapPrograms	= 0;
+	appMemzero( &LightmapProgramOptions, sizeof(LightmapProgramOptions) );
+
 	unguard;
 }
 
@@ -100,6 +104,7 @@ void UOpenGLRenderDevice::StaticConstructor()
 	new(GetClass(),TEXT("UsePixelShaders"),		RF_Public)UBoolProperty ( CPP_PROPERTY(UsePixelShaders     ), TEXT("Options"), CPF_Config );
 	// UseHardwareGamma: an ini option of the driver, assigned below (off).
 	new(GetClass(),TEXT("UseHardwareGamma"),	RF_Public)UBoolProperty ( CPP_PROPERTY(UseHardwareGamma    ), TEXT("Options"), CPF_Config );
+	new(GetClass(),TEXT("UseBicubicLightmaps"),	RF_Public)UBoolProperty ( CPP_PROPERTY(UseBicubicLightmaps ), TEXT("Options"), CPF_Config );
 
 	GIsOpenGL						= 1;
 	GIsPixomatic					= 0;
@@ -131,6 +136,10 @@ void UOpenGLRenderDevice::StaticConstructor()
 	// whole desktop, and a process that dies before RestoreGamma leaves it that way. Set
 	// UseHardwareGamma=True in [OpenGLDrv.OpenGLRenderDevice] for the in-game Brightness/Gamma/Contrast.
 	UseHardwareGamma				= 0;
+
+	// On: the passes that carry a lightmap draw through GLSL programs that read the lightmap as a cubic
+	// B-spline (FixedFunctionPrograms.h). False keeps every pass on the fixed-function path.
+	UseBicubicLightmaps				= 1;
 
 	SupportsCubemaps				= 1;
 	SupportsZBIAS					= 1;
@@ -877,6 +886,16 @@ UBOOL UOpenGLRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Fu
     SupportsRenderToTextureRGBA8888 = SUPPORTS_GL_EXT_framebuffer_object;
     SupportsRenderToTextureRGB565 = SUPPORTS_GL_EXT_framebuffer_object;
     SupportsRenderToTextureNPOT = SUPPORTS_GL_ARB_texture_non_power_of_two;
+
+	// The lightmap passes' GLSL programs: OpenGL 2.0 shader objects. Desktop GL applies a unit's LOD bias to a
+	// program's lookups as well, and its fixed-function stage generates reflection coordinates per vertex, as the
+	// programs then do.
+	BicubicLightmapsSupported					= SUPPORTS_GL_ARB_shader_objects && SUPPORTS_GL_ARB_vertex_shader && SUPPORTS_GL_ARB_fragment_shader;
+	LightmapProgramOptions.Gl4es				= 0;
+	LightmapProgramOptions.ShaderLodBias		= 0;
+	LightmapProgramOptions.FragmentReflection	= 0;
+	LightmapProgramOptions.GradLookups			= SUPPORTS_GL_ARB_shader_texture_lod;
+	OpenGLDeviceInfof( TEXT("OpenGL: Lightmap filter: %s"), LightmapFilterName() );
 	OpenGLDeviceInfoLogged = 1;
 
 	// Disable vsync.
@@ -1192,6 +1211,11 @@ void UOpenGLRenderDevice::Flush(UViewport* Viewport)
 		delete PixelShaders;
 	unguard;
 
+	if( ValidContext )
+		LightmapPrograms.Flush( this );
+	else
+		LightmapPrograms.Empty();
+
 	VARIndex = 0;
 
 	PrecacheOnFlip = 1;//UsePrecaching;
@@ -1368,6 +1392,26 @@ UBOOL UOpenGLRenderDevice::Exec(const TCHAR* Cmd,FOutputDevice& Ar)
 	{
 		if (appStrcmp(Cmd,TEXT("")) != 0)
 			NEAR_CLIPPING_PLANE = appAtof(Cmd);
+		return 1;
+	}
+	// BICUBICLIGHTMAPS [0|1|2]: sets UseBicubicLightmaps for this session (no argument toggles it) and names the
+	// lightmap filter; 2 keeps the programs but reads the lightmap bilinear, the fixed-function result through the
+	// program path. BICUBICLIGHTMAPS EDGES: what the filter reads past the lightmaps of the current level.
+	else if( ParseCommand(&Cmd,TEXT("BICUBICLIGHTMAPS")) )
+	{
+		if( ParseCommand(&Cmd,TEXT("EDGES")) )
+		{
+			FFLogLightmapEdges( UseCompressedLightmaps, Ar );
+			return 1;
+		}
+		while( *Cmd == ' ' )
+			Cmd++;
+		UseBicubicLightmaps			= *Cmd ? (appAtoi(Cmd) != 0) : !UseBicubicLightmaps;
+		BilinearLightmapPrograms	= *Cmd && appAtoi(Cmd) == 2;
+		FString Answer = FString::Printf( TEXT("BICUBICLIGHTMAPS: lightmap filter %s"), LightmapFilterName() );
+		debugf( TEXT("%s"), *Answer );
+		if( &Ar != GLog )
+			Ar.Log( *Answer );
 		return 1;
 	}
 	else if( ParseCommand(&Cmd,TEXT("SUPPORTEDRESOLUTION")) )
@@ -1649,6 +1693,17 @@ public:
 	{}
 };
 
+
+const TCHAR* UOpenGLRenderDevice::LightmapFilterName()
+{
+	if( !UseBicubicLightmaps )
+		return TEXT("bilinear (fixed function)");
+	if( BicubicLightmapsSupported && BilinearLightmapPrograms )
+		return TEXT("bilinear (GLSL programs)");
+	if( !BicubicLightmapsSupported )
+		return TEXT("bilinear (fixed function: UseBicubicLightmaps needs GLSL shader objects)");
+	return TEXT("bicubic (cubic B-spline, GLSL programs)");
+}
 
 FOpenGLPixelShader* UOpenGLRenderDevice::GetPixelShader(EPixelShader Type)
 {

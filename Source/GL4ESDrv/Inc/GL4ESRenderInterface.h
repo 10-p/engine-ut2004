@@ -305,6 +305,7 @@ public:
 
 private:
 	void SetMaterialBlending( FGL4ESMaterialState* NewMaterialState );
+	void SetLightmapProgram( FGL4ESMaterialState* State );
 
 	FGL4ESTexture* CacheTexture(FBaseTexture* Texture);
 	void SetTexture( FGL4ESTexture* Texture );

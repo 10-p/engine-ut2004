@@ -727,6 +727,13 @@ struct FOpenGLMaterialStateStage
 	UBOOL				TexGenProjected;
 	UBOOL				UseTexGenMatrix;
 
+	// The stage reads the lightmap (HandleLightmap_SP, HandleLighting_MP).
+	UBOOL				IsLightmap;
+	// The coordinate generation SetMaterialBlending last set for the stage: the GL mode and the
+	// number of components (from s) it generates.
+	DWORD				TexGenModeApplied;
+	INT					TexGenCountApplied;
+
 	FOpenGLMaterialStateStage();
 };
 

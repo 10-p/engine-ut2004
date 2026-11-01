@@ -305,6 +305,7 @@ public:
 
 private:
 	void SetMaterialBlending( FOpenGLMaterialState* NewMaterialState );
+	void SetLightmapProgram( FOpenGLMaterialState* State );
 
 	FOpenGLTexture* CacheTexture(FBaseTexture* Texture);
 	void SetTexture( FOpenGLTexture* Texture );
