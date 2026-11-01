@@ -115,7 +115,8 @@ jobs:
       # The image is bare: even git has to be installed before checkout can use it; python3 runs the packer.
       - name: Base tools
         run: |
-          apt-get update
+          # Three tries, 30 s apart: a mirror in the middle of a sync fails an index fetch for a while.
+          for i in 1 2 3; do apt-get update && break; [ "$i" -lt 3 ] || exit 1; echo "apt-get update failed: again in 30 s"; sleep 30; done
           apt-get install -y --no-install-recommends git ca-certificates cmake make pkg-config python3
 
       - uses: actions/checkout@v4
@@ -129,7 +130,8 @@ jobs:
         if: matrix.arch == '32'
         run: |
           dpkg --add-architecture i386
-          apt-get update
+          # Three tries, 30 s apart: a mirror in the middle of a sync fails an index fetch for a while.
+          for i in 1 2 3; do apt-get update && break; [ "$i" -lt 3 ] || exit 1; echo "apt-get update failed: again in 30 s"; sleep 30; done
           apt-get install -y --no-install-recommends \
             gcc-13 g++-13 gcc-13-multilib g++-13-multilib \
             libsdl2-dev:i386 libopenal-dev:i386 \
@@ -141,7 +143,8 @@ jobs:
       - name: Install the 64-bit toolchain
         if: matrix.arch == '64'
         run: |
-          apt-get update
+          # Three tries, 30 s apart: a mirror in the middle of a sync fails an index fetch for a while.
+          for i in 1 2 3; do apt-get update && break; [ "$i" -lt 3 ] || exit 1; echo "apt-get update failed: again in 30 s"; sleep 30; done
           apt-get install -y --no-install-recommends \
             gcc-13 g++-13 \
             libsdl2-dev libopenal-dev \
