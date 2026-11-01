@@ -221,7 +221,7 @@ the first two replacements off.
 - `[ufront.AutoFOV]` (`AutoFOV`, `ReferenceAspect`, `WeaponScale`, `AutoFOVUI`, `UIScale`): aspect-correct field
   of view and HUD scale (both `Default.ini` sets document the keys).
 - `[ufront.Shadows]` `CullDistance` / `FadeExponent`: the pawn-shadow range and fall-off (retail 1200 / 2.0; the
-  web ini ships 4800).
+  native, web and Android inis ship 4800).
 - `[Engine.Engine] FrameRateCap=<fps>`: caps a game with no tick rate of its own.
 - `[Engine.GameEngine] FpsLogSeconds=<s>` / `FPSLOG <s>`: an `FPS:` log line per interval.
 - `WHEREAMI` / `TELEPORT <x> <y> <z> [<yaw> [<pitch>]]`: allowed in a standalone game and for a listen server's
