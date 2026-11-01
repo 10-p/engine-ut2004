@@ -12,7 +12,7 @@ packages/build/README.md, "The release packer").
     package.py check
     package.py list <archive>
     package.py archive <archive> --version <v> --out <dir> [--kind test|release] [--absent <extra>]...
-    package.py notes --version <v> [--kind test|release] [--absent <extra>]... [--glibc-from <file>]...
+    package.py notes --version <v> [--kind test|release] [--absent <extra>]... [--glibc-from <file>...]
     package.py copy-release <extra> --version <v> --out <dir> [--github-repo <owner/name>]
 
   version       the checkout's version: X.Y.Z at a release tag (vX.Y.Z, or vX.Y.Z-<a variant's tag suffix>), else
@@ -34,8 +34,8 @@ packages/build/README.md, "The release packer").
   --kind test         a build of the repository's CI: the APK is <game>-<version>-android-test.apk and the notes say
                       it is a test build (the default); --kind release names our own releases' -android-release.apk
   --absent <extra>    an extra archive this build does not have: the notes say so instead of describing it
-  --glibc-from <file> a Linux binary or .tar.gz archive the notes measure the glibc version from (default: the
-                      Linux build trees)
+  --glibc-from <file>...  Linux binaries or .tar.gz archives the notes measure the glibc version from: the newest
+                      any of them needs (default: the Linux build trees)
 """
 import argparse
 import glob
@@ -620,9 +620,11 @@ def main(argv):
     ap.add_argument('--out')
     ap.add_argument('--kind', choices=('test', 'release'), default='test')
     ap.add_argument('--absent', action='append', default=[])
-    ap.add_argument('--glibc-from', action='append', default=[])
+    ap.add_argument('--glibc-from', action='extend', nargs='+', default=[])
     ap.add_argument('--github-repo')
     a = ap.parse_args(argv)
+    if a.archive and a.command not in ('list', 'archive', 'copy-release'):
+        fail('%s takes no archive name (got %s)' % (a.command, a.archive))
     repo = os.path.abspath(a.repo)
     build_root = os.path.abspath(a.build_root or repo)
     data = load(repo)
