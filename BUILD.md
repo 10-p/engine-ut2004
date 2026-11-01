@@ -382,8 +382,43 @@ nm -C build-native/Source/SDLLaunch/ut2004-pixo.bin | grep -c UPixoRenderDevice
 python3 -c "import json;print(json.load(open('build-wasm-perf/Source/SDLLaunch/meta.json'))['abiVersion'])"
 ```
 
-CI (`.github/workflows/build.yml`) builds the native, Windows, Android and web presets on every push and asserts the
-physics each binary carries, the Windows imports, the packaged Android ABIs and the web descriptor.
+CI checks every build of a push ("CI", below).
+
+## Release archives
+
+`vendor/release/package.py` makes the release archives, the same way in CI and for a versioned release. It is
+vendored from the frontend (`packages/build/engine-release/package.py`, written and checked by its
+`packages/build/bin/vendor-release.mjs`): re-vendor it, never edit it here. This game's data is
+`release/release.json`: each platform's files in its build tree, the default inis the archives ship, and the text of
+their `README.txt`.
+
+```bash
+python3 vendor/release/package.py check                     # release.json names files that exist
+python3 vendor/release/package.py version                   # 1.2.0 at a release tag, else git describe
+python3 vendor/release/package.py archive linux-x86_64 --version 1.2.0 --out <dir> --kind release
+python3 vendor/release/package.py notes --version 1.2.0 --kind release   # the release text's install part
+```
+
+`archive <platform>` writes `ut2004-<version>-<platform>`: `linux-x86` (`.tar.gz`, from `build-native`:
+`ut2004-pixo.bin`, `libopenal.so` and `ucc-bin`), `linux-x86_64` (from `build-native64`: `ut2004.bin`, `libopenal.so`
+and `ucc-bin`), `windows-x86` (`.zip`, from `build-windows`: `ut2004-pixo.exe`, `pixomatic.dll`, `OpenAL32.dll` and
+`ucc.exe`) and `windows-x86_64` (from `build-windows64`: `ut2004.exe`, `OpenAL32.dll` and `ucc.exe`). Each holds
+`System/` with those files and `Engine/Config/Default.ini` and `DefUser.ini`, and a `README.txt` for its platform.
+`archive android` copies the APK Gradle's `assembleRelease` wrote as `ut2004-<version>-android-test.apk`, or
+`-android-release.apk` with `--kind release`.
+
+## CI
+
+`.github/workflows/build.yml` runs on every push and pull request. It checks the generated inis
+(`tools/dev/sync-android-ini.py --check`) and `release/release.json`; builds `native`, `native64` and the physics
+reference `legacy-karma` (in an `ubuntu:24.04` container), `windows` and `windows64`, `wasm-perf` and the Android
+APK; asserts the physics each binary carries, the Windows imports, the web descriptor and that the APK packages all
+three ABIs and is signed with the key the job made; and uploads each platform's release archive and the APK
+(`ut2004-<version>-android-test.apk`, `assembleRelease` signed with that throwaway key: it cannot update an installed
+release) for 7 days, the physics reference's binaries as they are. The web build links empty stand-ins for two asset
+files and uploads nothing. The version is `package.py version`'s. A push to `main` also replaces the rolling `latest`
+release with the archives, the APK and the packer's notes. CI does not run the game, and it makes no versioned
+release.
 
 ## Input test channel
 

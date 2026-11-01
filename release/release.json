@@ -1,0 +1,43 @@
+{
+  "games": [
+    {
+      "id": "ut2004",
+      "title": "Unreal Tournament 2004",
+      "gameFiles": "Unreal Tournament 2004 with the 3369 patch",
+      "androidFolder": "UT2004",
+      "androidVersion": "7.0",
+      "linuxLibraries": "OpenGL",
+      "linuxPackages32": "libgl1:i386",
+      "server": "DM-Rankin?game=XGame.xDeathMatch",
+      "inis": ["Engine/Config/Default.ini", "Engine/Config/DefUser.ini"],
+      "liveInis": ["UT2004.ini", "User.ini"],
+      "apk": "Android/app/build/outputs/apk/release",
+      "platforms": {
+        "linux-x86": {
+          "build": "build-native",
+          "client": "Source/SDLLaunch/ut2004-pixo.bin",
+          "ucc": "Source/UCC/ucc-bin",
+          "files": ["Source/SDLLaunch/libopenal.so"]
+        },
+        "linux-x86_64": {
+          "build": "build-native64",
+          "client": "Source/SDLLaunch/ut2004.bin",
+          "ucc": "Source/UCC/ucc-bin",
+          "files": ["Source/SDLLaunch/libopenal.so"]
+        },
+        "windows-x86": {
+          "build": "build-windows",
+          "client": "Source/SDLLaunch/ut2004-pixo.exe",
+          "ucc": "Source/UCC/ucc.exe",
+          "files": ["Source/SDLLaunch/pixomatic.dll", "Source/SDLLaunch/OpenAL32.dll"]
+        },
+        "windows-x86_64": {
+          "build": "build-windows64",
+          "client": "Source/SDLLaunch/ut2004.exe",
+          "ucc": "Source/UCC/ucc.exe",
+          "files": ["Source/SDLLaunch/OpenAL32.dll"]
+        }
+      }
+    }
+  ]
+}

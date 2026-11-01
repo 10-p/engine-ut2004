@@ -39,6 +39,9 @@ cmake --preset wasm-perf -DUE_ASSETS_DIR=<UT2004 folder> && cmake --build --pres
   joins a native server through the WSS-to-UDP game proxy; `-DUE_WITH_PROXYNET=OFF` removes it) share no files.
   `vendor/glue/` is the engine-to-host ABI (`ue_abi.h`, version 2) and its shims, written by the frontend's
   `unreal-frontend-arch-private/packages/glue/bin/vendor-engine.mjs`: re-vendor, never edit by hand.
+- **Release archives** come from `vendor/release/package.py`, in CI and for a versioned release, with this game's
+  data in `release/release.json` (BUILD.md, "Release archives"). The packer is vendored from the frontend's
+  `packages/build/engine-release/` by its `packages/build/bin/vendor-release.mjs`: re-vendor, never edit by hand.
 - **The frontend matches some log lines** (its E2E specs and `targets/ut2004/target.json`): the WebGL antialias
   line, `PendingLevel: server sends N file(s): ...`, the render-device and audio fallback lines among them. Grep
   `packages/e2e` and `targets/` there before changing a log line, and change both sides together.

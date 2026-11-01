@@ -1,7 +1,12 @@
 name: build
 
-# CI for the engine build matrix: build on every push and pull request and upload the binaries as
-# workflow artifacts (and the newest build of a tracked branch as the rolling "latest" release).
+# CI for the engine build matrix: on every push and pull request it builds every release platform (Linux x86 and
+# x86_64, Windows x86 and x86_64, Android), the physics reference and the web artifact, and checks the generated
+# inis. Each release platform's job packs its build into the release's own archive with the vendored packer
+# (vendor/release/package.py, the game's data in release/release.json): System/ with the client, the UCC, the
+# bundled OpenAL library (and Pixomatic's DLL on 32-bit Windows) and the default inis, and README.txt, named
+# <game>-<version>-<platform>, exactly as the versioned releases name theirs. The archives are workflow artifacts;
+# the newest build of main is also kept as the rolling "latest" release. The versioned releases are made outside CI.
 #
 # It does not run the game (a hosted runner has no GPU). The web job builds `wasm-perf` to prove it links
 # and emits its descriptor, and uploads nothing: the web link embeds `${UE_ASSETS_DIR}/System/Build.ini` and
@@ -17,8 +22,56 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The version every archive of the run is named with: X.Y.Z on a release tag, else `git describe` from the newest
+  # release tag (1.2.0-14-g54485b0). The describe needs the tags: the whole history, blobless.
+  version:
+    name: version
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      game: ${{ steps.v.outputs.game }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: blob:none
+
+      - name: Version and game
+        id: v
+        run: |
+          set -euo pipefail
+          version=$(python3 vendor/release/package.py version)
+          game=$(python3 vendor/release/package.py game)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "game=$game" >> "$GITHUB_OUTPUT"
+          echo "$game $version"
+
+  # The generated inis are what their generators write, and the release data names files that exist.
+  inis:
+    name: inis and release data
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the generated inis
+        run: |
+          set -uo pipefail
+          shopt -s nullglob
+          rc=0; n=0
+          for s in tools/dev/sync-*ini.py; do
+            echo "== $s --check"
+            python3 "$s" --check || rc=1
+            n=$((n + 1))
+          done
+          [ "$n" -gt 0 ] || { echo "::error::no tools/dev/sync-*ini.py to run"; exit 1; }
+          exit $rc
+
+      - name: Check the release data
+        run: python3 vendor/release/package.py check
+
   linux:
     name: linux ${{ matrix.preset }}
+    needs: version
     runs-on: ubuntu-24.04
     # A container, not the bare runner: the runner image preinstalls amd64 -dev packages that make
     # `libsdl2-dev:i386` uninstallable (libglib2.0-dev-bin is Multi-Arch: foreign, so apt ends in "held
@@ -40,24 +93,30 @@ jobs:
           # `arch` selects the apt toolchain below. Both 32-bit arms keep Pixomatic (its prebuilts are
           # i386-only and there is no source); the 64-bit arm cannot have it and its name says so. The
           # legacy arm has no 64-bit counterpart: MathEngine shipped Karma as binary-only i386 objects.
+          #
+          # `platform` is the release archive a preset packs; the legacy arm is no release platform and
+          # uploads its binaries as they are.
           - preset: native
+            platform: linux-x86
             bin: ut2004-pixo.bin
             karma: recovered
             arch: '32'
           - preset: legacy-karma
+            platform: ''
             bin: ut2004-legacykarma-pixo.bin
             karma: legacy
             arch: '32'
           - preset: native64
+            platform: linux-x86_64
             bin: ut2004.bin
             karma: recovered
             arch: '64'
     steps:
-      # The image is bare: even git has to be installed before checkout can use it.
+      # The image is bare: even git has to be installed before checkout can use it; python3 runs the packer.
       - name: Base tools
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends git ca-certificates cmake make pkg-config
+          apt-get install -y --no-install-recommends git ca-certificates cmake make pkg-config python3
 
       - uses: actions/checkout@v4
 
@@ -141,19 +200,37 @@ jobs:
             [ "$kd" -gt 0 ] || { echo "::error::${{ matrix.preset }} carries no recovered-Karma symbols (renamed upstream, or this is not the physics it claims)"; exit 1; }
           fi
 
+      # The release archive: System/ (the client, ucc-bin, the libopenal.so the client dlopens from its own
+      # directory, Default.ini and DefUser.ini) and README.txt.
+      - name: Pack the release archive
+        if: matrix.platform != ''
+        run: python3 vendor/release/package.py archive ${{ matrix.platform }} --version "${{ needs.version.outputs.version }}" --out out
+
       # Retention: 7 days. The default (90) fills the artifact storage quota, and a full quota fails
       # `upload-artifact` and turns the run red. The newest build is kept in the "latest" release.
       - uses: actions/upload-artifact@v4
+        if: matrix.platform != ''
+        with:
+          name: ${{ needs.version.outputs.game }}-${{ needs.version.outputs.version }}-${{ matrix.platform }}
+          path: out/
+          if-no-files-found: error
+          retention-days: 7
+
+      # The physics reference: its binaries as built, a run artifact only (no release has it).
+      - uses: actions/upload-artifact@v4
+        if: matrix.platform == ''
         with:
           name: ut2004-linux-${{ matrix.preset }}
           path: |
             build-${{ matrix.preset }}/Source/SDLLaunch/${{ matrix.bin }}
+            build-${{ matrix.preset }}/Source/SDLLaunch/libopenal.so
             build-${{ matrix.preset }}/Source/UCC/ucc-bin
           if-no-files-found: error
           retention-days: 7
 
   windows:
     name: windows ${{ matrix.preset }} (MinGW-w64 cross)
+    needs: version
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -169,6 +246,7 @@ jobs:
           # 64-bit cannot have Pixomatic (the prebuilts are i386-only and there is no source), so it
           # keeps the plain `ut2004.exe` name and the strict allow-list.
           - preset: windows
+            platform: windows-x86
             bin: ut2004-pixo.exe
             karma: recovered
             objdump: i686-w64-mingw32-objdump
@@ -182,6 +260,7 @@ jobs:
           # engine refuses that configuration at configure time (BUILD_KARMA_REF's note in
           # CMakeLists.txt). The A/B reference arm is Linux.
           - preset: windows64
+            platform: windows-x86_64
             bin: ut2004.exe
             karma: recovered
             objdump: x86_64-w64-mingw32-objdump
@@ -275,16 +354,16 @@ jobs:
           done
           if [ -n "$bad" ]; then echo "::error::non-system DLL imports:$bad"; exit 1; fi
 
+      # The release archive: System/ (the exe, OpenAL32.dll, on the Pixomatic arm the pixomatic.dll it imports at
+      # load time, ucc.exe, Default.ini and DefUser.ini) and README.txt.
+      - name: Pack the release archive
+        run: python3 vendor/release/package.py archive ${{ matrix.platform }} --version "${{ needs.version.outputs.version }}" --out out
+
       # Retention: 7 days (see the linux job).
       - uses: actions/upload-artifact@v4
         with:
-          name: ut2004-${{ matrix.preset }}
-          # The DLL is part of the deliverable on the Pixomatic arm: the exe imports it at load time.
-          # The glob is harmless on the 64-bit arm, which stages no DLL.
-          path: |
-            build-${{ matrix.preset }}/Source/SDLLaunch/${{ matrix.bin }}
-            build-${{ matrix.preset }}/Source/SDLLaunch/*.dll
-            build-${{ matrix.preset }}/Source/UCC/ucc.exe
+          name: ${{ needs.version.outputs.game }}-${{ needs.version.outputs.version }}-${{ matrix.platform }}
+          path: out/
           if-no-files-found: error
           retention-days: 7
 
@@ -339,7 +418,8 @@ jobs:
           [ "$got" = "$want" ] || { echo "::error::meta.json abiVersion $got != UE_ABI_VERSION $want"; exit 1; }
 
   android:
-    name: android (arm64 + arm32 APK)
+    name: android (release APK, test key)
+    needs: version
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -364,25 +444,46 @@ jobs:
           sdkmanager --install "ndk;28.2.13676358" "cmake;4.1.2" >/dev/null
           printf 'sdk.dir=%s\nndk.dir=%s/ndk/28.2.13676358\n' "$ANDROID_HOME" "$ANDROID_HOME" > Android/local.properties
 
+      # The release variant, signed with a key made here and dropped with the runner (UE_ANDROID_SIGNING, as
+      # app/build.gradle reads it): a test APK that cannot update an installed release, which our release key
+      # signs outside CI.
+      - name: Make a throwaway signing key
+        run: |
+          set -euo pipefail
+          pw=$(openssl rand -hex 16)
+          echo "::add-mask::$pw"
+          keytool -genkeypair -keystore "$RUNNER_TEMP/test.jks" -storepass "$pw" -keypass "$pw" -alias test \
+            -keyalg RSA -keysize 2048 -validity 3650 -dname "CN=Test build" >/dev/null
+          printf 'storeFile=%s\nstorePassword=%s\nkeyAlias=test\nkeyPassword=%s\n' "$RUNNER_TEMP/test.jks" "$pw" "$pw" \
+            > "$RUNNER_TEMP/test-signing.properties"
+          echo "UE_ANDROID_SIGNING=$RUNNER_TEMP/test-signing.properties" >> "$GITHUB_ENV"
+
       - name: Build the APK
-        run: ./gradlew assembleDebug --console=plain
+        run: ./gradlew assembleRelease --console=plain
         working-directory: Android
 
       # All three ABIs must be in there. A silent drop to one ABI is the failure mode worth catching:
-      # the APK still installs, and only fails on the device you did not test.
-      - name: Assert every ABI is packaged
+      # the APK still installs, and only fails on the device you did not test. The signature must be the
+      # test key's, not the debug key's.
+      - name: Assert every ABI is packaged and the test key signs it
         run: |
           set -euo pipefail
-          apk=Android/app/build/outputs/apk/debug/app-debug.apk
-          for abi in armeabi-v7a arm64-v8a; do
+          apk=$(ls Android/app/build/outputs/apk/release/*.apk)
+          for abi in armeabi-v7a arm64-v8a x86_64; do
             unzip -l "$apk" | grep -q "lib/$abi/libUT2004.so" || { echo "::error::missing $abi"; exit 1; }
           done
+          apksigner=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          "$apksigner" verify --print-certs "$apk" | tee "$RUNNER_TEMP/certs.txt"
+          grep -q 'CN=Test build' "$RUNNER_TEMP/certs.txt" || { echo "::error::the APK is not signed with the test key"; exit 1; }
+
+      - name: Name the APK
+        run: python3 vendor/release/package.py archive android --version "${{ needs.version.outputs.version }}" --out out
 
       # Retention: 7 days (see the linux job).
       - uses: actions/upload-artifact@v4
         with:
-          name: ut2004-android
-          path: Android/app/build/outputs/apk/debug/app-debug.apk
+          name: ${{ needs.version.outputs.game }}-${{ needs.version.outputs.version }}-android-test
+          path: out/
           if-no-files-found: error
           retention-days: 7
 
@@ -398,11 +499,11 @@ jobs:
   # `permissions: contents: write` is required: this repository's default workflow token is read-only,
   # and without it the final step fails with HTTP 403.
   #
-  # The web job uploads nothing (see the header), so "latest" carries the native, Windows and Android
-  # builds only.
+  # The web job uploads nothing (see the header), and the physics reference is no release platform, so
+  # "latest" carries the release archives and the APK only.
   latest:
     name: rolling "latest" release
-    needs: [linux, windows, android]
+    needs: [version, inis, linux, windows, android]
     if: github.event_name == 'push' && (github.ref_name == 'main')
     runs-on: ubuntu-24.04
     permissions:
@@ -410,31 +511,36 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Every artifact this run produced, each in its own directory named after it.
+      # This run's archives, each artifact in its own directory named after it.
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+          pattern: ${{ needs.version.outputs.game }}-${{ needs.version.outputs.version }}-*
 
-      - name: Pack one zip per build
+      # Each artifact holds its one archive (or the APK), published as it is.
+      - name: Collect the release assets
         run: |
           set -euo pipefail
           mkdir -p out
           shopt -s nullglob
-          n=0
           for d in artifacts/*/; do
             name=$(basename "$d")
-            ( cd "$d" && zip -qr "$GITHUB_WORKSPACE/out/$name.zip" . )
-            n=$((n + 1))
+            files=("$d"*)
+            if [ ${#files[@]} -eq 1 ] && [ -f "${files[0]}" ] && [[ $(basename "${files[0]}") == "$name".* ]]; then
+              mv "${files[0]}" out/
+            else
+              ( cd "$d" && zip -qr "$GITHUB_WORKSPACE/out/$name.zip" . )
+            fi
           done
           # A release that publishes nothing is worse than a failed job: it looks like a successful
           # build whose downloads have gone missing.
-          [ "$n" -gt 0 ] || { echo "::error::no artifacts were downloaded — nothing to publish"; exit 1; }
-          echo "packed $n build(s):"
+          [ -n "$(ls out)" ] || { echo "::error::no artifacts were downloaded — nothing to publish"; exit 1; }
           ls -la out/
 
       - name: Publish (replacing the previous one)
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
           set -euo pipefail
           # One rolling tag per tracked branch, so branches cannot overwrite each
@@ -445,16 +551,21 @@ jobs:
             tag="latest-$(echo "$GITHUB_REF_NAME" | tr '/' '-')"
           fi
           echo "tag: $tag"
-          gh release delete "$tag" --yes --cleanup-tag || true
-          gh release create "$tag" out/*.zip \
-            --target "$GITHUB_SHA" \
-            --prerelease \
-            --title "$tag — $(git log -1 --format=%s | cut -c1-72)" \
-            --notes "$(printf '%s\n' \
-              "The newest UT2004 engine build of \`$GITHUB_REF_NAME\`, rebuilt and replaced on every push." \
+          {
+            printf '%s\n' \
+              "The newest build of \`$GITHUB_REF_NAME\`, $VERSION, rebuilt and replaced on every push: a development build, not a release." \
               "" \
               "Commit: \`$GITHUB_SHA\`" \
               "Built: $(date -u '+%Y-%m-%d %H:%M UTC')" \
               "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
               "" \
-              "These assets do not expire. The per-push artifacts on the run page do, after 7 days.")"
+              "These assets do not expire. The per-push artifacts on the run page do, after 7 days." \
+              ""
+            python3 vendor/release/package.py notes --version "$VERSION" --glibc-from out/*.tar.gz
+          } > "$RUNNER_TEMP/notes.md"
+          gh release delete "$tag" --yes --cleanup-tag || true
+          gh release create "$tag" out/* \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "$tag — $(git log -1 --format=%s | cut -c1-72)" \
+            --notes-file "$RUNNER_TEMP/notes.md"
