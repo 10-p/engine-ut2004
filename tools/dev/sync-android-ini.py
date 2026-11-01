@@ -20,6 +20,8 @@ FILES = ('Default.ini', 'DefUser.ini')
 DELTAS = [
     # Android has no desktop OpenGL: the one GL device is GL4ESDrv.
     ('Default.ini', 'Engine.Engine', 'RenderDevice', 'OpenGLDrv.OpenGLRenderDevice', 'GL4ESDrv.GL4ESRenderDevice'),
+    # Pawn shadows at the retail range: each shadow in range is a projector drawn every frame.
+    ('Default.ini', 'ufront.Shadows', 'CullDistance', '4800.000000', '1200.000000'),
 ]
 
 def build(name):
