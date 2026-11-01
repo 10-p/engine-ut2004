@@ -420,14 +420,21 @@ def render(g, version, kind, platforms, present, glibc):
 
     inis = [os.path.basename(i) for i in g['inis']]
     live = g['liveInis']
+    own = g.get('uccInis', [])
     many = len(live) > 1
+    if own:
+        makes = ('The game makes its settings %s, %s, from %s when %s missing (the UCC makes its own, %s, the same way)'
+                 % ('files' if many else 'file', and_list(live), 'them' if len(inis) > 1 else 'it',
+                    'they are' if many else 'it is', and_list(own)))
+    else:
+        makes = ('%s settings %s, %s, from %s when %s missing'
+                 % ('The game and its UCC make their' if any(uccs.values()) else 'The game makes its',
+                    'files' if many else 'file', and_list(live), 'them' if len(inis) > 1 else 'it',
+                    'they are' if many else 'it is'))
     L += ['## Settings', '']
-    L += wrap("System also holds %s, the port's default settings. %s settings %s, %s, from %s when %s missing, so the "
-              "settings you already have are kept. To start from the port's defaults, delete %s in System (keep a "
-              'copy to go back).' % (and_list(inis), 'The game and its UCC make their' if any(uccs.values()) else
-                                     'The game makes its', 'files' if many else 'file', and_list(live),
-                                     'them' if len(inis) > 1 else 'it', 'they are' if many else 'it is',
-                                     and_list(live)))
+    L += wrap("System also holds %s, the port's default settings. %s, so the settings you already have are kept. To "
+              "start from the port's defaults, delete %s in System (keep a copy to go back)."
+              % (and_list(inis), makes, and_list(live + own)))
     for note in g.get('settingsNotes', []):
         L += [''] + wrap(fill(g, version, note))
     L.append('')
