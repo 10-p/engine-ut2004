@@ -900,7 +900,7 @@ UBOOL UGL4ESRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Ful
 	LightmapProgramOptions.Gl4es				= 1;
 	LightmapProgramOptions.ShaderLodBias		= SUPPORTS_GL_EXT_texture_lod_bias;
 	LightmapProgramOptions.FragmentReflection	= 1;
-	LightmapProgramOptions.GradLookups			= 1;
+	LightmapProgramOptions.LodLookups			= 1;
 	GL4ESDeviceInfof( TEXT("GL4ES: Lightmap filter: %s"), LightmapFilterName() );
 	GL4ESDeviceInfoLogged = 1;
 

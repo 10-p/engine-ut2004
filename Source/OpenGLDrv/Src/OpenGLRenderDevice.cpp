@@ -894,7 +894,7 @@ UBOOL UOpenGLRenderDevice::SetRes(UViewport* Viewport,INT NewX,INT NewY,UBOOL Fu
 	LightmapProgramOptions.Gl4es				= 0;
 	LightmapProgramOptions.ShaderLodBias		= 0;
 	LightmapProgramOptions.FragmentReflection	= 0;
-	LightmapProgramOptions.GradLookups			= SUPPORTS_GL_ARB_shader_texture_lod;
+	LightmapProgramOptions.LodLookups			= SUPPORTS_GL_ARB_shader_texture_lod;
 	OpenGLDeviceInfof( TEXT("OpenGL: Lightmap filter: %s"), LightmapFilterName() );
 	OpenGLDeviceInfoLogged = 1;
 

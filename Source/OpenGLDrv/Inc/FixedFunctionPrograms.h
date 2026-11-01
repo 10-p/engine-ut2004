@@ -97,10 +97,10 @@ struct FFFProgramOptions
 	// A reflection-map stage reflects per fragment, from the interpolated eye position and normal, as
 	// gl4es's own fixed-function shaders do; otherwise per vertex, as desktop fixed function does.
 	UBOOL	FragmentReflection;
-	// The bicubic taps take the lightmap coordinate's derivatives (texture2DGradARB), so the four taps
-	// select the mip level a single lookup would: GL_ARB_shader_texture_lod on desktop GL; gl4es maps the
-	// call to its ES equivalent.
-	UBOOL	GradLookups;
+	// The bicubic taps read the base level explicitly (texture2DLod): GL_ARB_shader_texture_lod on desktop GL;
+	// gl4es maps the call to its ES equivalent. Without it the taps read with implicit derivatives, which jump
+	// by a texel where the taps move on (those pixels then read a smaller mip where the lightmap is minified).
+	UBOOL	LodLookups;
 };
 
 //
@@ -303,6 +303,7 @@ static inline UBOOL FFBuildSources( const FFFProgramKey& Key, const FFFProgramOp
 			NeedNormal		= 0,
 			NeedReflection	= 0,
 			Bicubic			= 0;
+	FLOAT	BicubicBias		= 0.f;
 
 	for( INT s=0; s<NumStages; s++ )
 	{
@@ -319,6 +320,8 @@ static inline UBOOL FFBuildSources( const FFFProgramKey& Key, const FFFProgramOp
 			return 0;
 		if( Stage.TexGenMode == GL_REFLECTION_MAP && Stage.TexGenCount > 3 )
 			return 0;
+		if( Stage.Bicubic && !Bicubic )
+			BicubicBias = Stage.LodBias;
 		Bicubic |= Stage.Bicubic;
 	}
 
@@ -369,7 +372,7 @@ static inline UBOOL FFBuildSources( const FFFProgramKey& Key, const FFFProgramOp
 	if( !Options.Gl4es )
 	{
 		Fragment.Add( "#version 120\n" );
-		if( Bicubic && Options.GradLookups )
+		if( Bicubic && Options.LodLookups )
 			Fragment.Add( "#extension GL_ARB_shader_texture_lod : require\n" );
 	}
 	for( INT s=0; s<NumStages; s++ )
@@ -387,7 +390,27 @@ static inline UBOOL FFBuildSources( const FFFProgramKey& Key, const FFFProgramOp
 		// ratio of their weights. The weights are never negative, so the result stays within the texels'
 		// range, and they sum to one, so a region's mean is kept.
 		Fragment.Add( "uniform vec4 LightmapSize;\n" );		// width, height, 1/width, 1/height
-		Fragment.Add( "vec4 LightmapCubic(sampler2D Map, vec2 UV, float GradScale)\n{\n" );
+		Fragment.Add( "vec4 LightmapCubic(sampler2D Map, vec2 UV)\n{\n" );
+		if( Options.LodLookups )
+		{
+			// Where a pixel spans more than a texel along either axis (scaled by the stage's LOD bias where the
+			// program applies it) the lightmap has no texel edge to smooth: the result is the fixed-function
+			// stage's own lookup, read first, outside the branch, so that its derivatives are defined. Where it
+			// is magnified the four taps read the base level: a mip level's texels span lightmaps beyond the
+			// atlas's one-texel borders, which the taps' wider footprint would reach.
+			ANSICHAR Bias[48] = "", Scale[40];
+			if( BicubicBias != 0.f && Options.ShaderLodBias )
+			{
+				ANSICHAR Literal[40];
+				FFFloat( Literal, sizeof(Literal), BicubicBias );
+				snprintf( Bias, sizeof(Bias), ", %s", Literal );
+			}
+			FFFloat( Scale, sizeof(Scale), appPow( 2.f, BicubicBias ) );
+			Fragment.Addf( "\tvec4 Linear = texture2D(Map, UV%s);\n", Bias );
+			Fragment.Addf(
+				"\tif( max(length(dFdx(UV) * LightmapSize.xy), length(dFdy(UV) * LightmapSize.xy)) * %s > 1.0 )\n"
+				"\t\treturn Linear;\n", Scale );
+		}
 		Fragment.Add(
 			"\tvec2 St = UV * LightmapSize.xy - 0.5;\n"
 			"\tvec2 I = floor(St);\n"
@@ -401,13 +424,11 @@ static inline UBOOL FFBuildSources( const FFFProgramKey& Key, const FFFProgramOp
 			"\tvec2 G1 = 1.0 - G0;\n"
 			"\tvec2 P0 = (I - 0.5 + W1 / G0) * LightmapSize.zw;\n"
 			"\tvec2 P1 = (I + 1.5 + W3 / G1) * LightmapSize.zw;\n" );
-		if( Options.GradLookups )
+		if( Options.LodLookups )
 		{
 			Fragment.Add(
-				"\tvec2 Dx = dFdx(UV) * GradScale;\n"
-				"\tvec2 Dy = dFdy(UV) * GradScale;\n"
-				"\treturn G0.y * (G0.x * texture2DGradARB(Map, P0, Dx, Dy) + G1.x * texture2DGradARB(Map, vec2(P1.x, P0.y), Dx, Dy))\n"
-				"\t     + G1.y * (G0.x * texture2DGradARB(Map, vec2(P0.x, P1.y), Dx, Dy) + G1.x * texture2DGradARB(Map, P1, Dx, Dy));\n" );
+				"\treturn G0.y * (G0.x * texture2DLod(Map, P0, 0.0) + G1.x * texture2DLod(Map, vec2(P1.x, P0.y), 0.0))\n"
+				"\t     + G1.y * (G0.x * texture2DLod(Map, vec2(P0.x, P1.y), 0.0) + G1.x * texture2DLod(Map, P1, 0.0));\n" );
 		}
 		else
 		{
@@ -432,9 +453,7 @@ static inline UBOOL FFBuildSources( const FFFProgramKey& Key, const FFFProgramOp
 		}
 		if( Stage.Bicubic )
 		{
-			ANSICHAR GradScale[40];
-			FFFloat( GradScale, sizeof(GradScale), appPow( 2.f, Stage.LodBias ) );
-			Fragment.Addf( "\tvec4 T%i = LightmapCubic(Tex%i, gl_TexCoord[%i].xy / gl_TexCoord[%i].w, %s);\n", s, s, s, s, GradScale );
+			Fragment.Addf( "\tvec4 T%i = LightmapCubic(Tex%i, gl_TexCoord[%i].xy / gl_TexCoord[%i].w);\n", s, s, s, s );
 		}
 		else if( FFFragmentReflection( Stage, Options ) )
 		{
