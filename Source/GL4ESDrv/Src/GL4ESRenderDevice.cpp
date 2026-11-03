@@ -74,7 +74,6 @@ UGL4ESRenderDevice::UGL4ESRenderDevice() :
 	WasFullscreen		= 0;
 
 	BicubicLightmapsSupported	= 0;
-	BilinearLightmapPrograms	= 0;
 	appMemzero( &LightmapProgramOptions, sizeof(LightmapProgramOptions) );
 
 	unguard;
@@ -1291,26 +1290,6 @@ UBOOL UGL4ESRenderDevice::Exec(const TCHAR* Cmd,FOutputDevice& Ar)
 			NEAR_CLIPPING_PLANE = appAtof(Cmd);
 		return 1;
 	}
-	// BICUBICLIGHTMAPS [0|1|2]: sets UseBicubicLightmaps for this session (no argument toggles it) and names the
-	// lightmap filter; 2 keeps the programs but reads the lightmap bilinear, the fixed-function result through the
-	// program path. BICUBICLIGHTMAPS EDGES: what the filter reads past the lightmaps of the current level.
-	else if( ParseCommand(&Cmd,TEXT("BICUBICLIGHTMAPS")) )
-	{
-		if( ParseCommand(&Cmd,TEXT("EDGES")) )
-		{
-			FFLogLightmapEdges( UseCompressedLightmaps, Ar );
-			return 1;
-		}
-		while( *Cmd == ' ' )
-			Cmd++;
-		UseBicubicLightmaps			= *Cmd ? (appAtoi(Cmd) != 0) : !UseBicubicLightmaps;
-		BilinearLightmapPrograms	= *Cmd && appAtoi(Cmd) == 2;
-		FString Answer = FString::Printf( TEXT("BICUBICLIGHTMAPS: lightmap filter %s"), LightmapFilterName() );
-		debugf( TEXT("%s"), *Answer );
-		if( &Ar != GLog )
-			Ar.Log( *Answer );
-		return 1;
-	}
 	else if( ParseCommand(&Cmd,TEXT("SUPPORTEDRESOLUTION")) )
 	{
 		INT		Width		= 0,
@@ -1589,8 +1568,6 @@ const TCHAR* UGL4ESRenderDevice::LightmapFilterName()
 {
 	if( !UseBicubicLightmaps )
 		return TEXT("bilinear (fixed function)");
-	if( BicubicLightmapsSupported && BilinearLightmapPrograms )
-		return TEXT("bilinear (GLSL programs)");
 	if( !BicubicLightmapsSupported )
 		return TEXT("bilinear (fixed function: UseBicubicLightmaps needs GLSL and highp fragment floats)");
 	return TEXT("bicubic (cubic B-spline, GLSL programs)");

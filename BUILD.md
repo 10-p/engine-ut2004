@@ -202,21 +202,20 @@ the first two replacements off.
   them as compiled defaults.
 - `[<Device>] UseHardwareGamma` (OpenGLDrv, GL4ESDrv, PixoDrv; default False; `-NOGAMMA` forces it off): the
   in-game gamma reprograms the display's ramp; RestoreGamma puts back the ramp found at startup.
-- `[<Device>] UseBicubicLightmaps` (OpenGLDrv, GL4ESDrv; compiled default True, the shipped inis do not set it):
-  the passes that carry a lightmap (BSP) draw through GLSL programs that do what their fixed-function texture
-  stages do and read the lightmap as a cubic B-spline from four bilinear taps; every other pass stays fixed
-  function. `Source/OpenGLDrv/Inc/FixedFunctionPrograms.h` generates the programs for both devices (gl4es converts
-  them on GL ES and WebGL). The device needs GLSL (and, under gl4es, highp fragment floats); without it, or with
-  False, every pass is fixed function. The mode set logs the filter in use once a process (`OpenGL: Lightmap
-  filter: ...`, `GL4ES: Lightmap filter: ...`); with `-UFRONTLOG` each program is logged as it is compiled. The
-  lightmaps of a level share 512x512 atlases and the vertices carry no lightmap rectangle, so at a surface's edge
-  the filter reads the neighbouring texel of the atlas at 1/48 of the weight per axis (1/24 in a corner).
-- `BICUBICLIGHTMAPS [0|1|2]` (OpenGLDrv, GL4ESDrv): sets `UseBicubicLightmaps` for the session (not saved; no
-  argument toggles it) and names the filter; 2 keeps the programs and reads the lightmap bilinear, which draws
-  what fixed function draws through the programs (to tell the filter's change from the programs' own).
-  `BICUBICLIGHTMAPS EDGES` measures that bleed for the current level:
-  the filter along every lightmap edge as drawn against the same filter clamped to the lightmap's own texels, in
-  lightmap levels, and the place of the largest difference.
+- `UseBicubicLightmaps` in `[OpenGLDrv.OpenGLRenderDevice]` and `[GL4ESDrv.GL4ESRenderDevice]` (compiled default
+  True, so an ini without the key filters; the shipped inis do not set it; read when the device starts): the
+  passes that carry a lightmap (BSP) draw through GLSL programs that do what their fixed-function texture stages do
+  and read the lightmap as a cubic B-spline; every other pass stays fixed function. Where the lightmap is magnified
+  the read takes four bilinear taps of its base level, elsewhere the stage's own lookup. It costs those taps and
+  the B-spline weights in the fragment stage of lightmapped pixels, and one program per kind of lightmap pass,
+  compiled the first time such a pass is drawn. `Source/OpenGLDrv/Inc/FixedFunctionPrograms.h` generates the
+  programs for both devices (gl4es converts them on GL ES and WebGL). The device needs GLSL (and, under gl4es,
+  highp fragment floats); without it, or with False, every pass is fixed function, and a pass whose program does not
+  compile or link (a warning with the source) draws fixed function too. The mode set logs the filter once a process:
+  `OpenGL: Lightmap filter: ...` or `GL4ES: Lightmap filter: ...`, then `bicubic (cubic B-spline, GLSL programs)`,
+  `bilinear (fixed function)` (False) or `bilinear (fixed function: UseBicubicLightmaps needs ...)`. The lightmaps
+  of a level share 512x512 atlases and the vertices carry no lightmap rectangle, so at a surface's edge the filter
+  reads the neighbouring texel of the atlas at 1/48 of the weight per axis (1/24 in a corner).
 - Pixomatic's JIT runs code from the heap: on Linux the launcher re-execs itself with `READ_IMPLIES_EXEC` when the
   resolved render device is Pixomatic.
 
@@ -232,8 +231,7 @@ the first two replacements off.
   GL4ESDrv) and `Vertex buffers:` (GL4ESDrv) lines of every mode set, OpenGLDrv's and GL4ESDrv's device information
   of every mode set after the process's first (the `GL_VENDOR`/`GL_RENDERER`/`GL_VERSION` lines, the `Device
   supports:` list, the buffer formats, anisotropy, multisampling, pixel shaders, render targets and the lightmap
-  filter), the lightmap programs as they are compiled (`lightmap program <n> compiled`), and the EAX room-effect
-  line. Status lines, warnings, errors and command answers are logged either way.
+  filter), and the EAX room-effect line. Status lines, warnings, errors and command answers are logged either way.
 - `[ufront.AutoFOV]` (`AutoFOV`, `ReferenceAspect`, `WeaponScale`, `AutoFOVUI`, `UIScale`): aspect-correct field
   of view and HUD scale (both `Default.ini` sets document the keys).
 - `[ufront.Shadows]` `CullDistance` / `FadeExponent`: the pawn-shadow range and fall-off (retail 1200 / 2.0; the

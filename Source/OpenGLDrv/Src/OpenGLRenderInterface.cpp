@@ -945,7 +945,7 @@ void FOpenGLRenderInterface::SetLightmapProgram( FOpenGLMaterialState* State )
 			Key.NumStages	= State->StagesUsed;
 			Key.Fog			= CurrentState->DistanceFogEnabled ? 1 : 0;
 			for( INT s=0; s<State->StagesUsed; s++ )
-				FFKeyStage( Key.Stages[s], State->Stages[s], s == LightmapStage && !RenDev->BilinearLightmapPrograms, RenDev->LightmapProgramOptions.ShaderLodBias );
+				FFKeyStage( Key.Stages[s], State->Stages[s], s == LightmapStage, RenDev->LightmapProgramOptions.ShaderLodBias );
 			Program = RenDev->LightmapPrograms.Find( RenDev, Key, RenDev->LightmapProgramOptions, TEXT("OpenGL") );
 		}
 	}

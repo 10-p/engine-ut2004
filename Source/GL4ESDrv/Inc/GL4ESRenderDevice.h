@@ -55,8 +55,6 @@ public:
 	FFFProgramCache					LightmapPrograms;
 	FFFProgramOptions				LightmapProgramOptions;
 	UBOOL							BicubicLightmapsSupported;
-	// BICUBICLIGHTMAPS 2: the programs read the lightmap bilinear, as the fixed-function stage does.
-	UBOOL							BilinearLightmapPrograms;
 
 	// Configuration.
 	FLOAT                           DetailTexMipBias,
@@ -156,7 +154,7 @@ public:
 	virtual void SetEmulationMode(EHardwareEmulationMode Mode){};
 	virtual FRenderCaps* GetRenderCaps();
 
-	// The lightmap filter in use, as the log and BICUBICLIGHTMAPS name it.
+	// The lightmap filter in use, as the mode set logs it.
 	const TCHAR* LightmapFilterName();
 };
 

@@ -19,7 +19,6 @@
 
 #include <stdio.h>
 #include <stdarg.h>
-#include <stdlib.h>
 #include <string.h>
 
 #ifndef GL_FRAGMENT_SHADER
@@ -496,7 +495,8 @@ static inline UBOOL FFBuildSources( const FFFProgramKey& Key, const FFFProgramOp
 -----------------------------------------------------------------------------*/
 
 //
-//	FFFProgram: a linked program for a key; Program is 0 when its sources did not compile or link.
+//	FFFProgram: a linked program for a key; Program is 0 when the generator does not reproduce the pass or its
+//	sources did not compile or link (the pass then draws fixed function).
 //
 struct FFFProgram
 {
@@ -517,9 +517,8 @@ public:
 	TArray<FFFProgram*>		Programs;
 	FFFProgram*				Last;
 	GLuint					Current;
-	INT						NumFailed;
 
-	FFFProgramCache() : Last(NULL), Current(0), NumFailed(0) {}
+	FFFProgramCache() : Last(NULL), Current(0) {}
 	~FFFProgramCache() { Empty(); }
 
 	// Empty: forgets every program; the GL objects went with the context (Flush deletes them while it lives).
@@ -530,7 +529,6 @@ public:
 		Programs.Empty();
 		Last		= NULL;
 		Current		= 0;
-		NumFailed	= 0;
 	}
 
 	static DWORD KeyHash( const FFFProgramKey& Key )
@@ -580,18 +578,10 @@ public:
 
 		FFFSource Vertex, Fragment;
 		if( !FFBuildSources( Key, Options, Vertex, Fragment ) )
-		{
-			NumFailed++;
-			if( GUfrontLog )
-				debugf( TEXT("%s: a lightmap pass stays fixed function: a stage does what the programs do not reproduce"), LogName );
 			return P;
-		}
 		P->Program = Compile( RenDev, Vertex, Fragment, LogName );
 		if( !P->Program )
-		{
-			NumFailed++;
 			return P;
-		}
 
 		RenDev->glUseProgram( P->Program );
 		for( INT s=0; s<Key.NumStages; s++ )
@@ -604,28 +594,6 @@ public:
 		}
 		P->LightmapSizeLoc = RenDev->glGetUniformLocation( P->Program, "LightmapSize" );
 		RenDev->glUseProgram( Current );
-
-		if( GUfrontLog )
-		{
-			// Each stage: 2 or C (its texture's target), then B (the bicubic lightmap read), O, R or N (the
-			// coordinates generated object-linear, as a reflection or as the normal).
-			FString Stages;
-			for( INT s=0; s<Key.NumStages; s++ )
-			{
-				const FFFStageKey& Stage = Key.Stages[s];
-				Stages += TEXT(" ");
-				Stages += Stage.Target == FFT_Cube ? TEXT("C") : TEXT("2");
-				if( Stage.Bicubic )
-					Stages += TEXT("B");
-				if( Stage.TexGenMode == GL_OBJECT_LINEAR )
-					Stages += TEXT("O");
-				else if( Stage.TexGenMode == GL_REFLECTION_MAP )
-					Stages += TEXT("R");
-				else if( Stage.TexGenMode == GL_NORMAL_MAP )
-					Stages += TEXT("N");
-			}
-			debugf( TEXT("%s: lightmap program %i compiled (stages%s%s)"), LogName, Programs.Num(), *Stages, Key.Fog ? TEXT(", fog") : TEXT("") );
-		}
 		return P;
 	}
 
@@ -709,218 +677,6 @@ private:
 		return Program;
 	}
 };
-
-/*-----------------------------------------------------------------------------
-	BICUBICLIGHTMAPS EDGES: what the filter reads past each lightmap.
------------------------------------------------------------------------------*/
-
-// A line on the console and in the log.
-static inline void FFAnswer( FOutputDevice& Ar, const TCHAR* Fmt, ... )
-{
-	TCHAR Text[1024];
-	GET_VARARGS( Text, ARRAY_COUNT(Text), Fmt, Fmt );
-	debugf( TEXT("%s"), Text );
-	if( &Ar != GLog )
-		Ar.Log( Text );
-}
-
-// A DXT1 or DXT3 color block as 16 texels (the 4x4 block, row by row).
-static inline void FFDecodeDXTColors( const BYTE* Block, UBOOL FourColors, FColor* Out )
-{
-	_WORD	C[2] = { (_WORD)(Block[0] | (Block[1] << 8)), (_WORD)(Block[2] | (Block[3] << 8)) };
-	INT		P[4][3];
-	for( INT i=0; i<2; i++ )
-	{
-		INT R = (C[i] >> 11) & 31, G = (C[i] >> 5) & 63, B = C[i] & 31;
-		P[i][0] = (R << 3) | (R >> 2);
-		P[i][1] = (G << 2) | (G >> 4);
-		P[i][2] = (B << 3) | (B >> 2);
-	}
-	for( INT c=0; c<3; c++ )
-	{
-		if( FourColors || C[0] > C[1] )
-		{
-			P[2][c] = (2 * P[0][c] + P[1][c]) / 3;
-			P[3][c] = (P[0][c] + 2 * P[1][c]) / 3;
-		}
-		else
-		{
-			P[2][c] = (P[0][c] + P[1][c]) / 2;
-			P[3][c] = 0;
-		}
-	}
-	DWORD Bits = Block[4] | (Block[5] << 8) | (Block[6] << 16) | ((DWORD)Block[7] << 24);
-	for( INT i=0; i<16; i++ )
-	{
-		INT Index = (Bits >> (2 * i)) & 3;
-		Out[i] = FColor( P[Index][0], P[Index][1], P[Index][2], 255 );
-	}
-}
-
-static int FFCompareFloats( const void* A, const void* B )
-{
-	FLOAT X = *(const FLOAT*)A, Y = *(const FLOAT*)B;
-	return X < Y ? -1 : X > Y ? 1 : 0;
-}
-
-// The cubic B-spline weights of the four texels around a fraction.
-static inline void FFCubicWeights( FLOAT F, FLOAT* W )
-{
-	W[0] = (1.f - F) * (1.f - F) * (1.f - F) / 6.f;
-	W[1] = (4.f - 6.f * F * F + 3.f * F * F * F) / 6.f;
-	W[3] = F * F * F / 6.f;
-	W[2] = 1.f - W[0] - W[1] - W[3];
-}
-
-// The filter's value at atlas texel coordinates (X, Y), with the texel indices clamped to [Min, Max] per axis.
-static inline void FFCubicAt( const FColor* Atlas, INT Width, FLOAT X, FLOAT Y, INT MinX, INT MaxX, INT MinY, INT MaxY, FLOAT* Out )
-{
-	FLOAT	SX = X - 0.5f, SY = Y - 0.5f;
-	INT		IX = appFloor( SX ), IY = appFloor( SY );
-	FLOAT	WX[4], WY[4];
-	FFCubicWeights( SX - IX, WX );
-	FFCubicWeights( SY - IY, WY );
-	Out[0] = Out[1] = Out[2] = 0.f;
-	for( INT j=0; j<4; j++ )
-		for( INT i=0; i<4; i++ )
-		{
-			const FColor& T = Atlas[ Clamp( IY - 1 + j, MinY, MaxY ) * Width + Clamp( IX - 1 + i, MinX, MaxX ) ];
-			FLOAT W = WX[i] * WY[j];
-			Out[0] += W * T.R;
-			Out[1] += W * T.G;
-			Out[2] += W * T.B;
-		}
-}
-
-//
-// FFLogLightmapEdges: for the current level's lightmaps, the filter's value along each surface edge (a
-// lightmap's texel coordinates 1 and Size-1) as drawn, against the same filter with every tap clamped to the
-// lightmap's own texels: the bleed from the neighbouring texels of the atlas. The atlases are the ones BSP
-// draws: the compressed static textures where they are current, otherwise the lightmaps as computed.
-//
-static inline void FFLogLightmapEdges( UBOOL UseCompressedLightmaps, FOutputDevice& Ar )
-{
-	ULevel* Level = NULL;
-	for( TObjectIterator<UViewport> It; It && !Level; ++It )
-		if( It->Actor && It->Actor->GetLevel() )
-			Level = It->Actor->GetLevel();
-	if( !Level || !Level->Model )
-	{
-		FFAnswer( Ar, TEXT("BICUBICLIGHTMAPS EDGES: no level") );
-		return;
-	}
-	UModel*			Model = Level->Model;
-	TArray<FLOAT>	Diffs;
-	FLOAT			Worst = -1.f;
-	INT				WorstLightMap = INDEX_NONE;
-	FVector			WorstPos( 0, 0, 0 );
-	FLOAT			WorstOwn[3] = { 0, 0, 0 }, WorstDrawn[3] = { 0, 0, 0 };
-	INT				NumStatic = 0, NumComputed = 0, NumLightMaps = 0;
-	const INT		Width = LIGHTMAP_TEXTURE_WIDTH, Height = LIGHTMAP_TEXTURE_HEIGHT;
-	TArray<FColor>	Atlas;
-	Atlas.Add( Width * Height );
-
-	for( INT TextureIndex=0; TextureIndex<Model->LightMapTextures.Num(); TextureIndex++ )
-	{
-		FLightMapTexture&			Texture = Model->LightMapTextures(TextureIndex);
-		FStaticLightMapTexture&		Static	= Texture.StaticTexture;
-		appMemzero( &Atlas(0), Width * Height * sizeof(FColor) );
-
-		UBOOL DrawsStatic = UseCompressedLightmaps && Static.Revision == Texture.Revision && Static.Width == Width && Static.Height == Height
-						&& (Static.Format == TEXF_DXT1 || Static.Format == TEXF_DXT3);
-		if( DrawsStatic )
-		{
-			const BYTE*	Data		= (const BYTE*) Static.GetRawTextureData( 0 );
-			INT			BlockSize	= Static.Format == TEXF_DXT1 ? 8 : 16;
-			for( INT BY=0; BY<Height/4; BY++ )
-				for( INT BX=0; BX<Width/4; BX++ )
-				{
-					FColor Block[16];
-					const BYTE* Src = Data + (BY * (Width / 4) + BX) * BlockSize;
-					FFDecodeDXTColors( Src + BlockSize - 8, Static.Format == TEXF_DXT3, Block );
-					for( INT i=0; i<16; i++ )
-						Atlas( (BY * 4 + i / 4) * Width + BX * 4 + i % 4 ) = Block[i];
-				}
-			Static.UnloadRawTextureData( 0 );
-			NumStatic++;
-		}
-		else
-		{
-			for( INT ChildIndex=0; ChildIndex<Texture.GetNumChildren(); ChildIndex++ )
-			{
-				INT ChildX = 0, ChildY = 0;
-				FTexture* Child = Texture.GetChild( ChildIndex, &ChildX, &ChildY );
-				if( Child && ChildX + Child->GetWidth() <= Width && ChildY + Child->GetHeight() <= Height )
-					Child->GetTextureData( 0, &Atlas( ChildY * Width + ChildX ), Width * sizeof(FColor), TEXF_RGBA8, 0 );
-			}
-			NumComputed++;
-		}
-
-		for( INT Index=0; Index<Texture.LightMaps.Num(); Index++ )
-		{
-			INT			LightMapIndex = Texture.LightMaps(Index);
-			FLightMap&	LightMap = Model->LightMaps(LightMapIndex);
-			INT			MinX = LightMap.OffsetX, MaxX = LightMap.OffsetX + LightMap.SizeX - 1,
-						MinY = LightMap.OffsetY, MaxY = LightMap.OffsetY + LightMap.SizeY - 1;
-			if( LightMap.SizeX < 3 || LightMap.SizeY < 3 || MaxX >= Width || MaxY >= Height )
-				continue;
-			NumLightMaps++;
-			// The edges, every half texel: u = 1 and SizeX-1 along v, v = 1 and SizeY-1 along u.
-			for( INT Edge=0; Edge<4; Edge++ )
-			{
-				INT Steps = 2 * ((Edge < 2 ? LightMap.SizeY : LightMap.SizeX) - 2);
-				for( INT Step=0; Step<=Steps; Step++ )
-				{
-					FLOAT Along = 1.f + 0.5f * Step;
-					FLOAT U = Edge < 2 ? (Edge == 0 ? 1.f : LightMap.SizeX - 1.f) : Along;
-					FLOAT V = Edge < 2 ? Along : (Edge == 2 ? 1.f : LightMap.SizeY - 1.f);
-					FLOAT Drawn[3], Own[3];
-					FFCubicAt( &Atlas(0), Width, MinX + U, MinY + V, 0, Width - 1, 0, Height - 1, Drawn );
-					FFCubicAt( &Atlas(0), Width, MinX + U, MinY + V, MinX, MaxX, MinY, MaxY, Own );
-					FLOAT Diff = Max( Max( Abs(Drawn[0] - Own[0]), Abs(Drawn[1] - Own[1]) ), Abs(Drawn[2] - Own[2]) );
-					Diffs.AddItem( Diff );
-					if( Diff > Worst )
-					{
-						Worst			= Diff;
-						WorstLightMap	= LightMapIndex;
-						WorstPos		= LightMap.LightMapBase + LightMap.LightMapX * U + LightMap.LightMapY * V;
-						for( INT c=0; c<3; c++ )
-						{
-							WorstOwn[c]		= Own[c];
-							WorstDrawn[c]	= Drawn[c];
-						}
-					}
-				}
-			}
-		}
-	}
-
-	if( !Diffs.Num() )
-	{
-		FFAnswer( Ar, TEXT("BICUBICLIGHTMAPS EDGES: %s has no lightmaps"), Level->GetPathName() );
-		return;
-	}
-	qsort( &Diffs(0), Diffs.Num(), sizeof(FLOAT), FFCompareFloats );
-	DOUBLE	Sum = 0.0;
-	INT		Above[3] = { 0, 0, 0 };
-	for( INT i=0; i<Diffs.Num(); i++ )
-	{
-		Sum += Diffs(i);
-		Above[0] += Diffs(i) > 0.5f;
-		Above[1] += Diffs(i) > 1.f;
-		Above[2] += Diffs(i) > 2.f;
-	}
-	FLOAT Percent = 100.f / Diffs.Num();
-	FFAnswer( Ar, TEXT("BICUBICLIGHTMAPS EDGES: %s: %i lightmaps in %i atlases (%i compressed, %i computed), %i edge samples"),
-		Level->GetOuter()->GetName(), NumLightMaps, Model->LightMapTextures.Num(), NumStatic, NumComputed, Diffs.Num() );
-	FFAnswer( Ar, TEXT("BICUBICLIGHTMAPS EDGES: bleed in lightmap levels (0-255, before the 2x modulation): mean %.2f, median %.2f, p99 %.2f, max %.2f; above 0.5: %.1f%%, above 1: %.1f%%, above 2: %.2f%%"),
-		(FLOAT)(Sum / Diffs.Num()), Diffs(Diffs.Num() / 2), Diffs( Min( Diffs.Num() - 1, (INT)(Diffs.Num() * 0.99f) ) ), Diffs(Diffs.Num() - 1),
-		Above[0] * Percent, Above[1] * Percent, Above[2] * Percent );
-	if( WorstLightMap != INDEX_NONE )
-		FFAnswer( Ar, TEXT("BICUBICLIGHTMAPS EDGES: largest at surface %i, %.1f %.1f %.1f: own texels %.1f %.1f %.1f, drawn %.1f %.1f %.1f"),
-			Model->LightMaps(WorstLightMap).iSurf, WorstPos.X, WorstPos.Y, WorstPos.Z,
-			WorstOwn[0], WorstOwn[1], WorstOwn[2], WorstDrawn[0], WorstDrawn[1], WorstDrawn[2] );
-}
 
 #endif
 
