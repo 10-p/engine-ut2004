@@ -1097,7 +1097,9 @@ int main(int argc, char **argv)
 	UBOOL CmdLineCut = 0;
 	for (INT i = 1; i < argc; i++)
 	{
-		const TCHAR* Arg = appFromAnsi(argv[i]);
+		// Converted into a buffer the size of CmdLine, so an argument that fits CmdLine is taken whole.
+		TCHAR ArgBuf[ARRAY_COUNT(CmdLine)];
+		const TCHAR* Arg = appFromAnsi(argv[i], ArgBuf, ARRAY_COUNT(ArgBuf));
 		if (appStrlen(CmdLine) + appStrlen(Arg) + 2 >= ARRAY_COUNT(CmdLine))
 		{
 			CmdLineCut = 1;
