@@ -36,22 +36,49 @@ void FOutputDevice::Log( enum EName Type, const FString& S )
 	if( !FName::SafeSuppressed(Type)&&(GSys||(Type==NAME_Log||Type==NAME_Init)) )
 		Serialize( *S, Type );
 }
+// Formats a log line and serializes it whole: in a stack buffer when it fits, else in a heap buffer grown until it
+// does. VSNPRINTF returns the length it needed, the length it wrote or -1: a full buffer may hold a cut text.
+static void SerializeLogf( FOutputDevice* Out, EName Event, const TCHAR* Fmt, va_list Args )
+{
+	TCHAR TempStr[4096];
+	TCHAR* Text = TempStr;
+	INT Size = ARRAY_COUNT(TempStr);
+	for( ;; )
+	{
+		va_list ArgsCopy;
+		va_copy( ArgsCopy, Args );
+		INT Len = VSNPRINTF( Text, Size, Fmt, ArgsCopy );
+		va_end( ArgsCopy );
+		Text[Size-1] = 0;
+		if( (Len>=0 && Len<Size-1) || Size>=(1<<24) )
+			break;
+		Size = Max( Len+2, Size*2 );
+		if( Text != TempStr )
+			appFree( Text );
+		Text = (TCHAR*)appMalloc( Size*sizeof(TCHAR), TEXT("Logf") );
+	}
+	Out->Serialize( Text, Event );
+	if( Text != TempStr )
+		appFree( Text );
+}
 void FOutputDevice::Logf( EName Event, const TCHAR* Fmt, ... )
 {
 	if( !FName::SafeSuppressed(Event)&&(GSys||(Event==NAME_Log||Event==NAME_Init)) )
 	{
-		TCHAR TempStr[4096];
-		GET_VARARGS(TempStr,ARRAY_COUNT(TempStr),Fmt,Fmt);
-		Serialize( TempStr, Event );
+		va_list Args;
+		va_start( Args, Fmt );
+		SerializeLogf( this, Event, Fmt, Args );
+		va_end( Args );
 	}
 }
 void FOutputDevice::Logf( const TCHAR* Fmt, ... )
 {
 	if( !FName::SafeSuppressed(NAME_Log) )
 	{
-		TCHAR TempStr[4096];
-		GET_VARARGS(TempStr,ARRAY_COUNT(TempStr),Fmt,Fmt);
-		Serialize( TempStr, NAME_Log );
+		va_list Args;
+		va_start( Args, Fmt );
+		SerializeLogf( this, NAME_Log, Fmt, Args );
+		va_end( Args );
 	}
 }
 
