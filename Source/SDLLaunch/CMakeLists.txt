@@ -263,6 +263,8 @@ if(EMSCRIPTEN)
     # the audio ring would absorb as an underrun.
     -sPTHREAD_POOL_SIZE=4
     "SHELL:--js-library ${CMAKE_SOURCE_DIR}/vendor/glue/wasmfs-shim.js"
+    # Emscripten's canvas resize with the viewport read guarded: a lost WebGL context answers it with null.
+    "SHELL:--js-library ${CMAKE_SOURCE_DIR}/vendor/glue/webgl-shim.js"
     # No -lopenal: openal-soft (the OpenAL target, linked above) replaces Emscripten's libopenal.js, and
     # linking both would put two definitions of every al* symbol in one module.
     # No host page is baked: the engine emits a bare loader (SDLLaunch.{js,wasm,data},
@@ -311,6 +313,7 @@ if(EMSCRIPTEN)
   # without this, editing a shim would leave a stale .js baked while the build reported success.
   set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY LINK_DEPENDS
     "${CMAKE_SOURCE_DIR}/vendor/glue/wasmfs-shim.js"
+    "${CMAKE_SOURCE_DIR}/vendor/glue/webgl-shim.js"
     "${CMAKE_SOURCE_DIR}/vendor/glue/net-shim.js")
   # ProxyNetDrv's own thin shim (the optional proxynet ABI module), a separate --js-library: the net shim
   # stays identical across every engine repo, and with UE_WITH_PROXYNET=OFF the wasm has no ue_proxynet_*

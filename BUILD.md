@@ -146,8 +146,8 @@ the CMake that links it. Three arms:
 
 - A bare loader: `SDLLaunch.{js,wasm,data}` (`loaderStyle=global-module`), injected by the frontend's host page,
   which also injects the browser glue. Only the thin shims in `vendor/glue/` are baked in (`net-shim.js`,
-  `wasmfs-shim.js`, `proxynet-shim.js`); `vendor/glue/ue_abi.h` is the ABI (version 2) and the source of
-  `meta.json`'s `abiVersion`.
+  `wasmfs-shim.js`, `proxynet-shim.js`, and `webgl-shim.js`, Emscripten's canvas resize made to survive a lost WebGL
+  context); `vendor/glue/ue_abi.h` is the ABI (version 2) and the source of `meta.json`'s `abiVersion`.
 - The engine runs on a worker (`-sPROXY_TO_PTHREAD`, `#canvas` transferred to it). The viewport creates the WebGL
   context itself: WebGL 1 by default, WebGL 2 with `[SDL2Drv.SDL2Client] WebGLVersion=2` or `-WEBGL=2` (falling back
   to WebGL 1 where the browser has no WebGL 2; GL4ES then runs its OpenGL ES 3 back end). Each frame yields to the
