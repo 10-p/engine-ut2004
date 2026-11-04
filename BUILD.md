@@ -74,7 +74,7 @@ configure stops early if the files are not there. The native presets read no ass
 | `windows-nokarma` | `windows` without physics | `ut2004-nokarma-pixo.exe` |
 | `wasm` | the web dev build and the shipped `-debug` binary: `-O2 -g`, assertions, exception catching | `SDLLaunch.{js,wasm,data}` |
 | `wasm-debug` | `-O0 -g` (GL4ES stays `-O2`): when the optimiser is the suspect | same |
-| `wasm-perf` | the shipping web build: `-O3 -g0`, no assertions, a side symbol map | same |
+| `wasm-perf` | the shipping web build: `-O3 -g0`, no assertions, a side symbol map, `-sEXCEPTION_STACK_TRACES` (a throw nothing catches, an `appError`'s or an `appThrowf`'s, reaches the page named after its type, with the stack from the throw site) | same |
 | `wasm-nokarma` | `wasm-perf` without physics | same |
 | `wasm-karmadecomp-debug`, `wasm-karmadecomp-perf` | aliases of `wasm-debug` / `wasm-perf` (`USE_KARMA_DECOMP` is already the default) | same |
 
