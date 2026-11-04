@@ -173,6 +173,11 @@ if(EMSCRIPTEN)
       # compiled with -fexceptions (openal-soft's, see the root CMakeLists) carry landing pads; the engine's
       # own code is compiled -fignore-exceptions and gains no invoke_ calls.
       -sNO_DISABLE_EXCEPTION_CATCHING
+      # A C++ exception nothing catches (an appError's throw, an appThrowf) reaches the page as an Error named
+      # after the thrown type, with what() as its message and the stack from the throw site, so the crash report
+      # says what was thrown where. The stack is captured at a throw only. (The dev builds have it with their
+      # assertions.)
+      -sEXCEPTION_STACK_TRACES
     )
   else()
     # Dev/debug: assertions, stack-overflow checks, DWARF + source maps, exception catching ON.
