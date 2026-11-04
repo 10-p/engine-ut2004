@@ -38,7 +38,8 @@ public:
 	void Serialize( const TCHAR* V, EName Event )
 	{
 		guard(FFeedbackContextAnsi::Serialize);
-		TCHAR Temp[1024]=TEXT("");
+		// The decorated line is built in an FString, so a message of any length is printed whole.
+		FString Temp;
 		if( Event==NAME_Title )
 		{
 			return;
@@ -48,47 +49,34 @@ public:
             // gam --- Yes, I'm anal.
             INT StringLength, TotalDashes, PreceedingDashes, TrailingDashes;
             INT i;
-            TCHAR *p;
 
             StringLength = appStrlen (V);
             TotalDashes = (StringLength < 70) ? 70 - StringLength : 0;
             PreceedingDashes = TotalDashes / 2;
             TrailingDashes = TotalDashes - PreceedingDashes;
 
-            p = Temp;
-
             for (i = 0; i < PreceedingDashes; i++)
-            {
-                *p = '-';
-                p++;
-            }
+                Temp += TEXT("-");
 
-            appStrcpy (p, V);
-
-            p += StringLength;
+            Temp += V;
 
             for (i = 0; i < TrailingDashes; i++)
-            {
-                *p = '-';
-                p++;
-            }
-
-            *p = '\0';
+                Temp += TEXT("-");
 
             // --- gam
-			V = Temp;
+			V = *Temp;
 		}
 		else if( Event==NAME_SubHeading )
 		{
-			appSprintf( Temp, TEXT("%s..."), (TCHAR*)V );
-			V = Temp;
+			Temp = FString(V) + TEXT("...");
+			V = *Temp;
 		}
 		else if( Event==NAME_Error || Event==NAME_Warning || Event==NAME_ExecWarning || Event==NAME_ScriptWarning )
 		{
 			if( Context )
 			{
-				appSprintf( Temp, TEXT("%s : %s, %s"), *Context->GetContext(), *FName(Event), (TCHAR*)V );
-				V = Temp;
+				Temp = Context->GetContext() + TEXT(" : ") + *FName(Event) + TEXT(", ") + V;
+				V = *Temp;
 			}
 
             // gam ---
@@ -100,8 +88,6 @@ public:
 		}
 		else if( Event==NAME_Progress )
 		{
-			appSprintf( Temp, TEXT("%s"), (TCHAR*)V );
-			V = Temp;
 			LocalPrint( V );
 			LocalPrint( TEXT("\r") );
 			fflush( stdout );
