@@ -1864,6 +1864,9 @@ void BeamIterator::Update( AxEmitter* pEmitter )
     unguard;
 }
 
+// The most sections a beam is drawn in: (sections + 1) * 8 planes * 4 vertices stays far inside an int.
+static const FLOAT MaxBeamSections = 65536.0f;
+
 void BeamIterator::Draw( AxEmitter* pEmitter, FSceneNode* pFrame )
 {
     /*
@@ -1922,6 +1925,22 @@ void BeamIterator::Draw( AxEmitter* pEmitter, FSceneNode* pFrame )
     Length        = BeamVect.Size();
     SectionLength = pEmitter->mRegenDist;
     Planes        = pEmitter->mMaxParticles; 
+
+    // The section count is an int that VertsNeeded multiplies, and the section loop writes Planes*4 vertices per
+    // section: a beam with no finite count of sections below MaxBeamSections (an end point at infinity or far
+    // past the world, a section length of 0, a NaN) would wrap that count and write past the vertex buffer.
+    // Such a beam is not drawn.
+    if( !(SectionLength > 0.0f) || !(Length / SectionLength < MaxBeamSections) )
+    {
+        static UBOOL Named = 0;
+        if( !Named )
+        {
+            Named = 1;
+            debugf( NAME_Warning, TEXT("%s: a beam of length %g in sections of %g is not drawn"), pEmitter->GetName(), Length, SectionLength );
+        }
+        return;
+    }
+
     Sections      = (int)(Length/SectionLength) + 1;
     Spin          = pEmitter->mSpinRange[1];
     SpinRate      = pEmitter->mSpinRange[0];
