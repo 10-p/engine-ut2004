@@ -207,9 +207,11 @@ void FGL4ESTexture::Cache(FBaseTexture* SourceTexture)
 			CachedChildRevision.Empty(NumChildren);
 			CachedChildRevision.AddZeroed(NumChildren);
 
-			// Copy all children into the texture.
+			// Copy all children into the texture. The texels no child covers are zero: the bicubic lightmap
+			// filter's outer taps reach one texel past a lightmap's border.
 			BYTE*	Data	= new BYTE[USize * VSize * 4];
 			INT		Pitch	= USize * 4;
+			appMemzero( Data, USize * VSize * 4 );
 
 			for(INT ChildIndex = 0;ChildIndex < NumChildren;ChildIndex++)
 			{

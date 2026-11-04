@@ -157,6 +157,9 @@ FOpenGLMaterialStateStage::FOpenGLMaterialStateStage()
 	UseTexGenMatrix				= 0;
 	TexCoordIndex				= TCS_NoChange;
 	TexCoordCount				= TCN_2DCoords;
+	IsLightmap					= 0;
+	TexGenModeApplied			= 0;
+	TexGenCountApplied			= 0;
 	TextureAddressU				= GL_CLAMP_TO_EDGE;
 	TextureAddressV				= GL_CLAMP_TO_EDGE;
 	TextureAddressW				= GL_CLAMP_TO_EDGE;
@@ -282,6 +285,7 @@ void FOpenGLRenderInterface::HandleLightmap_SP( FOpenGLMaterialStateStage& Stage
 	Stage.ColorOp					= GL_MODULATE;
 	Stage.ColorScale				= CurrentState->LightingModulate2X ? 2.0f : 1.0f;
 	Stage.Texture					= Lightmap;
+	Stage.IsLightmap				= 1;
 	Stage.TextureAddressU			= GL_CLAMP_TO_EDGE; 
 	Stage.TextureAddressV			= GL_CLAMP_TO_EDGE; 
 	Stage.TexCoordIndex				= TCS_Stream1;
@@ -370,6 +374,7 @@ void FOpenGLRenderInterface::HandleLighting_MP( FOpenGLMaterialStateStage& Stage
 	}
 
 	Stage.Texture			= Lightmap;
+	Stage.IsLightmap		= Lightmap != NULL;
 	Stage.TextureAddressU	= GL_REPEAT;
 	Stage.TextureAddressV	= GL_REPEAT;
 	

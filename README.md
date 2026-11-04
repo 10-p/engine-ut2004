@@ -9,6 +9,7 @@ Requires assets from a retail UT2004 install. Every preset, option and driver: [
 * SDL2 client driver (`SDL2Drv`): the one viewport on every target (window, GL context, keyboard, mouse, pads, Android touch); in the menus a pad's left stick moves the cursor, its fire controls and A click, and A (with no control under the cursor), B and the D-pad are Enter, Escape and focus moves.
 * GL4ES renderer (`GL4ESDrv`): OpenGLDrv over gl4es, on OpenGL ES 2 / WebGL 1, or WebGL 2 with `WebGLVersion=2`.
 * OpenGL renderer: the stock `OpenGLDrv` on SDL2, in the same binary as the other renderers.
+* Bicubic lightmaps (OpenGLDrv, GL4ESDrv): the passes that carry a lightmap draw through GLSL programs that read it as a cubic B-spline (`UseBicubicLightmaps` in each device's section, on unless the ini says False).
 * Software renderer: Pixomatic (`PixoDrv`) on 32-bit x86 Linux and Windows, presented through GL.
 * Null renderer: `Engine.NullRenderDevice` selectable on every build with `-NULLRENDERER`.
 * WebRTC net driver (`WebRTCDrv`): browser-to-browser multiplayer over WebRTC data channels, with LAN-style discovery in the server browser.

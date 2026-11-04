@@ -51,6 +51,11 @@ public:
 	TArray<BYTE>					ScratchBuffer;
 	GLuint							NullTextureID;
 
+	// The GLSL programs of the passes that carry a lightmap (UseBicubicLightmaps).
+	FFFProgramCache					LightmapPrograms;
+	FFFProgramOptions				LightmapProgramOptions;
+	UBOOL							BicubicLightmapsSupported;
+
 	// Configuration.
 	FLOAT                           DetailTexMipBias,
 									LevelOfAnisotropy;
@@ -61,7 +66,8 @@ public:
 									UseVSync,
 									UseRenderTargets,
 									UsePixelShaders,
-									UseHardwareGamma;
+									UseHardwareGamma,
+									UseBicubicLightmaps;
 	INT								MaxTextureUnits,
 									AppleVA,
 									NumAASamples,		// MSAA sample count; 0 = off
@@ -147,6 +153,9 @@ public:
 
 	virtual void SetEmulationMode(EHardwareEmulationMode Mode){};
 	virtual FRenderCaps* GetRenderCaps();
+
+	// The lightmap filter in use, as the mode set logs it.
+	const TCHAR* LightmapFilterName();
 };
 
 #endif
