@@ -59,12 +59,17 @@ Version=1
 ```
 
 `appInit` makes a player's `UT2004.ini` and `User.ini` as byte copies of `Default.ini` and `DefUser.ini` when they are
-absent and never refreshes them, so the `Version` they keep says which defaults they were copied from; a live ini
-without the section was made before the number and is version 0 (a mod's ini, made from `UT2004.ini`, keeps its
-number). No class owns the section, so no `SaveConfig`, `ClearConfig` or `ResetConfig` touches it and the config cache
-writes it back as it is (`[FirstRun]` could not serve: the launcher rewrites it on every boot). Nothing reads the
-number to change anything: a player's ini is never migrated. All six files carry the same number;
-`tools/dev/sync-android-ini.py` keeps the section first.
+absent and never refreshes them, so the `Version` they keep says which defaults they were copied from (a mod's inis,
+made from `UT2004.ini` and `User.ini`, keep their number). A live ini without the section was made before the number.
+Right after the config cache starts, before the `-ini:` overrides, `appInit` adds `Version=0` to each live ini
+(`UT2004.ini` and `User.ini`, the files `INI=` and `USERINI=` name, or a `-MOD=` mod's pair) when it has no
+`[ConfigVersion] Version` key and writes that file alone, as any save writes it (comment lines left out), logging
+`Config: <file> has no [ConfigVersion]: Version=0 added`; the section then comes last in the file, and a `Version` that
+is there is never changed. That marker is the only thing the engine writes into a player's ini for the config version:
+nothing reads the number to change anything, and a player's ini is never migrated. No class owns the section, so no
+`SaveConfig`, `ClearConfig` or `ResetConfig` touches it and the config cache writes it back as it is. `[FirstRun]` could
+not serve: the launcher rewrites it on every boot. All six files carry the same number; `tools/dev/sync-android-ini.py`
+keeps the section first.
 
 The rule: a commit that adds a default, changes a default value or removes a key in one of these inis, or adds or
 changes a compiled or script default of a setting the engine saves to the ini, bumps `Version` by one in all of them
