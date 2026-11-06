@@ -61,5 +61,7 @@ cmake --preset wasm-perf -DUE_ASSETS_DIR=<UT2004 folder> && cmake --build --pres
   name exists. Records kept as history say so in their first line.
 - **Names** follow behaviour; our CMake options take the `UE_` prefix. Ini sections and keys players save,
   `WebRTCDrv`/`UWebRTCNetDriver`, exported ABI symbols and frontend-matched log lines keep their names.
+- **Ini config version:** a commit that adds, changes or removes a default the engine keeps in the ini bumps
+  `[ConfigVersion] Version` in every default ini and adds its row (`Engine/Config/README.md`, "Config version").
 - **Commits** use Conventional Commit subjects naming the feature (`feat:`, `fix:`, `build:`, `refactor:`), never
   a stage number or a date.

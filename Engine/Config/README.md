@@ -48,3 +48,30 @@ leaves out the derived `UT2004.ini` / `User.ini` so an install copy cannot shado
   lists 2 twice and never 3, which `2K4Menus.utx` has). Web: `[GUI2K4.UT2k4ServerBrowser] bHideNetworkMessage=True`
   (no first-run network-options prompt).
 - A `DefUser.ini` change reaches only a new `User.ini`: `appInit` derives it only when it is absent.
+
+## Config version
+
+Every file above (the native, web and Android sets) opens with a section of its own:
+
+```ini
+[ConfigVersion]
+Version=1
+```
+
+`appInit` makes a player's `UT2004.ini` and `User.ini` as byte copies of `Default.ini` and `DefUser.ini` when they are
+absent and never refreshes them, so the `Version` they keep says which defaults they were copied from; a live ini
+without the section was made before the number and is version 0 (a mod's ini, made from `UT2004.ini`, keeps its
+number). No class owns the section, so no `SaveConfig`, `ClearConfig` or `ResetConfig` touches it and the config cache
+writes it back as it is (`[FirstRun]` could not serve: the launcher rewrites it on every boot). Nothing reads the
+number to change anything: a player's ini is never migrated. All six files carry the same number;
+`tools/dev/sync-android-ini.py` keeps the section first.
+
+The rule: a commit that adds a default, changes a default value or removes a key in one of these inis, or adds or
+changes a compiled or script default of a setting the engine saves to the ini, bumps `Version` by one in all of them
+and adds the new number's row below, saying what a player on the version before lacks. Comment-only and
+whitespace-only changes do not bump. The frontend's `ini-config-version` pre-commit gate checks the inis; its
+`docs/CONVENTIONS.md` § Ini config version has the rule in full.
+
+| Version | What a player on the version before lacks |
+|---------|-------------------------------------------|
+| 1 | The defaults when the number was introduced: a live ini without the section may lack any of them. |
