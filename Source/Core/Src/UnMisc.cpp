@@ -2155,6 +2155,20 @@ CORE_API const TCHAR* appCmdLine()
 	return GCmdLine;
 }
 
+// A live ini without a [ConfigVersion] Version key was made before the config version: it gets Version=0, written to
+// that file alone. An existing Version and every other key stay as they are.
+static void appMarkConfigVersion( const TCHAR* Filename )
+{
+	guard(appMarkConfigVersion);
+	TCHAR Version[64];
+	if( GFileManager->FileSize(Filename)<0 || GConfig->GetString( TEXT("ConfigVersion"), TEXT("Version"), Version, ARRAY_COUNT(Version), Filename ) )
+		return;
+	GConfig->SetString( TEXT("ConfigVersion"), TEXT("Version"), TEXT("0"), Filename );
+	GConfig->Flush( 0, Filename );
+	debugf( NAME_Init, TEXT("Config: %s has no [ConfigVersion]: Version=0 added"), Filename );
+	unguard;
+}
+
 CORE_API void appInit( const TCHAR* InPackage, const TCHAR* InCmdLine, FMalloc* InMalloc, FOutputDevice* InLog, FOutputDeviceError* InError, FFeedbackContext* InWarn, FFileManager* InFileManager, FConfigCache*(*ConfigFactory)(), UBOOL RequireConfig )
 {
 	guard(appInit);
@@ -2340,6 +2354,8 @@ CORE_API void appInit( const TCHAR* InPackage, const TCHAR* InCmdLine, FMalloc* 
 	// Init config.
 	GConfig = ConfigFactory();
 	GConfig->Init( GIni, GUserIni, RequireConfig );
+	appMarkConfigVersion( GIni );
+	appMarkConfigVersion( GUserIni );
 	appApplyIniOverrides();
 
 	// Language.
