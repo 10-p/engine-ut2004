@@ -258,10 +258,12 @@ the first two replacements off.
   back `WindowedViewportX/Y`. The web and Android builds do not read the key.
 - `[SDL2Drv.SDL2Client] UseJoystick` (on by default): game pads, one pad (the first connected), the shared button
   map, sticks sent as rates. In play the left stick is the move stick: its deadzone is radial (0.12, rescaled from its
-  edge), so every direction between the axes keeps both parts, and a tilt out of it but below
-  `[SDL2Drv.SDL2Client] PadWalkTilt` (0.5 of the stick's travel; 0 never) walks, as the Walking button does: the stick
-  keeps a bit of its own set in the player's `bRun` (the Walking key writes the whole byte; the stick sets its bit
-  again the next update), and the moves a client sends to its server carry `bRun`. While a menu is up, any pad button or a stick leaving its rest position takes the
+  edge for a spectator), so every direction between the axes keeps both parts. Out of it a player with a pawn gets the
+  direction at full length on the axes, so it sets off at once as on a key, and the tilt sets the speed: where this machine decides the player's movement (a standalone game, a listen server's host), the tilt past the dead zone is that share of full speed (`GMoveStickPawn`, `GMoveStickSpeed`, read in `APawn::calcVelocity`). A
+  client's server decides its speed, so there a tilt below `[SDL2Drv.SDL2Client] PadWalkTilt` (0.5 of the stick's travel;
+  0 never) walks, as the Walking button does: the stick keeps a bit of its own set in the player's `bRun` (the Walking
+  key writes the whole byte; the stick sets its bit again the next update), and the moves a client sends to its server
+  carry `bRun`. While a menu is up, any pad button or a stick leaving its rest position takes the
   cursor until the mouse moves: the GUI draws it and the system cursor is hidden. Only while the pad has the cursor
   (that press included) do its controls act on the menu; in play and while the mouse has the cursor they give their
   game keys and axes. The left stick moves the cursor, linear past the deadzone, across the viewport's width in

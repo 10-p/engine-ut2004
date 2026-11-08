@@ -1052,6 +1052,9 @@ Calculates new velocity and acceleration for pawn for this tick
 bounds acceleration and velocity, adds effects of friction and momentum
 // bBrake only for walking?
 */
+ENGINE_API APawn* GMoveStickPawn = NULL;
+ENGINE_API FLOAT GMoveStickSpeed = 1.f;
+
 void APawn::calcVelocity(FVector AccelDir, FLOAT deltaTime, FLOAT maxSpeed, FLOAT friction, INT bFluid, INT bBrake, INT bBuoyant)
 {
 	guard(APawn::calcVelocity);
@@ -1104,6 +1107,8 @@ void APawn::calcVelocity(FVector AccelDir, FLOAT deltaTime, FLOAT maxSpeed, FLOA
 
 	if ( !IsHumanControlled() )
 		maxSpeed *= DesiredSpeed;
+	else if ( this == GMoveStickPawn )
+		maxSpeed *= GMoveStickSpeed;
 
 	if ( bBuoyant )
 		Velocity = Velocity + PhysicsVolume->Gravity * deltaTime * (1.f - Buoyancy/Mass);

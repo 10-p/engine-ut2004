@@ -1841,6 +1841,7 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
     GPadLeftOff = LeftOff;
     GPadRightOff = RightOff;
     UBOOL PadWalk = 0;
+    GMoveStickPawn = NULL;
     if( PadMenu && GPadCursor )
     {
         if( LeftOff )
@@ -1849,14 +1850,24 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
     }
     else
     {
-        // The move stick's deadzone is radial, so a direction between the axes keeps both parts (rescaled from the
-        // deadzone's edge, as PadAxis does); out of it, a tilt below PadWalkTilt walks.
-        const FLOAT Tilt = Min( appSqrt( GPadStickX * GPadStickX + GPadStickY * GPadStickY ), 1.f );
+        // The move stick's deadzone is radial; out of it, a player with a pawn gets the direction at full length on the
+        // axes, so it sets off at once as on a key, and the tilt sets the speed. Where this machine decides the player's
+        // movement, the tilt past the deadzone is that share of full speed; a client's server decides it, so there a
+        // tilt below PadWalkTilt walks. A spectator gets the tilt rescaled from the deadzone's edge.
+        const FLOAT Length = appSqrt( GPadStickX * GPadStickX + GPadStickY * GPadStickY );
+        const FLOAT Tilt = Min( Length, 1.f );
         const UBOOL Out = Tilt > 0.f && Tilt >= GPadDeadzone;
-        const FLOAT Scale = Out ? ( Tilt - GPadDeadzone ) / ( 1.f - GPadDeadzone ) / Tilt : 0.f;
+        const UBOOL HasPawn = Actor && Actor->Pawn;
+        const FLOAT Scale = !Out ? 0.f : HasPawn ? 1.f / Length : ( Tilt - GPadDeadzone ) / ( 1.f - GPadDeadzone ) / Length;
         GPadMoveX = GPadStickX * Scale;
         GPadMoveY = GPadStickY * Scale;
-        PadWalk = Out && Tilt < Client->PadWalkTilt;
+        if( Out && HasPawn && Actor->Role == ROLE_Authority )
+        {
+            GMoveStickPawn = Actor->Pawn;
+            GMoveStickSpeed = ( Tilt - GPadDeadzone ) / ( 1.f - GPadDeadzone );
+        }
+        else
+            PadWalk = Out && Tilt < Client->PadWalkTilt;
     }
     // The move stick's walk is one bit of the player's walk button (bRun), apart from the 1 the Walking key sets:
     // that key's press and release overwrite the byte, and the stick sets its bit again on the next update. The moves
