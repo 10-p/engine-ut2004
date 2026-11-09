@@ -1851,9 +1851,9 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
     else
     {
         // The move stick's deadzone is radial; out of it, a player with a pawn gets the direction at full length on the
-        // axes, so it sets off at once as on a key, and the tilt sets the speed. Where this machine decides the player's
-        // movement, the tilt past the deadzone is that share of full speed; a client's server decides it, so there a
-        // tilt below PadWalkTilt walks. A spectator gets the tilt rescaled from the deadzone's edge.
+        // axes, so it sets off at once as on a key. With PadTiltSpeed the tilt past the deadzone is that share of full
+        // speed; off, a tilt below PadWalkTilt walks. A client's server moves the player at its own speed and corrects
+        // the client. A spectator gets the tilt rescaled from the deadzone's edge.
         const FLOAT Length = appSqrt( GPadStickX * GPadStickX + GPadStickY * GPadStickY );
         const FLOAT Tilt = Min( Length, 1.f );
         const UBOOL Out = Tilt > 0.f && Tilt >= GPadDeadzone;
@@ -1861,7 +1861,7 @@ void USDL2Viewport::UpdateInput( UBOOL Reset, FLOAT DeltaSeconds )
         const FLOAT Scale = !Out ? 0.f : HasPawn ? 1.f / Length : ( Tilt - GPadDeadzone ) / ( 1.f - GPadDeadzone ) / Length;
         GPadMoveX = GPadStickX * Scale;
         GPadMoveY = GPadStickY * Scale;
-        if( Out && HasPawn && Actor->Role == ROLE_Authority )
+        if( Out && HasPawn && Client->PadTiltSpeed )
         {
             GMoveStickPawn = Actor->Pawn;
             GMoveStickSpeed = ( Tilt - GPadDeadzone ) / ( 1.f - GPadDeadzone );

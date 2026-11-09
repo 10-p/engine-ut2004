@@ -41,7 +41,8 @@ void USDL2Client::StaticConstructor()
     new(GetClass(),TEXT("WebGLVersion"),      RF_Public)UIntProperty (CPP_PROPERTY(WebGLVersion),      TEXT("Display"), CPF_Config );
     // The pad's menu cursor speed (USDL2Viewport::MovePadCursor); read every tick.
     new(GetClass(),TEXT("PadCursorSeconds"),  RF_Public)UFloatProperty(CPP_PROPERTY(PadCursorSeconds), TEXT("Joystick"), CPF_Config );
-    // The move stick's walk (USDL2Viewport::UpdateInput); read every tick.
+    // The move stick's speed by tilt and its walk (USDL2Viewport::UpdateInput); read every tick.
+    new(GetClass(),TEXT("PadTiltSpeed"),      RF_Public)UBoolProperty(CPP_PROPERTY(PadTiltSpeed),      TEXT("Joystick"), CPF_Config );
     new(GetClass(),TEXT("PadWalkTilt"),       RF_Public)UFloatProperty(CPP_PROPERTY(PadWalkTilt),      TEXT("Joystick"), CPF_Config );
 
     // Compiled defaults for the inherited UClient settings. UClient::StaticConstructor (Engine/Src/UnCamMgr.cpp)
@@ -72,6 +73,7 @@ void USDL2Client::StaticConstructor()
     UseJoystick             = 1;
     WebGLVersion            = 1;
     PadCursorSeconds        = 3.0f;
+    PadTiltSpeed            = 1;
     PadWalkTilt             = 0.5f;
 
     // The web build does not take its render size from these: USDL2Viewport::ResizeViewport queries the canvas
