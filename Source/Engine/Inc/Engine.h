@@ -24,6 +24,9 @@
 	Global variables.
 -----------------------------------------------------------------------------*/
 
+// The local player's pawn while its move stick sets its speed, and the share of full speed the stick asks for.
+ENGINE_API extern class APawn* GMoveStickPawn;
+ENGINE_API extern FLOAT GMoveStickSpeed;
 ENGINE_API extern class FMemStack			GEngineMem;
 ENGINE_API extern class FMemCache			GCache;
 ENGINE_API extern class FStats				GStats;
