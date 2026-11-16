@@ -584,11 +584,7 @@ void USDL2Viewport::Destroy()
 void USDL2Viewport::ShutdownAfterError()
 {
     guard(USDL2Viewport::ShutdownAfterError);
-    if( Window )
-    {
-        EndFullscreen();
-        SDL_SetRelativeMouseMode(SDL_FALSE);
-    }
+    // The client's SDL_Quit closes the window and releases the mouse; no renderer or script call runs here.
     Super::ShutdownAfterError();
     unguard;
 }
